@@ -143,3 +143,33 @@ database:
 		t.Errorf("Database.URL = %q, want env override over file", cfg.Database.URL)
 	}
 }
+
+func TestLoad_FlagOverridesAll(t *testing.T) {
+	t.Setenv("MANTLE_DATABASE_URL", "postgres://envhost:5432/envdb")
+
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, "mantle.yaml")
+	_ = os.WriteFile(configFile, []byte(`
+database:
+  url: "postgres://filehost:5432/filedb"
+log:
+  level: "debug"
+`), 0644)
+
+	cmd := newTestCommand()
+	_ = cmd.Flags().Set("config", configFile)
+	_ = cmd.Flags().Set("database-url", "postgres://flaghost:5432/flagdb")
+	_ = cmd.Flags().Set("log-level", "error")
+
+	cfg, err := Load(cmd)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Database.URL != "postgres://flaghost:5432/flagdb" {
+		t.Errorf("Database.URL = %q, want flag override", cfg.Database.URL)
+	}
+	if cfg.Log.Level != "error" {
+		t.Errorf("Log.Level = %q, want error (flag override)", cfg.Log.Level)
+	}
+}
