@@ -33,7 +33,7 @@ internal/
 func Open(databaseURL string) (*sql.DB, error)
 ```
 
-- Uses `lib/pq` driver (`github.com/lib/pq`)
+- Uses `pgx` driver (`github.com/jackc/pgx/v5/stdlib`) — `lib/pq` is in maintenance mode; `pgx` is the actively maintained Postgres driver for Go
 - Calls `db.Ping()` to verify connection on open
 - Returns `*sql.DB` with default pool settings (no tuning for now)
 
@@ -43,6 +43,8 @@ Context helpers (same pattern as config):
 type contextKey struct{}
 
 func WithContext(ctx context.Context, database *sql.DB) context.Context
+
+// FromContext retrieves the *sql.DB from context. Returns nil if not set.
 func FromContext(ctx context.Context) *sql.DB
 ```
 
@@ -64,20 +66,25 @@ Always returns HTTP 200 with `{"status":"ok"}`. Content-Type: `application/json`
 func ReadyzHandler(database *sql.DB) http.HandlerFunc
 ```
 
-Calls `database.PingContext(r.Context())`:
+If `database` is nil, returns 503 immediately without calling Ping. Otherwise calls `database.PingContext(r.Context())`:
 - Success: HTTP 200 with `{"status":"ok"}`
 - Failure: HTTP 503 with `{"status":"unavailable"}`
 
 Content-Type: `application/json`.
 
-## Cobra Integration
+## DB Connection Strategy
 
-In `internal/cli/root.go`'s `PersistentPreRunE`, after loading config:
+**DB connection is NOT in `PersistentPreRunE`.** Many commands (`validate`, `plan`, `version`) are offline and should not require Postgres. Instead:
 
-1. Call `db.Open(cfg.Database.URL)` to establish connection
-2. Store on context via `db.WithContext()`
+- `internal/db/` provides `Open()` as a standalone function
+- Commands that need a database call `db.Open()` in their own `RunE` and store on context if needed
+- Future `mantle serve` will open the connection at startup and pass `*sql.DB` to health handlers and the engine
 
-The version command already has a no-op `PersistentPreRunE` bypass, so it won't attempt a DB connection.
+For this issue, the health handlers receive `*sql.DB` as an explicit parameter. No Cobra integration changes needed — the handlers are tested standalone with `httptest` and wired into a server when `mantle serve` is built.
+
+### DB Lifecycle
+
+`*sql.DB` is closed by whichever code opened it. For CLI commands, close with `defer db.Close()` after `Open()`. For `mantle serve`, close on graceful shutdown. This is not a concern for this issue since we're only building handlers, not a running server.
 
 ## Testing
 
@@ -89,7 +96,7 @@ The version command already has a no-op `PersistentPreRunE` bypass, so it won't 
 
 ## Dependencies
 
-- `github.com/lib/pq` — Postgres driver for `database/sql` (must be added to go.mod)
+- `github.com/jackc/pgx/v5` — Postgres driver for `database/sql` via `pgx/v5/stdlib` (must be added to go.mod)
 
 ## What's NOT Included
 
