@@ -76,22 +76,6 @@ func (e ValidationError) Error() string {
 ## Parser — `internal/workflow/parse.go`
 
 ```go
-func Parse(filename string) (*Workflow, error)
-```
-
-- Reads file contents
-- Unmarshals using `gopkg.in/yaml.v3`
-- Uses `yaml.Node` to preserve line/column info for error reporting
-- Returns parse errors with line numbers if YAML is malformed
-
-Two-pass approach:
-1. `yaml.Unmarshal` into `yaml.Node` tree to capture line/column positions
-2. Decode the node tree into the `Workflow` struct
-3. Store the node tree alongside the workflow for the validator to reference line numbers
-
-To make line numbers available to the validator, `Parse` returns a `ParseResult`:
-
-```go
 type ParseResult struct {
     Workflow *Workflow
     Root     *yaml.Node // preserved for line number lookups
@@ -100,6 +84,13 @@ type ParseResult struct {
 func Parse(filename string) (*ParseResult, error)
 ```
 
+- Reads file contents
+- Unmarshals using `gopkg.in/yaml.v3` with a two-pass approach:
+  1. `yaml.Unmarshal` into `yaml.Node` tree to capture line/column positions
+  2. Decode the node tree into the `Workflow` struct
+- Returns parse errors with line numbers if YAML is malformed
+- Preserves the `yaml.Node` tree in `ParseResult` for the validator to reference line numbers
+
 ## Validator — `internal/workflow/validate.go`
 
 ```go
@@ -107,15 +98,16 @@ func Validate(result *ParseResult) []ValidationError
 ```
 
 Structural validation rules:
-- `name` is required and non-empty
+- `name` is required, non-empty, and matches `^[a-z][a-z0-9-]*$` (lowercase alphanumeric with hyphens, used as CLI args and DB keys)
 - `steps` is required and has at least one entry
-- Each step has a non-empty `name`
+- Each step has a non-empty `name` matching `^[a-z][a-z0-9-]*$` (same format as workflow name)
 - Each step has a non-empty `action`
 - Step names are unique within the workflow
+- Input names must be valid identifiers matching `^[a-z][a-z0-9_]*$` (used in CEL as `inputs.<name>`)
 - Input `type` is one of: `string`, `number`, `boolean` (if inputs are declared)
 - Retry `backoff` is one of: `fixed`, `exponential` (if retry is set)
 - Retry `max_attempts` is > 0 (if retry is set)
-- `timeout` parses as a valid Go duration (if set)
+- `timeout` parses as a valid positive Go duration (if set)
 
 The validator walks the `yaml.Node` tree to find line/column positions for each error.
 
