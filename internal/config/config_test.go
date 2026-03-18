@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -32,5 +34,67 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.Log.Level != "info" {
 		t.Errorf("Log.Level = %q, want info", cfg.Log.Level)
+	}
+}
+
+func TestLoad_ConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, "mantle.yaml")
+	err := os.WriteFile(configFile, []byte(`
+database:
+  url: "postgres://custom:5432/mydb"
+api:
+  address: ":9090"
+log:
+  level: "debug"
+`), 0644)
+	if err != nil {
+		t.Fatalf("WriteFile error = %v", err)
+	}
+
+	cmd := newTestCommand()
+	_ = cmd.Flags().Set("config", configFile)
+
+	cfg, err := Load(cmd)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Database.URL != "postgres://custom:5432/mydb" {
+		t.Errorf("Database.URL = %q, want postgres://custom:5432/mydb", cfg.Database.URL)
+	}
+	if cfg.API.Address != ":9090" {
+		t.Errorf("API.Address = %q, want :9090", cfg.API.Address)
+	}
+	if cfg.Log.Level != "debug" {
+		t.Errorf("Log.Level = %q, want debug", cfg.Log.Level)
+	}
+}
+
+func TestLoad_ExplicitConfigNotFound(t *testing.T) {
+	cmd := newTestCommand()
+	_ = cmd.Flags().Set("config", "/nonexistent/mantle.yaml")
+
+	_, err := Load(cmd)
+	if err == nil {
+		t.Fatal("Load() expected error for missing explicit config, got nil")
+	}
+}
+
+func TestLoad_ImplicitConfigMissing_UsesDefaults(t *testing.T) {
+	origDir, _ := os.Getwd()
+	dir := t.TempDir()
+	_ = os.Chdir(dir)
+	defer func() { _ = os.Chdir(origDir) }()
+
+	cmd := newTestCommand()
+
+	cfg, err := Load(cmd)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil (silent fallback)", err)
+	}
+
+	if cfg.Database.URL != "postgres://localhost:5432/mantle?sslmode=disable" {
+		t.Errorf("Database.URL = %q, want default", cfg.Database.URL)
 	}
 }
