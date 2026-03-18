@@ -1,5 +1,7 @@
 # Mantle
 
+[![CI](https://github.com/dvflw/mantle/actions/workflows/ci.yml/badge.svg)](https://github.com/dvflw/mantle/actions/workflows/ci.yml)
+
 Headless AI workflow automation platform. Bring your own keys, define workflows as code, run them anywhere.
 
 Mantle gives you an IaC-style lifecycle for AI-powered workflows: **validate** offline, **plan** diffs, **apply** versioned definitions, and **run** with checkpoint-and-resume reliability. Ship a single Go binary, connect to Postgres, and you're running.
