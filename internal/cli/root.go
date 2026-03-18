@@ -15,5 +15,7 @@ func NewRootCommand() *cobra.Command {
 
 	cmd.PersistentFlags().String("config", "", "config file path (default: mantle.yaml)")
 
+	cmd.AddCommand(newVersionCommand())
+
 	return cmd
 }
