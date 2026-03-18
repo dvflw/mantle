@@ -48,7 +48,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	v := viper.New()
 
 	// Defaults
-	v.SetDefault("database.url", "postgres://localhost:5432/mantle?sslmode=disable")
+	v.SetDefault("database.url", "postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable")
 	v.SetDefault("api.address", ":8080")
 	v.SetDefault("log.level", "info")
 

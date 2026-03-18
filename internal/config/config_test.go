@@ -26,7 +26,7 @@ func TestLoad_Defaults(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if cfg.Database.URL != "postgres://localhost:5432/mantle?sslmode=disable" {
+	if cfg.Database.URL != "postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable" {
 		t.Errorf("Database.URL = %q, want default", cfg.Database.URL)
 	}
 	if cfg.API.Address != ":8080" {
@@ -94,7 +94,7 @@ func TestLoad_ImplicitConfigMissing_UsesDefaults(t *testing.T) {
 		t.Fatalf("Load() error = %v, want nil (silent fallback)", err)
 	}
 
-	if cfg.Database.URL != "postgres://localhost:5432/mantle?sslmode=disable" {
+	if cfg.Database.URL != "postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable" {
 		t.Errorf("Database.URL = %q, want default", cfg.Database.URL)
 	}
 }
