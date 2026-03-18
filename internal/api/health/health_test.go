@@ -31,3 +31,27 @@ func TestHealthzHandler(t *testing.T) {
 		t.Errorf("status = %q, want ok", body["status"])
 	}
 }
+
+func TestReadyzHandler_NilDB(t *testing.T) {
+	handler := ReadyzHandler(nil)
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to parse response body: %v", err)
+	}
+	if body["status"] != "unavailable" {
+		t.Errorf("status = %q, want unavailable", body["status"])
+	}
+}
+
+func TestReadyzHandler_WithDB(t *testing.T) {
+	t.Skip("Real DB readyz test deferred to DVFLW-278 (testcontainers)")
+}
