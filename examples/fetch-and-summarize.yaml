@@ -1,0 +1,40 @@
+name: fetch-and-summarize
+description: Fetch data from an API and summarize it with an LLM
+
+inputs:
+  url:
+    type: string
+    description: URL to fetch
+
+steps:
+  - name: fetch-data
+    action: http/request
+    params:
+      method: GET
+      url: "{{ inputs.url }}"
+
+  - name: summarize
+    action: ai/completion
+    params:
+      provider: openai
+      model: gpt-4o
+      prompt: "Summarize this data: {{ steps.fetch-data.output.body }}"
+      output_schema:
+        type: object
+        properties:
+          summary:
+            type: string
+          key_points:
+            type: array
+            items:
+              type: string
+
+  - name: post-result
+    action: http/request
+    if: "steps.summarize.output.key_points.size() > 0"
+    params:
+      method: POST
+      url: https://hooks.example.com/results
+      body:
+        summary: "{{ steps.summarize.output.summary }}"
+        points: "{{ steps.summarize.output.key_points }}"
