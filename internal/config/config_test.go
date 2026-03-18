@@ -98,3 +98,48 @@ func TestLoad_ImplicitConfigMissing_UsesDefaults(t *testing.T) {
 		t.Errorf("Database.URL = %q, want default", cfg.Database.URL)
 	}
 }
+
+func TestLoad_EnvVarOverridesDefault(t *testing.T) {
+	t.Setenv("MANTLE_DATABASE_URL", "postgres://envhost:5432/envdb")
+	t.Setenv("MANTLE_LOG_LEVEL", "warn")
+
+	cmd := newTestCommand()
+
+	cfg, err := Load(cmd)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Database.URL != "postgres://envhost:5432/envdb" {
+		t.Errorf("Database.URL = %q, want env override", cfg.Database.URL)
+	}
+	if cfg.Log.Level != "warn" {
+		t.Errorf("Log.Level = %q, want warn", cfg.Log.Level)
+	}
+	if cfg.API.Address != ":8080" {
+		t.Errorf("API.Address = %q, want default :8080", cfg.API.Address)
+	}
+}
+
+func TestLoad_EnvVarOverridesConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, "mantle.yaml")
+	_ = os.WriteFile(configFile, []byte(`
+database:
+  url: "postgres://filehost:5432/filedb"
+`), 0644)
+
+	t.Setenv("MANTLE_DATABASE_URL", "postgres://envhost:5432/envdb")
+
+	cmd := newTestCommand()
+	_ = cmd.Flags().Set("config", configFile)
+
+	cfg, err := Load(cmd)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Database.URL != "postgres://envhost:5432/envdb" {
+		t.Errorf("Database.URL = %q, want env override over file", cfg.Database.URL)
+	}
+}
