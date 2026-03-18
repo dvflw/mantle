@@ -20,7 +20,7 @@ clean:
 	rm -f mantle
 
 migrate:
-	@echo "No migrations yet. Run 'mantle init' when available."
+	go run ./cmd/mantle init
 
 run:
 	go run ./cmd/mantle $(ARGS)
