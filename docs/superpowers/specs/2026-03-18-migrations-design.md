@@ -36,23 +36,34 @@ Uses `github.com/pressly/goose/v3` with SQL files embedded via `//go:embed`.
 
 ```go
 // Migrate runs all pending migrations.
-func Migrate(database *sql.DB) error
+func Migrate(ctx context.Context, database *sql.DB) error
 
 // MigrateDown rolls back the last applied migration.
-func MigrateDown(database *sql.DB) error
+func MigrateDown(ctx context.Context, database *sql.DB) error
 
-// MigrateStatus prints migration status to the given writer.
-func MigrateStatus(database *sql.DB, w io.Writer) error
+// MigrateStatus returns migration status as formatted text.
+func MigrateStatus(ctx context.Context, database *sql.DB) (string, error)
 ```
 
-Implementation:
-- Set goose dialect to `postgres` via `goose.SetDialect("postgres")`
-- Set base FS to embedded migrations via `goose.SetBaseFS()`
-- `Migrate` calls `goose.Up()`
-- `MigrateDown` calls `goose.Down()` (single step rollback)
-- `MigrateStatus` calls `goose.Status()` which prints to the writer
+Implementation uses the **goose v3 provider API** (not the deprecated global-state functions):
 
-Goose automatically manages its `goose_db_version` tracking table.
+```go
+//go:embed ../migrations/*.sql
+var migrations embed.FS
+
+func newProvider(database *sql.DB) (*goose.Provider, error) {
+    return goose.NewProvider(goose.DialectPostgres, database,
+        migrations, goose.WithGoMigrations() /* SQL only */)
+}
+```
+
+- `Migrate` creates a provider and calls `provider.Up(ctx)`
+- `MigrateDown` creates a provider and calls `provider.Down(ctx)`
+- `MigrateStatus` creates a provider, calls `provider.Status(ctx)` which returns `[]goose.MigrationStatus`, then formats the results into a human-readable string
+
+The provider API is instance-based (no global mutex), safe for concurrent test runs, and is the recommended approach since goose v3.16+.
+
+Note: `db.Open()` returns a stdlib-compatible `*sql.DB` via `pgx/v5/stdlib`, which is directly usable with goose.
 
 ## Initial Migration: `001_initial_schema.sql`
 
@@ -76,19 +87,23 @@ CREATE TABLE workflow_executions (
     inputs JSONB,
     started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE step_executions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     execution_id UUID NOT NULL REFERENCES workflow_executions(id),
     step_name TEXT NOT NULL,
+    attempt INTEGER NOT NULL DEFAULT 1,
     status TEXT NOT NULL DEFAULT 'pending',
     output JSONB,
     error TEXT,
     started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(execution_id, step_name, attempt)
 );
 
 -- +goose Down
@@ -113,6 +128,8 @@ Migrations complete.
 ```
 
 ### `mantle migrate`
+
+`migrate` is a Cobra parent command that is also runnable (has `RunE`). Running it bare executes migrations. It also has subcommands `status` and `down`.
 
 Runs all pending migrations. Semantically "upgrade" — same as init's migration step, but for ongoing upgrades.
 
@@ -164,9 +181,13 @@ No connection pooling changes for now — `database/sql` defaults are adequate. 
 - `github.com/testcontainers/testcontainers-go` — for integration tests (test dependency)
 - `github.com/testcontainers/testcontainers-go/modules/postgres` — Postgres testcontainer module
 
+## Migration File Convention
+
+Use sequential numbering (`001_`, `002_`, etc.) for migrations. This is simpler than timestamp-based naming for a product with a single development stream. Future migrations follow the same pattern.
+
 ## What's NOT Included
 
 - Migration generator (users can use `goose create` CLI directly)
 - Seed data
-- Indexes beyond primary keys and the unique constraint (add when query patterns emerge)
+- Indexes beyond primary keys and unique constraints (add when query patterns emerge)
 - Connection pool tuning
