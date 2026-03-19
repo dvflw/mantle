@@ -48,3 +48,21 @@ func Parse(filename string) (*ParseResult, error) {
 		Root:     root,
 	}, nil
 }
+
+// ParseBytes parses workflow YAML from raw bytes.
+func ParseBytes(data []byte) (*ParseResult, error) {
+	var root yaml.Node
+	if err := yaml.Unmarshal(data, &root); err != nil {
+		return nil, fmt.Errorf("parsing workflow: %w", err)
+	}
+
+	var w Workflow
+	if err := root.Decode(&w); err != nil {
+		return nil, fmt.Errorf("decoding workflow: %w", err)
+	}
+
+	return &ParseResult{
+		Workflow: &w,
+		Root:     &root,
+	}, nil
+}
