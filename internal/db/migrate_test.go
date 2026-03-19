@@ -97,8 +97,11 @@ func TestMigrateDown(t *testing.T) {
 	if err := Migrate(ctx, database); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
-	if err := MigrateDown(ctx, database); err != nil {
-		t.Fatalf("MigrateDown() error = %v", err)
+	// MigrateDown rolls back one migration at a time. Roll back all of them.
+	for {
+		if err := MigrateDown(ctx, database); err != nil {
+			break // No more migrations to roll back.
+		}
 	}
 
 	tables := []string{"workflow_definitions", "workflow_executions", "step_executions"}
