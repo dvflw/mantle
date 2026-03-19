@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -27,6 +28,20 @@ func assertHasError(t *testing.T, errs []ValidationError, field string) {
 		fields[i] = e.Field + ": " + e.Message
 	}
 	t.Errorf("expected error for field %q, got errors: %v", field, fields)
+}
+
+func assertErrorContains(t *testing.T, errs []ValidationError, substr string) {
+	t.Helper()
+	for _, e := range errs {
+		if strings.Contains(e.Message, substr) || strings.Contains(e.Field, substr) {
+			return
+		}
+	}
+	msgs := make([]string, len(errs))
+	for i, e := range errs {
+		msgs[i] = e.Field + ": " + e.Message
+	}
+	t.Errorf("expected error containing %q, got errors: %v", substr, msgs)
 }
 
 func assertNoErrors(t *testing.T, errs []ValidationError) {
@@ -348,6 +363,154 @@ steps:
       - fetch
     params:
       url: "{{ steps.fetch.output.url }}"
+`)
+	errs := Validate(result)
+	assertNoErrors(t, errs)
+}
+
+func TestValidate_ToolDuplicateNames(t *testing.T) {
+	result := mustParse(t, `
+name: my-workflow
+steps:
+  - name: ask-ai
+    action: ai/completion
+    params:
+      model: gpt-4
+      prompt: "do something"
+      tools:
+        - name: search
+          description: Search the web
+          input_schema:
+            type: object
+            properties:
+              query:
+                type: string
+          action: http.request
+          params:
+            url: "https://search.example.com"
+        - name: search
+          description: Another search tool
+          input_schema:
+            type: object
+          action: http.request
+          params:
+            url: "https://other.example.com"
+`)
+	errs := Validate(result)
+	assertErrorContains(t, errs, "duplicate")
+}
+
+func TestValidate_ToolMissingDescription(t *testing.T) {
+	result := mustParse(t, `
+name: my-workflow
+steps:
+  - name: ask-ai
+    action: ai/completion
+    params:
+      model: gpt-4
+      prompt: "do something"
+      tools:
+        - name: search
+          input_schema:
+            type: object
+          action: http.request
+`)
+	errs := Validate(result)
+	assertErrorContains(t, errs, "description")
+}
+
+func TestValidate_ToolMissingInputSchema(t *testing.T) {
+	result := mustParse(t, `
+name: my-workflow
+steps:
+  - name: ask-ai
+    action: ai/completion
+    params:
+      model: gpt-4
+      prompt: "do something"
+      tools:
+        - name: search
+          description: Search the web
+          action: http.request
+`)
+	errs := Validate(result)
+	assertErrorContains(t, errs, "input_schema")
+}
+
+func TestValidate_ToolRoundsOutOfBounds(t *testing.T) {
+	result := mustParse(t, `
+name: my-workflow
+steps:
+  - name: ask-ai
+    action: ai/completion
+    params:
+      model: gpt-4
+      prompt: "do something"
+      max_tool_rounds: 100
+      tools:
+        - name: search
+          description: Search the web
+          input_schema:
+            type: object
+          action: http.request
+`)
+	errs := Validate(result)
+	assertErrorContains(t, errs, "max_tool_rounds")
+}
+
+func TestValidate_ToolCallsPerRoundOutOfBounds(t *testing.T) {
+	result := mustParse(t, `
+name: my-workflow
+steps:
+  - name: ask-ai
+    action: ai/completion
+    params:
+      model: gpt-4
+      prompt: "do something"
+      max_tool_calls_per_round: 50
+      tools:
+        - name: search
+          description: Search the web
+          input_schema:
+            type: object
+          action: http.request
+`)
+	errs := Validate(result)
+	assertErrorContains(t, errs, "max_tool_calls_per_round")
+}
+
+func TestValidate_ValidToolUseStep(t *testing.T) {
+	result := mustParse(t, `
+name: my-workflow
+steps:
+  - name: ask-ai
+    action: ai/completion
+    params:
+      model: gpt-4
+      prompt: "do something"
+      max_tool_rounds: 10
+      max_tool_calls_per_round: 5
+      tools:
+        - name: search
+          description: Search the web for information
+          input_schema:
+            type: object
+            properties:
+              query:
+                type: string
+          action: http.request
+          params:
+            url: "https://search.example.com"
+        - name: calculate
+          description: Perform a calculation
+          input_schema:
+            type: object
+            properties:
+              expression:
+                type: string
+          action: http.request
+          params:
+            url: "https://calc.example.com"
 `)
 	errs := Validate(result)
 	assertNoErrors(t, errs)
