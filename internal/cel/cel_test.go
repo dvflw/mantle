@@ -1,6 +1,7 @@
 package cel
 
 import (
+	"os"
 	"testing"
 )
 
@@ -243,94 +244,76 @@ func TestResolveParams(t *testing.T) {
 	}
 }
 
-func TestEvaluator_ToolInput(t *testing.T) {
+func TestEval_EnvVarFiltering(t *testing.T) {
+	// Set a safe MANTLE_ENV_ variable that should be accessible.
+	t.Setenv("MANTLE_ENV_APP_MODE", "production")
+
+	// Set variables that must NOT be accessible via CEL.
+	t.Setenv("MANTLE_ENCRYPTION_KEY", "super-secret-key")
+	t.Setenv("MANTLE_DATABASE_URL", "postgres://localhost/mantle")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "aws-secret")
+
+	// Evaluator must be created after Setenv so the cache picks them up.
 	eval, err := NewEvaluator()
 	if err != nil {
 		t.Fatalf("NewEvaluator() error: %v", err)
 	}
 
-	ctx := &Context{
-		Steps:  map[string]map[string]any{},
-		Inputs: map[string]any{},
-		ToolInput: map[string]any{
-			"city":  "London",
-			"units": "celsius",
-		},
-	}
+	ctx := newTestContext()
 
-	city, err := eval.ResolveString(`{{ tool_input.city }}`, ctx)
+	// MANTLE_ENV_APP_MODE should be accessible as env.APP_MODE (prefix stripped).
+	result, err := eval.Eval(`env.APP_MODE`, ctx)
 	if err != nil {
-		t.Fatalf("ResolveString(tool_input.city) error: %v", err)
+		t.Fatalf("Eval(env.APP_MODE) error: %v", err)
 	}
-	if city != "London" {
-		t.Errorf("tool_input.city = %v, want %q", city, "London")
-	}
-
-	units, err := eval.ResolveString(`{{ tool_input.units }}`, ctx)
-	if err != nil {
-		t.Fatalf("ResolveString(tool_input.units) error: %v", err)
-	}
-	if units != "celsius" {
-		t.Errorf("tool_input.units = %v, want %q", units, "celsius")
+	if result != "production" {
+		t.Errorf("env.APP_MODE = %v, want %q", result, "production")
 	}
 }
 
-func TestEvaluator_ToolInputNil(t *testing.T) {
+func TestEval_EnvVarBlocksSensitive(t *testing.T) {
+	t.Setenv("MANTLE_ENCRYPTION_KEY", "super-secret-key")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "aws-secret")
+
 	eval, err := NewEvaluator()
 	if err != nil {
 		t.Fatalf("NewEvaluator() error: %v", err)
 	}
 
-	ctx := newTestContext() // ToolInput is nil
+	ctx := newTestContext()
 
-	result, err := eval.ResolveString(`{{ inputs.url }}`, ctx)
-	if err != nil {
-		t.Fatalf("ResolveString() error: %v", err)
+	// These must not be accessible — they lack the MANTLE_ENV_ prefix.
+	// Accessing a missing key in a CEL map produces an evaluation error.
+	_, err = eval.Eval(`env.MANTLE_ENCRYPTION_KEY`, ctx)
+	if err == nil {
+		t.Error("expected error accessing env.MANTLE_ENCRYPTION_KEY, got nil")
 	}
-	if result != "https://example.com" {
-		t.Errorf("ResolveString() = %v, want %q", result, "https://example.com")
+
+	_, err = eval.Eval(`env.AWS_SECRET_ACCESS_KEY`, ctx)
+	if err == nil {
+		t.Error("expected error accessing env.AWS_SECRET_ACCESS_KEY, got nil")
 	}
 }
 
-func TestEvaluator_ToolInputInParams(t *testing.T) {
-	eval, err := NewEvaluator()
-	if err != nil {
-		t.Fatalf("NewEvaluator() error: %v", err)
+func TestEnvVars_PrefixStripping(t *testing.T) {
+	// Directly test the envVars function.
+	os.Setenv("MANTLE_ENV_TEST_KEY", "test-value")
+	defer os.Unsetenv("MANTLE_ENV_TEST_KEY")
+
+	os.Setenv("MANTLE_DATABASE_URL", "should-not-appear")
+	defer os.Unsetenv("MANTLE_DATABASE_URL")
+
+	result := envVars()
+
+	if v, ok := result["TEST_KEY"]; !ok || v != "test-value" {
+		t.Errorf("envVars()[TEST_KEY] = %q, %v; want %q, true", v, ok, "test-value")
 	}
 
-	ctx := &Context{
-		Steps:  map[string]map[string]any{},
-		Inputs: map[string]any{},
-		ToolInput: map[string]any{
-			"city":  "London",
-			"units": "celsius",
-		},
+	if _, ok := result["MANTLE_DATABASE_URL"]; ok {
+		t.Error("envVars() should not contain MANTLE_DATABASE_URL")
 	}
 
-	params := map[string]any{
-		"url":    "https://api.weather.com/{{ tool_input.city }}",
-		"method": "GET",
-		"query": map[string]any{
-			"units": "{{ tool_input.units }}",
-		},
-	}
-
-	resolved, err := eval.ResolveParams(params, ctx)
-	if err != nil {
-		t.Fatalf("ResolveParams() error: %v", err)
-	}
-
-	if resolved["url"] != "https://api.weather.com/London" {
-		t.Errorf("url = %v, want %q", resolved["url"], "https://api.weather.com/London")
-	}
-	if resolved["method"] != "GET" {
-		t.Errorf("method = %v, want %q", resolved["method"], "GET")
-	}
-	query, ok := resolved["query"].(map[string]any)
-	if !ok {
-		t.Fatalf("query = %T, want map[string]any", resolved["query"])
-	}
-	if query["units"] != "celsius" {
-		t.Errorf("query.units = %v, want %q", query["units"], "celsius")
+	if _, ok := result["DATABASE_URL"]; ok {
+		t.Error("envVars() should not contain DATABASE_URL (MANTLE_ prefix without ENV_)")
 	}
 }

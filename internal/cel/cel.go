@@ -13,14 +13,14 @@ import (
 
 // Context holds the runtime data available to CEL expressions.
 type Context struct {
-	Steps     map[string]map[string]any // steps.<name>.output → step outputs
-	Inputs    map[string]any            // inputs.<name> → workflow inputs
-	ToolInput map[string]any            // tool_input.<name> → tool arguments from LLM
+	Steps  map[string]map[string]any // steps.<name>.output → step outputs
+	Inputs map[string]any            // inputs.<name> → workflow inputs
 }
 
 // Evaluator evaluates CEL expressions against a runtime context.
 type Evaluator struct {
-	env *cel.Env
+	env      *cel.Env
+	envCache map[string]string // cached, filtered environment variables
 }
 
 // NewEvaluator creates a CEL evaluator with the standard Mantle expression environment.
@@ -29,12 +29,11 @@ func NewEvaluator() (*Evaluator, error) {
 		cel.Variable("steps", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("inputs", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("env", cel.MapType(cel.StringType, cel.StringType)),
-		cel.Variable("tool_input", cel.MapType(cel.StringType, cel.DynType)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating CEL environment: %w", err)
 	}
-	return &Evaluator{env: env}, nil
+	return &Evaluator{env: env, envCache: envVars()}, nil
 }
 
 // Eval evaluates a CEL expression and returns the result as a Go value.
@@ -49,16 +48,10 @@ func (e *Evaluator) Eval(expression string, ctx *Context) (any, error) {
 		return nil, fmt.Errorf("creating program for %q: %w", expression, err)
 	}
 
-	toolInput := ctx.ToolInput
-	if toolInput == nil {
-		toolInput = map[string]any{}
-	}
-
 	vars := map[string]any{
-		"steps":      ctx.Steps,
-		"inputs":     ctx.Inputs,
-		"env":        envVars(),
-		"tool_input": toolInput,
+		"steps":  ctx.Steps,
+		"inputs": ctx.Inputs,
+		"env":    e.envCache,
 	}
 
 	out, _, err := prog.Eval(vars)
@@ -156,14 +149,21 @@ func (e *Evaluator) resolveValue(v any, ctx *Context) (any, error) {
 	}
 }
 
+// envVars returns only environment variables with the MANTLE_ENV_ prefix,
+// stripping the prefix for cleaner access (e.g., MANTLE_ENV_FOO -> env.FOO).
+// This prevents CEL expressions from reading sensitive variables like
+// MANTLE_ENCRYPTION_KEY, MANTLE_DATABASE_URL, or AWS_SECRET_ACCESS_KEY.
 func envVars() map[string]string {
-	result := make(map[string]string)
+	env := make(map[string]string)
+	const prefix = "MANTLE_ENV_"
 	for _, e := range os.Environ() {
-		if k, v, ok := strings.Cut(e, "="); ok {
-			result[k] = v
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 && strings.HasPrefix(parts[0], prefix) {
+			key := strings.TrimPrefix(parts[0], prefix)
+			env[key] = parts[1]
 		}
 	}
-	return result
+	return env
 }
 
 // refToNative converts a CEL ref.Val to a native Go value.
