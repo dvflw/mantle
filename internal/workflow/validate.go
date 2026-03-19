@@ -137,9 +137,97 @@ func Validate(result *ParseResult) []ValidationError {
 				})
 			}
 		}
+
+		// Validate tools for ai/completion steps.
+		if step.Action == "ai/completion" && step.Params != nil {
+			tools, err := ParseTools(step.Params)
+			if err != nil {
+				errs = append(errs, ValidationError{
+					Field:   prefix + ".params.tools",
+					Message: fmt.Sprintf("invalid tools: %v", err),
+				})
+			} else if len(tools) > 0 {
+				toolNames := make(map[string]bool)
+				for j, tool := range tools {
+					toolPrefix := fmt.Sprintf("%s.params.tools[%d]", prefix, j)
+
+					if tool.Name == "" {
+						errs = append(errs, ValidationError{
+							Field:   toolPrefix + ".name",
+							Message: "tool name is required",
+						})
+					} else {
+						if toolNames[tool.Name] {
+							errs = append(errs, ValidationError{
+								Field:   toolPrefix + ".name",
+								Message: fmt.Sprintf("duplicate tool name %q", tool.Name),
+							})
+						}
+						toolNames[tool.Name] = true
+					}
+
+					if tool.Description == "" {
+						errs = append(errs, ValidationError{
+							Field:   toolPrefix + ".description",
+							Message: "tool description is required for LLM function calling",
+						})
+					}
+
+					if tool.InputSchema == nil {
+						errs = append(errs, ValidationError{
+							Field:   toolPrefix + ".input_schema",
+							Message: "tool input_schema is required",
+						})
+					}
+
+					if tool.Action == "" {
+						errs = append(errs, ValidationError{
+							Field:   toolPrefix + ".action",
+							Message: "tool action is required",
+						})
+					}
+				}
+			}
+
+			// Validate max_tool_rounds.
+			if v, ok := step.Params["max_tool_rounds"]; ok {
+				if rounds, ok := toInt(v); ok {
+					if rounds > 50 {
+						errs = append(errs, ValidationError{
+							Field:   prefix + ".params.max_tool_rounds",
+							Message: "max_tool_rounds must not exceed 50",
+						})
+					}
+				}
+			}
+
+			// Validate max_tool_calls_per_round.
+			if v, ok := step.Params["max_tool_calls_per_round"]; ok {
+				if calls, ok := toInt(v); ok {
+					if calls > 25 {
+						errs = append(errs, ValidationError{
+							Field:   prefix + ".params.max_tool_calls_per_round",
+							Message: "max_tool_calls_per_round must not exceed 25",
+						})
+					}
+				}
+			}
+		}
 	}
 
 	return errs
+}
+
+// toInt attempts to convert a value from YAML parsing to an integer.
+// YAML numbers may be decoded as int or float64 depending on format.
+func toInt(v any) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case float64:
+		return int(n), true
+	}
+	return 0, false
 }
 
 // findFieldPosition searches the root mapping node for a top-level key and
