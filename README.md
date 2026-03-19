@@ -119,7 +119,9 @@ steps:
 
 ## Configuration
 
-Mantle reads configuration from `mantle.yaml`, environment variables, and CLI flags (highest precedence).
+Mantle reads configuration from `mantle.yaml`, environment variables, and CLI flags (highest precedence). A config file is **optional** — if none is found, Mantle uses sensible defaults that work with the docker-compose setup out of the box.
+
+To create a config file, add `mantle.yaml` to your working directory:
 
 ```yaml
 database:
@@ -132,11 +134,17 @@ log:
   level: info
 ```
 
-Environment variables use the `MANTLE_` prefix:
+The values shown above are the defaults. You only need to create this file if you want to override them.
 
-- `MANTLE_DATABASE_URL`
-- `MANTLE_API_ADDRESS`
-- `MANTLE_LOG_LEVEL`
+You can also override any setting with environment variables (`MANTLE_` prefix) or CLI flags:
+
+| Setting | Default | Env Var | CLI Flag |
+|---------|---------|---------|----------|
+| Database URL | `postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable` | `MANTLE_DATABASE_URL` | `--database-url` |
+| API address | `:8080` | `MANTLE_API_ADDRESS` | `--api-address` |
+| Log level | `info` | `MANTLE_LOG_LEVEL` | `--log-level` |
+
+Override precedence (highest to lowest): CLI flags > environment variables > config file > defaults.
 
 ## Architecture
 

@@ -67,10 +67,10 @@ func Load(cmd *cobra.Command) (*Config, error) {
 			// Explicit --config path: hard error
 			return nil, err
 		}
-		// No explicit path: ignore file-not-found, fail on parse errors
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, err
-		}
+		// No explicit path: silently ignore all errors.
+		// Viper may find non-config files matching the name (e.g., the mantle binary)
+		// and fail to parse them. Since no config file was explicitly requested,
+		// falling back to defaults is always safe.
 	}
 
 	// Env vars — explicit binding for nested keys
