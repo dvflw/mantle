@@ -28,6 +28,9 @@ api:
 
 log:
   level: info
+
+encryption:
+  key: "your-64-char-hex-encoded-key-here"
 ```
 
 ### All Config File Fields
@@ -37,6 +40,7 @@ log:
 | `database.url` | string | `postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable` | Postgres connection URL. |
 | `api.address` | string | `:8080` | API server listen address. Format: `host:port` or `:port`. |
 | `log.level` | string | `info` | Log verbosity. One of: `debug`, `info`, `warn`, `error`. |
+| `encryption.key` | string | -- | Hex-encoded 32-byte master key for credential encryption. Required for `mantle secrets` commands. Generate with `openssl rand -hex 32`. |
 
 ### Config File Discovery
 
@@ -53,6 +57,7 @@ All environment variables use the `MANTLE_` prefix with underscores replacing do
 | `MANTLE_DATABASE_URL` | `database.url` | `postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable` |
 | `MANTLE_API_ADDRESS` | `api.address` | `:8080` |
 | `MANTLE_LOG_LEVEL` | `log.level` | `info` |
+| `MANTLE_ENCRYPTION_KEY` | `encryption.key` | -- |
 
 **Example:**
 
@@ -134,6 +139,16 @@ log:
 
 Note: Mantle does not perform variable substitution in the config file. The `${DB_PASSWORD}` example above is illustrative -- use environment variables (`MANTLE_DATABASE_URL`) for secrets instead of embedding them in config files.
 
+For production secrets management, set the encryption key through an environment variable rather than the config file:
+
+```bash
+export MANTLE_ENCRYPTION_KEY="$(openssl rand -hex 32)"
+export MANTLE_DATABASE_URL="postgres://mantle:secret@db.internal:5432/mantle?sslmode=require"
+mantle secrets create --name prod-openai --type openai --field api_key=sk-...
+```
+
+The encryption key has no default value. It is only required when you use `mantle secrets` commands or run workflows that reference credentials. All other Mantle commands work without it.
+
 ### Offline Commands
 
 The `mantle validate` and `mantle version` commands do not require a database connection. They skip config loading entirely, so you can run them without Postgres, a config file, or any environment variables:
@@ -149,3 +164,4 @@ See also:
 
 - [CLI Reference](cli-reference.md) -- flag documentation for every command
 - [Getting Started](getting-started.md) -- setup walkthrough using defaults
+- [Secrets Guide](secrets-guide.md) -- credential encryption, creation, and key rotation

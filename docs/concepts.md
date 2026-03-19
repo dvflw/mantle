@@ -14,11 +14,11 @@ mantle validate  -->  mantle plan  -->  mantle apply  -->  mantle run
 
 **validate** parses the YAML and checks it against structural rules: naming conventions, required fields, valid types, and correct durations. This runs offline with no database connection, so you can run it in a pre-commit hook or CI pipeline before anything touches the database.
 
-**plan** (coming soon) compares your local file against the latest version stored in the database and shows a diff of what will change. Nothing is written.
+**plan** compares your local file against the latest version stored in the database and shows a diff of what will change. Nothing is written.
 
 **apply** validates the workflow, hashes the content with SHA-256, compares the hash against the latest stored version, and -- if the content changed -- inserts a new immutable version into the `workflow_definitions` table. If nothing changed, it reports "No changes" and does nothing.
 
-**run** (coming soon) executes the latest applied version of a workflow.
+**run** executes the latest applied version of a workflow, checkpointing each step to Postgres as it completes.
 
 This lifecycle has a few important properties:
 
@@ -155,29 +155,57 @@ Key design points:
 
 See the [Workflow Reference](workflow-reference.md#httprequest) for the complete parameter and output specification.
 
-### AI Connector (coming soon)
+### AI Connector
 
-The `ai/completion` action sends prompts to large language models. In V1, it supports OpenAI-compatible APIs.
+The `ai/completion` action sends prompts to OpenAI-compatible chat completion APIs.
 
 Key design points:
 
-- **BYOK (Bring Your Own Key)** -- Mantle does not proxy through a hosted service. You provide your own API keys via the secrets system.
-- **Structured output** -- the AI connector will support requesting structured JSON output from models that support it.
+- **BYOK (Bring Your Own Key)** -- Mantle does not proxy through a hosted service. You provide your own API keys through the secrets system and reference them with the `credential` field on your workflow step.
+- **Structured output** -- you can pass an `output_schema` parameter with a JSON Schema, and the model returns JSON conforming to that schema. The parsed result is available as `steps.STEP_NAME.output.json`.
+- **Custom endpoints** -- the `base_url` parameter lets you point to any OpenAI-compatible API (Azure OpenAI, Ollama, vLLM, etc.) instead of the default `https://api.openai.com/v1`.
 - **No tool use in V1** -- function calling and tool use are planned for V1.1.
+
+See the [Workflow Reference](workflow-reference.md#aicompletion) for the complete parameter and output specification.
 
 ### Future Connectors
 
 The connector system is designed for extensibility via gRPC plugins (HashiCorp go-plugin protocol). Custom connectors will run as subprocesses communicating over gRPC, keeping the core engine isolated from third-party code.
 
-## Secrets as Opaque Handles
+## Secrets and Credential Resolution
 
-Mantle treats secrets (API keys, tokens, credentials) as opaque handles that are resolved at connector invocation time. This design has a few important properties:
+Mantle treats secrets (API keys, tokens, credentials) as opaque handles that are resolved at connector invocation time. You never put raw secret values in workflow YAML. Instead, you create a named credential with `mantle secrets create` and reference it by name in your workflow step's `credential` field.
 
-- **Secrets are never exposed in CEL expressions.** You cannot accidentally log or forward a secret by referencing it in a template. The secret handle is resolved inside the connector, not in the expression engine.
-- **Secrets are encrypted at rest.** V1 uses AES-256-GCM encryption for stored credentials.
-- **Secrets are typed.** Different credential types (API key, OAuth token, basic auth) have different schemas, reducing misconfiguration.
+### Credential Types
 
-The secrets system is coming in Phase 2. Until then, sensitive values like API keys should be passed through environment variables.
+Each credential has a type that defines its schema:
+
+| Type | Fields | Use Case |
+|---|---|---|
+| `generic` | `key` (required) | General-purpose API key |
+| `bearer` | `token` (required) | Bearer token authentication |
+| `openai` | `api_key` (required), `org_id` (optional) | OpenAI API access |
+| `basic` | `username` (required), `password` (required) | HTTP Basic authentication |
+
+Types enforce that the right fields are present when you create a credential, reducing misconfiguration errors at runtime.
+
+### How Credential Resolution Works
+
+When the engine reaches a step with a `credential` field, it resolves the credential name before invoking the connector:
+
+1. **Postgres lookup** -- the engine queries the credentials table, decrypts the stored fields using AES-256-GCM, and passes them to the connector.
+2. **Environment variable fallback** -- if the credential is not found in Postgres, the engine checks for an environment variable named `MANTLE_SECRET_<UPPER_NAME>` (hyphens are replaced with underscores). The env var value is returned as a single `key` field, equivalent to a `generic` credential.
+
+The resolved credential fields are injected directly into the connector as an internal `_credential` parameter. They are never visible in CEL expressions, step outputs, or execution logs.
+
+### Security Properties
+
+- **Encrypted at rest** -- credential field values are encrypted with AES-256-GCM before being written to Postgres. The encryption key is not stored in the database.
+- **Never in expressions** -- you cannot reference `credential` data in CEL templates or `if` conditions. The credential is resolved inside the connector, not in the expression engine.
+- **Never in logs** -- credential values do not appear in execution logs, step outputs, or error messages.
+- **Typed validation** -- creating a credential validates that all required fields for the type are present.
+
+For the full operational guide, see the [Secrets Guide](secrets-guide.md).
 
 ## Architecture Summary
 
@@ -196,7 +224,7 @@ Mantle is a single Go binary that connects to a Postgres database. There are no 
 
 **Single binary.** No separate worker processes, message queues, or caches. The binary contains the CLI, the execution engine, the connectors, and the API server.
 
-**Postgres for everything.** Workflow definitions, execution state, step checkpoints, and (in Phase 2) encrypted secrets all live in Postgres. This keeps the operational surface area small.
+**Postgres for everything.** Workflow definitions, execution state, step checkpoints, and encrypted credentials all live in Postgres. This keeps the operational surface area small.
 
 **Single-tenant in V1.** There is no authentication, authorization, or team scoping. Mantle assumes it is running in a trusted environment. Multi-tenancy and RBAC are planned for Phase 6.
 
@@ -206,3 +234,4 @@ Mantle is a single Go binary that connects to a Postgres database. There are no 
 - [Workflow Reference](workflow-reference.md) -- complete YAML schema documentation
 - [CLI Reference](cli-reference.md) -- every command and flag
 - [Configuration](configuration.md) -- config file, env vars, and flag precedence
+- [Secrets Guide](secrets-guide.md) -- credential encryption, creation, and key rotation

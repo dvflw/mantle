@@ -127,12 +127,15 @@ steps:
 | `if` | string | No | CEL expression. The step runs only if this evaluates to `true`. |
 | `retry` | object | No | Retry policy for this step. See [Retry Policy](#retry-policy). |
 | `timeout` | string | No | Maximum duration for the step. Uses Go duration format (e.g., `30s`, `5m`, `1h`). |
+| `credential` | string | No | Name of a stored credential to inject into this step. See [Secrets Guide](secrets-guide.md). |
 
 ### Step Name Rules
 
 Step names follow the same rules as the workflow name: kebab-case, starting with a lowercase letter. Step names must be unique within a workflow -- duplicate names cause a validation error.
 
 Step names matter because you reference step outputs in CEL expressions using `steps.STEP_NAME.output`.
+
+**Note on hyphenated step names in CEL:** When a step name contains hyphens (e.g., `fetch-data`), you can use dot notation in template strings (`{{ steps.fetch-data.output.body }}`), but in `if` expressions you must use bracket notation: `steps['fetch-data'].output.body`. This is because CEL interprets hyphens as subtraction in expression context.
 
 ## Retry Policy
 
@@ -258,32 +261,84 @@ Makes an HTTP request.
       quantity: 5
 ```
 
-### ai/completion (coming soon)
+### ai/completion
 
-Sends a prompt to an LLM and returns the completion.
+Sends a prompt to an OpenAI-compatible chat completion API and returns the result. Requires a credential with an API key -- see the [Secrets Guide](secrets-guide.md) for setup.
 
 **Params:**
 
 | Param | Type | Required | Description |
 |---|---|---|---|
-| `provider` | string | Yes | LLM provider. Currently: `openai`. |
 | `model` | string | Yes | Model name (e.g., `gpt-4o`, `gpt-4o-mini`). |
-| `prompt` | string | Yes | The prompt to send. |
+| `prompt` | string | Yes | The user prompt to send. |
+| `system_prompt` | string | No | System message prepended to the conversation. |
+| `output_schema` | object | No | JSON Schema for structured output. When set, the model returns JSON conforming to this schema. |
+| `base_url` | string | No | Override the API base URL. Defaults to `https://api.openai.com/v1`. Use this for OpenAI-compatible providers like Azure, Ollama, or local models. |
 
 **Output:**
 
-The output structure depends on the provider and model. Typically includes the completion text and any structured output fields.
+| Field | Type | Description |
+|---|---|---|
+| `text` | string | The raw completion text returned by the model. |
+| `json` | any | If the response is valid JSON (e.g., from structured output), the parsed object. Only present when the response parses as JSON. |
+| `model` | string | The model name as reported by the API. |
+| `usage.prompt_tokens` | number | Number of tokens in the prompt. |
+| `usage.completion_tokens` | number | Number of tokens in the completion. |
+| `usage.total_tokens` | number | Total tokens used. |
 
-**Example:**
+**Example -- basic completion:**
 
 ```yaml
 - name: summarize
   action: ai/completion
+  credential: my-openai
   params:
-    provider: openai
     model: gpt-4o
     prompt: "Summarize this in 3 bullet points: {{ steps.fetch-data.output.body }}"
 ```
+
+**Example -- with system prompt and structured output:**
+
+```yaml
+- name: extract-entities
+  action: ai/completion
+  credential: my-openai
+  timeout: 60s
+  params:
+    model: gpt-4o
+    system_prompt: "You are a data extraction assistant. Always respond with valid JSON."
+    prompt: "Extract all person names and companies from: {{ steps.fetch-data.output.body }}"
+    output_schema:
+      type: object
+      properties:
+        people:
+          type: array
+          items:
+            type: string
+        companies:
+          type: array
+          items:
+            type: string
+      required:
+        - people
+        - companies
+      additionalProperties: false
+```
+
+The structured output is available as `steps.extract-entities.output.json.people` and `steps.extract-entities.output.json.companies` in subsequent steps.
+
+**Example -- custom base URL (Ollama):**
+
+```yaml
+- name: local-completion
+  action: ai/completion
+  params:
+    model: llama3
+    base_url: http://localhost:11434/v1
+    prompt: "Explain this error: {{ steps.fetch-logs.output.body }}"
+```
+
+**Authentication:** The AI connector reads the credential's `api_key` field (or `token` or `key` as fallbacks) and sends it as a Bearer token. If the credential includes an `org_id` field, it is sent as the `OpenAI-Organization` header. See the [Secrets Guide](secrets-guide.md) for how to create an `openai`-type credential.
 
 ## Validation Rules Summary
 

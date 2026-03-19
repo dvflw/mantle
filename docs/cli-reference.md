@@ -185,26 +185,48 @@ Requires a database connection. If validation fails, nothing is written to the d
 
 ---
 
-## Coming Soon
-
-The following commands are planned but not yet implemented.
-
 ### mantle plan
 
-Diff a local workflow file against the version stored in the database. Shows what will change before you apply.
+Diff a local workflow file against the version stored in the database. Shows what will change before you apply. Runs validation first -- if the file is invalid, the diff is not shown.
 
 ```
 Usage:
   mantle plan <file>
 ```
 
-**Expected behavior:**
+**Arguments:**
+
+| Argument | Required | Description |
+|---|---|---|
+| `file` | Yes | Path to the workflow YAML file. |
+
+**Example (new workflow):**
+
+```bash
+$ mantle plan workflow.yaml
++ fetch-and-summarize (new)
+
+Plan: 1 workflow to create
+```
+
+**Example (changed workflow):**
 
 ```bash
 $ mantle plan workflow.yaml
 ~ fetch-and-summarize (version 1 → 2)
   ~ steps[1].params.model: gpt-4 → gpt-4o
+
+Plan: 1 workflow to update (version 1 → 2)
 ```
+
+**Example (no changes):**
+
+```bash
+$ mantle plan workflow.yaml
+No changes — fetch-and-summarize is at version 2
+```
+
+Requires a database connection.
 
 ---
 
@@ -217,65 +239,248 @@ Usage:
   mantle run <workflow> [flags]
 ```
 
-**Expected flags:**
+**Arguments:**
+
+| Argument | Required | Description |
+|---|---|---|
+| `workflow` | Yes | Name of the workflow to run. Must have been previously applied. |
+
+**Flags:**
 
 | Flag | Description |
 |---|---|
-| `--input KEY=VALUE` | Pass an input parameter. Repeat for multiple inputs. |
-| `--version N` | Run a specific version instead of the latest. |
+| `--input KEY=VALUE` | Pass an input parameter. Can be specified multiple times. |
 
-**Expected usage:**
+**Example:**
 
 ```bash
 $ mantle run fetch-and-summarize --input url=https://api.example.com/data
-Started execution abc123-def456
+Running fetch-and-summarize (version 2)...
+Execution abc123-def456: completed
+  fetch-data: completed
+  summarize: completed
+```
+
+If the workflow references a credential and you have `MANTLE_ENCRYPTION_KEY` configured, the engine uses the Postgres-backed credential resolver. Without the encryption key, credentials fall back to environment variables only.
+
+**Errors:**
+
+If the workflow has not been applied:
+
+```
+Error: workflow "my-workflow" not found — have you run 'mantle apply'?
 ```
 
 ---
 
 ### mantle cancel
 
-Cancel a running workflow execution.
+Cancel a running or pending workflow execution. Marks the execution and any in-progress steps as cancelled.
 
 ```
 Usage:
   mantle cancel <execution-id>
 ```
 
+**Arguments:**
+
+| Argument | Required | Description |
+|---|---|---|
+| `execution-id` | Yes | UUID of the execution to cancel. |
+
+**Example:**
+
+```bash
+$ mantle cancel abc123-def456
+Cancelled execution abc123-def456
+```
+
+If the execution has already finished:
+
+```bash
+$ mantle cancel abc123-def456
+Execution abc123-def456 is already completed
+```
+
 ---
 
 ### mantle logs
 
-View execution logs for a workflow run.
+View step-by-step execution history with timing, status, and errors.
 
 ```
 Usage:
   mantle logs <execution-id>
 ```
 
+**Arguments:**
+
+| Argument | Required | Description |
+|---|---|---|
+| `execution-id` | Yes | UUID of the execution. |
+
+**Example:**
+
+```bash
+$ mantle logs abc123-def456
+Execution: abc123-def456
+Workflow:  fetch-and-summarize (version 2)
+Status:    completed
+Started:   2026-03-18T14:30:00Z
+Completed: 2026-03-18T14:30:05Z
+Duration:  5.123s
+
+Steps:
+  fetch-data           completed (1.2s)
+  summarize            completed (3.9s)
+```
+
+If a step failed, the error is shown below the step:
+
+```
+Steps:
+  fetch-data           failed (0.5s)
+    error: ai/completion: API returned 401: Unauthorized
+```
+
 ---
 
 ### mantle status
 
-View the current state of a workflow execution, including step-level status.
+View the current state of a workflow execution with a summary of step statuses.
 
 ```
 Usage:
   mantle status <execution-id>
 ```
 
+**Arguments:**
+
+| Argument | Required | Description |
+|---|---|---|
+| `execution-id` | Yes | UUID of the execution. |
+
+**Example:**
+
+```bash
+$ mantle status abc123-def456
+Execution: abc123-def456
+Workflow:  fetch-and-summarize (version 2)
+Status:    completed
+Started:   2026-03-18T14:30:00Z
+Completed: 2026-03-18T14:30:05Z
+
+Steps:
+  completed: 2
+```
+
 ---
 
 ### mantle secrets create
 
-Create a typed credential for use in workflows. Secrets are stored encrypted and resolved at connector invocation time.
+Create a new encrypted credential. Requires `MANTLE_ENCRYPTION_KEY` or `encryption.key` to be configured.
 
 ```
 Usage:
   mantle secrets create [flags]
 ```
 
+**Flags:**
+
+| Flag | Required | Description |
+|---|---|---|
+| `--name` | Yes | Credential name. Used to reference the credential in workflow steps. |
+| `--type` | Yes | Credential type: `generic`, `bearer`, `openai`, `basic`. |
+| `--field KEY=VALUE` | Yes | Field value. Repeat for each field the credential type requires. |
+
+**Example:**
+
+```bash
+$ mantle secrets create --name my-openai --type openai \
+    --field api_key=sk-proj-abc123 \
+    --field org_id=org-xyz789
+Created credential "my-openai" (type: openai)
+```
+
+See the [Secrets Guide](secrets-guide.md) for credential types, required fields, and usage in workflows.
+
 ---
+
+### mantle secrets list
+
+List all stored credentials. Shows name, type, and creation date. Never displays decrypted values.
+
+```
+Usage:
+  mantle secrets list
+```
+
+**Example:**
+
+```bash
+$ mantle secrets list
+NAME        TYPE    CREATED
+my-openai   openai  2026-03-18 14:30:00
+my-api      basic   2026-03-18 14:35:00
+```
+
+---
+
+### mantle secrets delete
+
+Permanently delete a credential by name.
+
+```
+Usage:
+  mantle secrets delete [flags]
+```
+
+**Flags:**
+
+| Flag | Required | Description |
+|---|---|---|
+| `--name` | Yes | Name of the credential to delete. |
+
+**Example:**
+
+```bash
+$ mantle secrets delete --name my-openai
+Deleted credential "my-openai"
+```
+
+---
+
+### mantle secrets rotate-key
+
+Re-encrypt all stored credentials with a new master key. Use this for key rotation after a security incident or as part of a periodic rotation policy.
+
+```
+Usage:
+  mantle secrets rotate-key [flags]
+```
+
+**Flags:**
+
+| Flag | Required | Description |
+|---|---|---|
+| `--new-key` | No | Hex-encoded 32-byte new encryption key. If omitted, a new key is auto-generated. |
+
+**Example:**
+
+```bash
+$ mantle secrets rotate-key
+Re-encrypted 3 credential(s).
+New key: a1b2c3d4...
+Update MANTLE_ENCRYPTION_KEY to the new key and restart.
+```
+
+After rotating, update `MANTLE_ENCRYPTION_KEY` (or `encryption.key` in `mantle.yaml`) to the new key before running any other commands.
+
+---
+
+## Coming Soon
+
+The following commands are planned but not yet implemented.
 
 ### mantle serve
 
