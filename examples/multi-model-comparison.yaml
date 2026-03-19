@@ -1,0 +1,40 @@
+name: multi-model-comparison
+description: >
+  Send the same prompt to two different OpenAI models and post both results
+  to a webhook. Demonstrates multiple AI steps sharing a single credential.
+
+inputs:
+  topic:
+    type: string
+    description: Topic to generate explanations about
+
+steps:
+  - name: fast-model
+    action: ai/completion
+    credential: openai
+    timeout: "30s"
+    params:
+      model: gpt-4o-mini
+      system_prompt: "You are a concise technical writer."
+      prompt: "Explain {{ inputs.topic }} in 2-3 sentences for a developer audience."
+
+  - name: advanced-model
+    action: ai/completion
+    credential: openai
+    timeout: "60s"
+    params:
+      model: gpt-4o
+      system_prompt: "You are a concise technical writer."
+      prompt: "Explain {{ inputs.topic }} in 2-3 sentences for a developer audience."
+
+  - name: post-comparison
+    action: http/request
+    params:
+      method: POST
+      url: "https://jsonplaceholder.typicode.com/posts"
+      headers:
+        Content-Type: "application/json"
+      body:
+        title: "Model comparison: {{ inputs.topic }}"
+        fast_model_response: "{{ steps['fast-model'].output.text }}"
+        advanced_model_response: "{{ steps['advanced-model'].output.text }}"

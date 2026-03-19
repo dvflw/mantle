@@ -1,0 +1,63 @@
+name: ai-structured-extraction
+description: >
+  Fetch a webpage and use an LLM with output_schema to extract structured data
+  (title, author, key topics). Demonstrates enforcing JSON structure from AI output.
+
+inputs:
+  url:
+    type: string
+    description: URL of the page to fetch and extract data from
+
+steps:
+  - name: fetch-page
+    action: http/request
+    timeout: "15s"
+    retry:
+      max_attempts: 2
+      backoff: exponential
+    params:
+      method: GET
+      url: "{{ inputs.url }}"
+
+  - name: extract-metadata
+    action: ai/completion
+    credential: openai
+    params:
+      model: gpt-4o
+      system_prompt: >
+        You are a structured data extraction engine. Given raw page content,
+        extract the requested fields accurately. If a field cannot be determined,
+        use null or an empty value as appropriate.
+      prompt: >
+        Extract the following metadata from this page content:
+
+        {{ steps['fetch-page'].output.body }}
+      output_schema:
+        type: object
+        properties:
+          title:
+            type: string
+          author:
+            type: string
+          key_topics:
+            type: array
+            items:
+              type: string
+        required:
+          - title
+          - author
+          - key_topics
+        additionalProperties: false
+
+  - name: post-extracted-data
+    action: http/request
+    if: "steps['extract-metadata'].output.json.title != ''"
+    params:
+      method: POST
+      url: "https://jsonplaceholder.typicode.com/posts"
+      headers:
+        Content-Type: "application/json"
+      body:
+        title: "{{ steps['extract-metadata'].output.json.title }}"
+        author: "{{ steps['extract-metadata'].output.json.author }}"
+        body: "Extracted structured metadata from {{ inputs.url }}"

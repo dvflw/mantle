@@ -1,0 +1,32 @@
+name: api-with-auth
+description: >
+  Call an authenticated API using a stored credential for Bearer token auth,
+  then post the processed result. Demonstrates credential-based HTTP
+  authentication without AI.
+
+steps:
+  - name: fetch-protected-resource
+    action: http/request
+    credential: my-api-token
+    timeout: "10s"
+    retry:
+      max_attempts: 3
+      backoff: exponential
+    params:
+      method: GET
+      url: "https://jsonplaceholder.typicode.com/posts/1"
+      headers:
+        Accept: "application/json"
+
+  - name: post-processed-result
+    action: http/request
+    if: "steps['fetch-protected-resource'].output.status == 200"
+    params:
+      method: POST
+      url: "https://jsonplaceholder.typicode.com/posts"
+      headers:
+        Content-Type: "application/json"
+      body:
+        title: "Processed: {{ steps['fetch-protected-resource'].output.json.title }}"
+        body: "{{ steps['fetch-protected-resource'].output.json.body }}"
+        source_id: "{{ steps['fetch-protected-resource'].output.json.id }}"
