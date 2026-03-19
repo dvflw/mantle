@@ -76,10 +76,10 @@ func showExecutionDetail(cmd *cobra.Command, execID string) error {
 	}
 	fmt.Fprintln(cmd.OutOrStdout())
 
-	// Fetch step executions.
+	// Fetch top-level step executions.
 	rows, err := database.QueryContext(cmd.Context(),
-		`SELECT step_name, status, error, started_at, completed_at
-		 FROM step_executions WHERE execution_id = $1
+		`SELECT id, step_name, status, error, started_at, completed_at
+		 FROM step_executions WHERE execution_id = $1 AND parent_step_id IS NULL
 		 ORDER BY created_at ASC`, execID,
 	)
 	if err != nil {
@@ -87,23 +87,96 @@ func showExecutionDetail(cmd *cobra.Command, execID string) error {
 	}
 	defer rows.Close()
 
+	// Fetch sub-steps grouped by parent.
+	type subStep struct {
+		StepName  string
+		Status    string
+		Started   *time.Time
+		Completed *time.Time
+	}
+	subStepsByParent := make(map[string][]subStep)
+	subRows, err := database.QueryContext(cmd.Context(),
+		`SELECT parent_step_id, step_name, status, started_at, completed_at
+		 FROM step_executions WHERE execution_id = $1 AND parent_step_id IS NOT NULL
+		 ORDER BY created_at ASC`, execID,
+	)
+	if err == nil {
+		defer subRows.Close()
+		for subRows.Next() {
+			var parentID, sName, sStatus string
+			var sStarted, sCompleted *time.Time
+			if err := subRows.Scan(&parentID, &sName, &sStatus, &sStarted, &sCompleted); err == nil {
+				subStepsByParent[parentID] = append(subStepsByParent[parentID], subStep{sName, sStatus, sStarted, sCompleted})
+			}
+		}
+	}
+
 	fmt.Fprintln(cmd.OutOrStdout(), "Steps:")
 	for rows.Next() {
-		var stepName, stepStatus string
+		var stepID, stepName, stepStatus string
 		var stepError *string
 		var stepStarted, stepCompleted *time.Time
-		if err := rows.Scan(&stepName, &stepStatus, &stepError, &stepStarted, &stepCompleted); err != nil {
+		if err := rows.Scan(&stepID, &stepName, &stepStatus, &stepError, &stepStarted, &stepCompleted); err != nil {
 			return fmt.Errorf("scanning step: %w", err)
 		}
 
+		icon := statusIcon(stepStatus)
 		duration := ""
 		if stepStarted != nil && stepCompleted != nil {
-			duration = fmt.Sprintf(" (%s)", stepCompleted.Sub(*stepStarted).Round(time.Millisecond))
+			duration = fmt.Sprintf(" %s", stepCompleted.Sub(*stepStarted).Round(time.Millisecond))
 		}
 
-		fmt.Fprintf(cmd.OutOrStdout(), "  %-20s %s%s\n", stepName, stepStatus, duration)
+		fmt.Fprintf(cmd.OutOrStdout(), "  %s %-20s %s%s\n", icon, stepName, stepStatus, duration)
 		if stepError != nil && *stepError != "" {
-			fmt.Fprintf(cmd.OutOrStdout(), "    error: %s\n", *stepError)
+			fmt.Fprintf(cmd.OutOrStdout(), "      error: %s\n", *stepError)
+		}
+
+		// Render sub-steps (tool calls) as indented tree.
+		if subs, ok := subStepsByParent[stepID]; ok && len(subs) > 0 {
+			// Group by round (last segment of step name: parent/tool/name/round).
+			rounds := make(map[string][]subStep)
+			var roundOrder []string
+			for _, s := range subs {
+				parts := strings.Split(s.StepName, "/")
+				round := "0"
+				if len(parts) >= 4 {
+					round = parts[len(parts)-1]
+				}
+				if _, seen := rounds[round]; !seen {
+					roundOrder = append(roundOrder, round)
+				}
+				rounds[round] = append(rounds[round], s)
+			}
+			for ri, round := range roundOrder {
+				isLastRound := ri == len(roundOrder)-1
+				connector := "├─"
+				if isLastRound {
+					connector = "└─"
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "      %s round %s\n", connector, round)
+
+				for si, s := range rounds[round] {
+					isLast := si == len(rounds[round])-1
+					prefix := "│  "
+					if isLastRound {
+						prefix = "   "
+					}
+					subConn := "├─"
+					if isLast {
+						subConn = "└─"
+					}
+					toolName := s.StepName
+					parts := strings.Split(s.StepName, "/")
+					if len(parts) >= 3 {
+						toolName = parts[2]
+					}
+					subDur := ""
+					if s.Started != nil && s.Completed != nil {
+						subDur = fmt.Sprintf(" %s", s.Completed.Sub(*s.Started).Round(time.Millisecond))
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "      %s %s %-16s %s%s\n", prefix, subConn, toolName, s.Status, subDur)
+				}
+			}
 		}
 	}
 
@@ -222,6 +295,23 @@ func listExecutions(cmd *cobra.Command) error {
 	}
 
 	return nil
+}
+
+func statusIcon(status string) string {
+	switch status {
+	case "completed":
+		return "✓"
+	case "failed":
+		return "✗"
+	case "running":
+		return "▶"
+	case "skipped":
+		return "○"
+	case "cancelled":
+		return "■"
+	default:
+		return "○"
+	}
 }
 
 // parseDuration parses duration strings like "1h", "24h", "7d".
