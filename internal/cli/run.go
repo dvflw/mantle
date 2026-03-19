@@ -7,6 +7,7 @@ import (
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
 	"github.com/dvflw/mantle/internal/engine"
+	"github.com/dvflw/mantle/internal/secret"
 	"github.com/dvflw/mantle/internal/workflow"
 	"github.com/spf13/cobra"
 )
@@ -55,6 +56,17 @@ func newRunCommand() *cobra.Command {
 			eng, err := engine.New(database)
 			if err != nil {
 				return fmt.Errorf("creating engine: %w", err)
+			}
+
+			// Configure credential resolver with Postgres-backed store when encryption key is set.
+			if cfg.Encryption.Key != "" {
+				encryptor, encErr := secret.NewEncryptor(cfg.Encryption.Key)
+				if encErr != nil {
+					return fmt.Errorf("configuring encryption: %w", encErr)
+				}
+				eng.Resolver = &secret.Resolver{
+					Store: &secret.Store{DB: database, Encryptor: encryptor},
+				}
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Running %s (version %d)...\n", workflowName, version)

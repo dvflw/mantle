@@ -46,6 +46,22 @@ func (c *HTTPConnector) Execute(ctx context.Context, params map[string]any) (map
 		req.Header.Set("Content-Type", "application/json")
 	}
 
+	// Apply credential-based authentication before custom headers,
+	// so user-specified headers can override if needed.
+	if cred, ok := params["_credential"].(map[string]string); ok {
+		switch {
+		case cred["token"] != "":
+			req.Header.Set("Authorization", "Bearer "+cred["token"])
+		case cred["username"] != "" && cred["password"] != "":
+			req.SetBasicAuth(cred["username"], cred["password"])
+		case cred["api_key"] != "":
+			req.Header.Set("Authorization", "Bearer "+cred["api_key"])
+		case cred["key"] != "":
+			req.Header.Set("Authorization", "Bearer "+cred["key"])
+		}
+		delete(params, "_credential")
+	}
+
 	// Apply custom headers.
 	if headers, ok := params["headers"].(map[string]any); ok {
 		for k, v := range headers {

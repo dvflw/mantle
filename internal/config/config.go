@@ -9,9 +9,15 @@ import (
 
 // Config holds all engine configuration.
 type Config struct {
-	Database DatabaseConfig `mapstructure:"database"`
-	API      APIConfig      `mapstructure:"api"`
-	Log      LogConfig      `mapstructure:"log"`
+	Database   DatabaseConfig   `mapstructure:"database"`
+	API        APIConfig        `mapstructure:"api"`
+	Log        LogConfig        `mapstructure:"log"`
+	Encryption EncryptionConfig `mapstructure:"encryption"`
+}
+
+// EncryptionConfig holds the master encryption key for credential storage.
+type EncryptionConfig struct {
+	Key string `mapstructure:"key"`
 }
 
 // DatabaseConfig holds database connection settings.
@@ -78,6 +84,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	_ = v.BindEnv("database.url", "MANTLE_DATABASE_URL")
 	_ = v.BindEnv("api.address", "MANTLE_API_ADDRESS")
 	_ = v.BindEnv("log.level", "MANTLE_LOG_LEVEL")
+	_ = v.BindEnv("encryption.key", "MANTLE_ENCRYPTION_KEY")
 
 	// CLI flag binding
 	if f := cmd.Flags().Lookup("database-url"); f != nil {

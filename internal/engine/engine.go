@@ -10,6 +10,7 @@ import (
 	"github.com/dvflw/mantle/internal/audit"
 	mantleCEL "github.com/dvflw/mantle/internal/cel"
 	"github.com/dvflw/mantle/internal/connector"
+	"github.com/dvflw/mantle/internal/secret"
 	"github.com/dvflw/mantle/internal/workflow"
 )
 
@@ -19,6 +20,7 @@ type Engine struct {
 	Registry *connector.Registry
 	Auditor  audit.Emitter
 	CEL      *mantleCEL.Evaluator
+	Resolver *secret.Resolver
 }
 
 // New creates an Engine with sensible defaults.
@@ -32,6 +34,7 @@ func New(db *sql.DB) (*Engine, error) {
 		Registry: connector.NewRegistry(),
 		Auditor:  &audit.NoopEmitter{},
 		CEL:      celEval,
+		Resolver: &secret.Resolver{Store: nil},
 	}, nil
 }
 
@@ -169,6 +172,17 @@ func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.S
 		errMsg := fmt.Sprintf("resolving params: %v", err)
 		e.updateStep(ctx, execID, step.Name, "failed", nil, errMsg)
 		return StepResult{Status: "failed", Error: errMsg}
+	}
+
+	// Resolve credential if specified.
+	if step.Credential != "" {
+		credData, credErr := e.Resolver.Resolve(ctx, step.Credential)
+		if credErr != nil {
+			errMsg := fmt.Sprintf("resolving credential %q: %v", step.Credential, credErr)
+			e.updateStep(ctx, execID, step.Name, "failed", nil, errMsg)
+			return StepResult{Status: "failed", Error: errMsg}
+		}
+		resolvedParams["_credential"] = credData
 	}
 
 	// Look up connector.
