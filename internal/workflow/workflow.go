@@ -18,12 +18,23 @@ type Input struct {
 
 // Step defines a single step within a workflow.
 type Step struct {
-	Name    string         `yaml:"name"`
-	Action  string         `yaml:"action"`
-	Params  map[string]any `yaml:"params"`
-	If      string         `yaml:"if"`
-	Retry   *RetryPolicy   `yaml:"retry"`
-	Timeout string         `yaml:"timeout"`
+	Name      string         `yaml:"name"`
+	Action    string         `yaml:"action"`
+	Params    map[string]any `yaml:"params"`
+	If        string         `yaml:"if"`
+	Retry     *RetryPolicy   `yaml:"retry"`
+	Timeout   string         `yaml:"timeout"`
+	DependsOn []string       `yaml:"depends_on"`
+}
+
+// FindStep returns a pointer to the step with the given name, or nil if not found.
+func (w *Workflow) FindStep(name string) *Step {
+	for i := range w.Steps {
+		if w.Steps[i].Name == name {
+			return &w.Steps[i]
+		}
+	}
+	return nil
 }
 
 // RetryPolicy configures retry behavior for a step.
