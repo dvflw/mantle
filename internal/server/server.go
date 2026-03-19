@@ -76,8 +76,12 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	s.httpServer = &http.Server{
-		Addr:    s.Address,
-		Handler: handler,
+		Addr:              s.Address,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	// Start distributed engine components (worker + reaper).
@@ -88,10 +92,8 @@ func (s *Server) Start(ctx context.Context) error {
 			LeaseDuration: cfg.Engine.StepLeaseDuration,
 		}
 		worker := &engine.Worker{
-			Claimer: claimer,
-			StepExecutor: func(wCtx context.Context, stepName string, attempt int) (map[string]any, error) {
-				return nil, fmt.Errorf("step executor not yet wired to engine")
-			},
+			Claimer:      claimer,
+			StepExecutor: s.Engine.MakeGlobalStepExecutor(),
 			PollInterval:       cfg.Engine.WorkerPollInterval,
 			MaxBackoff:         cfg.Engine.WorkerMaxBackoff,
 			LeaseRenewInterval: cfg.Engine.StepLeaseDuration / 3,
