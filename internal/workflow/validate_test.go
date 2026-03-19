@@ -1,6 +1,9 @@
 package workflow
 
-import "testing"
+import (
+	"sort"
+	"testing"
+)
 
 func mustParse(t *testing.T, content string) *ParseResult {
 	t.Helper()
@@ -229,6 +232,122 @@ inputs:
 steps:
   - name: fetch
     action: http.request
+`)
+	errs := Validate(result)
+	assertNoErrors(t, errs)
+}
+
+func TestExtractImplicitDeps(t *testing.T) {
+	tests := []struct {
+		name string
+		step Step
+		want []string
+	}{
+		{
+			name: "param references step output",
+			step: Step{
+				Params: map[string]any{
+					"url": "{{ steps.fetch_data.output.url }}",
+				},
+			},
+			want: []string{"fetch_data"},
+		},
+		{
+			name: "if condition references step",
+			step: Step{
+				If: "steps.check.output.ready == true",
+			},
+			want: []string{"check"},
+		},
+		{
+			name: "nested param references",
+			step: Step{
+				Params: map[string]any{
+					"body": map[string]any{
+						"first":  "{{ steps.a.output.value }}",
+						"second": "{{ steps.b.output.value }}",
+					},
+				},
+			},
+			want: []string{"a", "b"},
+		},
+		{
+			name: "no references",
+			step: Step{
+				Params: map[string]any{
+					"url": "https://example.com",
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "deduplicates references",
+			step: Step{
+				If: "steps.x.output.a == steps.x.output.b",
+				Params: map[string]any{
+					"val": "{{ steps.x.output.c }}",
+				},
+			},
+			want: []string{"x"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ExtractImplicitDeps(tt.step)
+			// Sort both for stable comparison.
+			sort.Strings(got)
+			sort.Strings(tt.want)
+			if len(got) != len(tt.want) {
+				t.Fatalf("ExtractImplicitDeps() = %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("ExtractImplicitDeps() = %v, want %v", got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestValidate_UndefinedDependency(t *testing.T) {
+	result := mustParse(t, `
+name: my-workflow
+steps:
+  - name: fetch
+    action: http.request
+    depends_on:
+      - nonexistent
+`)
+	errs := Validate(result)
+	assertHasError(t, errs, "steps[0].depends_on")
+}
+
+func TestValidate_UndefinedImplicitDependency(t *testing.T) {
+	result := mustParse(t, `
+name: my-workflow
+steps:
+  - name: process
+    action: http.request
+    params:
+      url: "{{ steps.missing_step.output.url }}"
+`)
+	errs := Validate(result)
+	assertHasError(t, errs, "steps[0].depends_on")
+}
+
+func TestValidate_ValidDependency(t *testing.T) {
+	result := mustParse(t, `
+name: my-workflow
+steps:
+  - name: fetch
+    action: http.request
+  - name: process
+    action: http.request
+    depends_on:
+      - fetch
+    params:
+      url: "{{ steps.fetch.output.url }}"
 `)
 	errs := Validate(result)
 	assertNoErrors(t, errs)
