@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -414,5 +416,64 @@ steps:
 	}
 	if result.Steps["slow-step"].Status != "failed" {
 		t.Errorf("slow-step status = %q, want %q", result.Steps["slow-step"].Status, "failed")
+	}
+}
+
+func TestCheckOutputSize_UnderLimit(t *testing.T) {
+	output := map[string]any{
+		"status": 200,
+		"body":   "small payload",
+	}
+	err := checkOutputSize(output, 1024)
+	if err != nil {
+		t.Errorf("checkOutputSize() unexpected error for small output: %v", err)
+	}
+}
+
+func TestCheckOutputSize_ExactlyAtLimit(t *testing.T) {
+	// Build output whose JSON serialisation is exactly at the limit.
+	output := map[string]any{"k": "v"}
+	data, _ := json.Marshal(output)
+	limit := len(data)
+
+	err := checkOutputSize(output, limit)
+	if err != nil {
+		t.Errorf("checkOutputSize() unexpected error when output equals limit: %v", err)
+	}
+}
+
+func TestCheckOutputSize_OverLimit(t *testing.T) {
+	// Create output that exceeds a small limit.
+	output := map[string]any{
+		"large": strings.Repeat("x", 2048),
+	}
+	limit := 64
+
+	err := checkOutputSize(output, limit)
+	if err == nil {
+		t.Fatal("checkOutputSize() expected error for oversized output, got nil")
+	}
+
+	// Verify the error message contains the helpful guidance.
+	if !strings.Contains(err.Error(), "S3 connector") {
+		t.Errorf("error message should mention S3 connector, got: %s", err.Error())
+	}
+	if !strings.Contains(err.Error(), fmt.Sprintf("%d byte limit", limit)) {
+		t.Errorf("error message should mention the byte limit, got: %s", err.Error())
+	}
+}
+
+func TestCheckOutputSize_NilOutput(t *testing.T) {
+	// nil output marshals to "null" (4 bytes), should pass any reasonable limit.
+	err := checkOutputSize(nil, 1024)
+	if err != nil {
+		t.Errorf("checkOutputSize() unexpected error for nil output: %v", err)
+	}
+}
+
+func TestCheckOutputSize_EmptyMap(t *testing.T) {
+	err := checkOutputSize(map[string]any{}, 1024)
+	if err != nil {
+		t.Errorf("checkOutputSize() unexpected error for empty map: %v", err)
 	}
 }

@@ -137,6 +137,21 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 	return result, nil
 }
 
+// defaultMaxOutputBytes is the maximum allowed size for step output (1 MB).
+const defaultMaxOutputBytes = 1048576
+
+// checkOutputSize validates that serialised step output does not exceed maxBytes.
+func checkOutputSize(output map[string]any, maxBytes int) error {
+	data, err := json.Marshal(output)
+	if err != nil {
+		return fmt.Errorf("marshal output for size check: %w", err)
+	}
+	if len(data) > maxBytes {
+		return fmt.Errorf("step output exceeds %d byte limit (%d bytes); use the S3 connector to store large payloads and pass the key to downstream steps", maxBytes, len(data))
+	}
+	return nil
+}
+
 func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.Step, celCtx *mantleCEL.Context) StepResult {
 	// Evaluate conditional.
 	if step.If != "" {
@@ -166,21 +181,61 @@ func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.S
 		Resource:  audit.Resource{Type: "step_execution", ID: step.Name},
 	})
 
+	// Delegate to the shared step logic (connector lookup, CEL resolution, retry).
+	output, lastErr := e.executeStepLogic(ctx, execID, step, celCtx)
+
+	if lastErr != nil {
+		errMsg := lastErr.Error()
+		e.updateStep(ctx, execID, step.Name, "failed", output, errMsg)
+		e.Auditor.Emit(ctx, audit.Event{
+			Timestamp: time.Now(),
+			Actor:     "engine",
+			Action:    audit.ActionStepFailed,
+			Resource:  audit.Resource{Type: "step_execution", ID: step.Name},
+		})
+		return StepResult{Status: "failed", Output: output, Error: errMsg}
+	}
+
+	// Validate output size before persisting.
+	if err := checkOutputSize(output, defaultMaxOutputBytes); err != nil {
+		errMsg := err.Error()
+		e.updateStep(ctx, execID, step.Name, "failed", nil, errMsg)
+		e.Auditor.Emit(ctx, audit.Event{
+			Timestamp: time.Now(),
+			Actor:     "engine",
+			Action:    audit.ActionStepFailed,
+			Resource:  audit.Resource{Type: "step_execution", ID: step.Name},
+		})
+		return StepResult{Status: "failed", Error: errMsg}
+	}
+
+	// Checkpoint: record completed step with output.
+	e.updateStep(ctx, execID, step.Name, "completed", output, "")
+	e.Auditor.Emit(ctx, audit.Event{
+		Timestamp: time.Now(),
+		Actor:     "engine",
+		Action:    audit.ActionStepCompleted,
+		Resource:  audit.Resource{Type: "step_execution", ID: step.Name},
+	})
+
+	return StepResult{Status: "completed", Output: output}
+}
+
+// executeStepLogic contains the core connector invocation logic: CEL param resolution,
+// credential resolution, connector lookup, and retry/timeout handling. It is used by
+// both the sequential executeStep path and the distributed MakeStepExecutor bridge.
+func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workflow.Step, celCtx *mantleCEL.Context) (map[string]any, error) {
 	// Resolve CEL expressions in params.
 	resolvedParams, err := e.CEL.ResolveParams(step.Params, celCtx)
 	if err != nil {
-		errMsg := fmt.Sprintf("resolving params: %v", err)
-		e.updateStep(ctx, execID, step.Name, "failed", nil, errMsg)
-		return StepResult{Status: "failed", Error: errMsg}
+		return nil, fmt.Errorf("resolving params: %v", err)
 	}
 
 	// Resolve credential if specified.
 	if step.Credential != "" {
 		credData, credErr := e.Resolver.Resolve(ctx, step.Credential)
 		if credErr != nil {
-			errMsg := fmt.Sprintf("resolving credential %q: %v", step.Credential, credErr)
-			e.updateStep(ctx, execID, step.Name, "failed", nil, errMsg)
-			return StepResult{Status: "failed", Error: errMsg}
+			return nil, fmt.Errorf("resolving credential %q: %v", step.Credential, credErr)
 		}
 		resolvedParams["_credential"] = credData
 	}
@@ -188,9 +243,7 @@ func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.S
 	// Look up connector.
 	conn, err := e.Registry.Get(step.Action)
 	if err != nil {
-		errMsg := fmt.Sprintf("unknown action: %v", err)
-		e.updateStep(ctx, execID, step.Name, "failed", nil, errMsg)
-		return StepResult{Status: "failed", Error: errMsg}
+		return nil, fmt.Errorf("unknown action: %v", err)
 	}
 
 	// Execute with retry and timeout.
@@ -236,28 +289,30 @@ func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.S
 		}
 	}
 
-	if lastErr != nil {
-		errMsg := lastErr.Error()
-		e.updateStep(ctx, execID, step.Name, "failed", output, errMsg)
-		e.Auditor.Emit(ctx, audit.Event{
-			Timestamp: time.Now(),
-			Actor:     "engine",
-			Action:    audit.ActionStepFailed,
-			Resource:  audit.Resource{Type: "step_execution", ID: step.Name},
-		})
-		return StepResult{Status: "failed", Output: output, Error: errMsg}
+	return output, lastErr
+}
+
+// MakeStepExecutor creates a StepExecutor closure that bridges the engine's
+// existing sequential execution machinery to the distributed worker model.
+// The returned function resolves a step by name from the workflow, then
+// delegates to executeStepLogic for connector invocation with CEL resolution,
+// credential handling, retry, and timeout.
+func (e *Engine) MakeStepExecutor(wf *workflow.Workflow, execID string, celCtx *mantleCEL.Context) StepExecutor {
+	return func(ctx context.Context, stepName string, attempt int) (map[string]any, error) {
+		step := wf.FindStep(stepName)
+		if step == nil {
+			return nil, fmt.Errorf("step %q not found in workflow", stepName)
+		}
+		output, err := e.executeStepLogic(ctx, execID, *step, celCtx)
+		if err != nil {
+			return output, err
+		}
+		// Validate output size before returning to the worker.
+		if sizeErr := checkOutputSize(output, defaultMaxOutputBytes); sizeErr != nil {
+			return nil, sizeErr
+		}
+		return output, nil
 	}
-
-	// Checkpoint: record completed step with output.
-	e.updateStep(ctx, execID, step.Name, "completed", output, "")
-	e.Auditor.Emit(ctx, audit.Event{
-		Timestamp: time.Now(),
-		Actor:     "engine",
-		Action:    audit.ActionStepCompleted,
-		Resource:  audit.Resource{Type: "step_execution", ID: step.Name},
-	})
-
-	return StepResult{Status: "completed", Output: output}
 }
 
 // loadWorkflow retrieves a workflow definition from the database.
