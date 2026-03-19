@@ -1,0 +1,35 @@
+name: s3-backup
+description: >
+  Fetch data from an API on a daily schedule and store it in S3 for archival.
+  Demonstrates the S3 connector with cron-triggered backups and credential-based
+  AWS authentication.
+
+triggers:
+  - type: cron
+    schedule: "0 2 * * *"
+
+steps:
+  - name: fetch-data
+    action: http/request
+    timeout: "30s"
+    retry:
+      max_attempts: 3
+      backoff: exponential
+    params:
+      method: GET
+      url: "https://jsonplaceholder.typicode.com/posts"
+      headers:
+        Accept: "application/json"
+
+  - name: upload-to-s3
+    action: s3/put
+    credential: aws-creds
+    timeout: "30s"
+    retry:
+      max_attempts: 2
+      backoff: exponential
+    params:
+      bucket: "mantle-backups"
+      key: "daily-export/posts-{{ steps['fetch-data'].output.json[0].id }}.json"
+      content_type: "application/json"
+      body: "{{ steps['fetch-data'].output.body }}"

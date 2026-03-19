@@ -348,6 +348,306 @@ The structured output is available as `steps.extract-entities.output.json.people
 
 **Authentication:** The AI connector reads the credential's `api_key` field (or `token` or `key` as fallbacks) and sends it as a Bearer token. If the credential includes an `org_id` field, it is sent as the `OpenAI-Organization` header. See the [Secrets Guide](secrets-guide.md) for how to create an `openai`-type credential.
 
+### slack/send
+
+Sends a message to a Slack channel via the [chat.postMessage](https://api.slack.com/methods/chat.postMessage) API. Requires a credential with a Slack Bot User OAuth Token.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `channel` | string | Yes | Slack channel ID (e.g., `C01234ABCDE`). Use the channel ID, not the channel name. |
+| `text` | string | Yes | Message text. Supports Slack [mrkdwn](https://api.slack.com/reference/surfaces/formatting) formatting. |
+
+**Output:**
+
+| Field | Type | Description |
+|---|---|---|
+| `ok` | boolean | `true` if the message was sent successfully. |
+| `ts` | string | Slack message timestamp. Use this to reference the message in follow-up API calls. |
+| `channel` | string | The channel ID where the message was posted. |
+
+**Example:**
+
+```yaml
+- name: notify-team
+  action: slack/send
+  credential: slack-bot
+  params:
+    channel: "C01234ABCDE"
+    text: "Deployment complete: {{ steps.deploy.output.body }}"
+```
+
+**Authentication:** The Slack connector reads the credential's `token` field and sends it as a Bearer token. Create a credential of type `bearer` with a `token` field containing your Slack Bot User OAuth Token:
+
+```bash
+mantle secrets create --name slack-bot --type bearer --field token=xoxb-your-bot-token
+```
+
+### slack/history
+
+Reads recent messages from a Slack channel via the [conversations.history](https://api.slack.com/methods/conversations.history) API.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `channel` | string | Yes | Slack channel ID (e.g., `C01234ABCDE`). |
+| `limit` | number | No | Maximum number of messages to return. Default: `10`. |
+
+**Output:**
+
+| Field | Type | Description |
+|---|---|---|
+| `ok` | boolean | `true` if the request was successful. |
+| `messages` | list | Array of message objects. Each message contains fields like `text`, `user`, `ts`, and `type`. |
+
+**Example:**
+
+```yaml
+- name: read-channel
+  action: slack/history
+  credential: slack-bot
+  params:
+    channel: "C01234ABCDE"
+    limit: 5
+
+- name: summarize-messages
+  action: ai/completion
+  credential: my-openai
+  params:
+    model: gpt-4o
+    prompt: "Summarize these Slack messages: {{ steps['read-channel'].output.messages }}"
+```
+
+### postgres/query
+
+Executes a parameterized SQL query against an external Postgres database. The connector opens a connection per step execution and closes it afterward. Supports both read queries (`SELECT`, `WITH`) and write statements (`INSERT`, `UPDATE`, `DELETE`).
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `query` | string | Yes | SQL query to execute. Use `$1`, `$2`, etc. for parameterized values. |
+| `args` | list | No | Ordered list of values to substitute into the parameterized query. |
+
+**Output (SELECT/WITH queries):**
+
+| Field | Type | Description |
+|---|---|---|
+| `rows` | list | Array of row objects, each mapping column names to values. Empty array if no rows match. |
+| `row_count` | number | Number of rows returned. |
+
+**Output (INSERT/UPDATE/DELETE statements):**
+
+| Field | Type | Description |
+|---|---|---|
+| `rows_affected` | number | Number of rows affected by the statement. |
+
+**Example -- read query:**
+
+```yaml
+- name: fetch-users
+  action: postgres/query
+  credential: my-database
+  params:
+    query: "SELECT id, email FROM users WHERE active = $1 LIMIT $2"
+    args:
+      - true
+      - 100
+```
+
+**Example -- write statement:**
+
+```yaml
+- name: update-status
+  action: postgres/query
+  credential: my-database
+  params:
+    query: "UPDATE orders SET status = $1 WHERE id = $2"
+    args:
+      - "shipped"
+      - "{{ steps['create-order'].output.json.order_id }}"
+```
+
+**Authentication:** The Postgres connector reads the database connection URL from the credential's `url` field (or `key` as a fallback). Create a credential with the full Postgres connection string:
+
+```bash
+mantle secrets create --name my-database --type generic --field url=postgres://user:pass@host:5432/dbname?sslmode=require
+```
+
+### email/send
+
+Sends an email via SMTP. Supports plaintext and HTML content.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `to` | string or list | Yes | Recipient email address(es). A single string or a list of strings. |
+| `from` | string | Yes | Sender email address. |
+| `subject` | string | Yes | Email subject line. |
+| `body` | string | Yes | Email body content. |
+| `html` | boolean | No | Set to `true` to send the body as HTML. Default: `false` (plaintext). |
+| `smtp_host` | string | No | SMTP server hostname. Can also be provided via credential. |
+| `smtp_port` | string | No | SMTP server port. Default: `587`. Can also be provided via credential. |
+
+**Output:**
+
+| Field | Type | Description |
+|---|---|---|
+| `sent` | boolean | `true` if the email was sent successfully. |
+| `to` | string | Comma-separated list of recipient addresses. |
+| `subject` | string | The subject line that was sent. |
+
+**Example:**
+
+```yaml
+- name: send-report
+  action: email/send
+  credential: smtp-creds
+  params:
+    to:
+      - "alice@example.com"
+      - "bob@example.com"
+    from: "reports@example.com"
+    subject: "Daily Report — {{ steps.generate.output.json.date }}"
+    body: "{{ steps.generate.output.json.html_report }}"
+    html: true
+```
+
+**Authentication:** The email connector reads `username`, `password`, `host`, and `port` from the credential. If `host` or `port` are not in the credential, they fall back to the `smtp_host` and `smtp_port` params. Create a `basic` credential with SMTP fields:
+
+```bash
+mantle secrets create --name smtp-creds --type basic \
+  --field username=apikey \
+  --field password=SG.your-sendgrid-key \
+  --field host=smtp.sendgrid.net \
+  --field port=587
+```
+
+### s3/put
+
+Uploads an object to an S3-compatible storage bucket.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `bucket` | string | Yes | S3 bucket name. |
+| `key` | string | Yes | Object key (path) within the bucket. |
+| `content` | string | Yes | Object content as a string. |
+| `content_type` | string | No | MIME type for the object. Default: `application/octet-stream`. |
+
+**Output:**
+
+| Field | Type | Description |
+|---|---|---|
+| `bucket` | string | The bucket the object was uploaded to. |
+| `key` | string | The object key. |
+| `size` | number | Size of the uploaded content in bytes. |
+
+**Example:**
+
+```yaml
+- name: upload-report
+  action: s3/put
+  credential: aws-s3
+  params:
+    bucket: "my-reports"
+    key: "reports/{{ steps.generate.output.json.date }}.json"
+    content: "{{ steps.generate.output.json.report }}"
+    content_type: "application/json"
+```
+
+### s3/get
+
+Downloads an object from an S3-compatible storage bucket.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `bucket` | string | Yes | S3 bucket name. |
+| `key` | string | Yes | Object key (path) within the bucket. |
+
+**Output:**
+
+| Field | Type | Description |
+|---|---|---|
+| `bucket` | string | The bucket the object was downloaded from. |
+| `key` | string | The object key. |
+| `content` | string | Object content as a string. |
+| `size` | number | Size of the downloaded content in bytes. |
+| `content_type` | string | MIME type of the object as reported by S3. |
+
+**Example:**
+
+```yaml
+- name: download-config
+  action: s3/get
+  credential: aws-s3
+  params:
+    bucket: "my-configs"
+    key: "app/config.json"
+```
+
+### s3/list
+
+Lists objects in an S3-compatible storage bucket, with optional prefix filtering.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `bucket` | string | Yes | S3 bucket name. |
+| `prefix` | string | No | Filter results to keys that start with this prefix. |
+
+**Output:**
+
+| Field | Type | Description |
+|---|---|---|
+| `bucket` | string | The bucket that was listed. |
+| `objects` | list | Array of objects. Each object has `key` (string), `size` (number), and `last_modified` (string, RFC 3339). |
+
+**Example:**
+
+```yaml
+- name: list-reports
+  action: s3/list
+  credential: aws-s3
+  params:
+    bucket: "my-reports"
+    prefix: "reports/2026/"
+```
+
+**S3 Authentication:** All S3 connectors (`s3/put`, `s3/get`, `s3/list`) read the following fields from the credential:
+
+| Field | Required | Description |
+|---|---|---|
+| `access_key` | Yes | AWS access key ID. |
+| `secret_key` | Yes | AWS secret access key. |
+| `region` | No | AWS region. Default: `us-east-1`. |
+| `endpoint` | No | Custom S3 endpoint URL. Use this for S3-compatible services like MinIO, DigitalOcean Spaces, or Backblaze B2. |
+
+Create a credential for S3:
+
+```bash
+mantle secrets create --name aws-s3 --type generic \
+  --field access_key=AKIA... \
+  --field secret_key=wJalr... \
+  --field region=us-west-2
+```
+
+For S3-compatible services, add an `endpoint` field:
+
+```bash
+mantle secrets create --name minio --type generic \
+  --field access_key=minioadmin \
+  --field secret_key=minioadmin \
+  --field endpoint=http://localhost:9000
+```
+
 ## Triggers
 
 Triggers define how a workflow is started automatically when Mantle runs in server mode (`mantle serve`). A workflow can have zero, one, or multiple triggers.

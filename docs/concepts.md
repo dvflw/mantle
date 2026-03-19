@@ -168,9 +168,183 @@ Key design points:
 
 See the [Workflow Reference](workflow-reference.md#aicompletion) for the complete parameter and output specification.
 
-### Future Connectors
+### Slack Connector
 
-The connector system is designed for extensibility via gRPC plugins (HashiCorp go-plugin protocol). Custom connectors will run as subprocesses communicating over gRPC, keeping the core engine isolated from third-party code.
+The `slack/send` and `slack/history` actions interact with the Slack Web API. They handle authentication, request formatting, and error parsing for you.
+
+Use cases:
+- Sending notifications to a team channel when a workflow succeeds or fails
+- Reading recent messages from a channel to summarize or process
+
+See the [Workflow Reference](workflow-reference.md#slacksend) for parameters and output.
+
+### Postgres Connector
+
+The `postgres/query` action executes parameterized SQL against external Postgres databases. It connects per-step and disconnects afterward, keeping the connector stateless.
+
+Use cases:
+- Reading data from a reporting database to feed into an AI summarization step
+- Writing workflow results back to a business database
+- Running scheduled data cleanup queries
+
+See the [Workflow Reference](workflow-reference.md#postgresquery) for parameters and output.
+
+### Email Connector
+
+The `email/send` action sends emails via SMTP. It supports plaintext and HTML content, multiple recipients, and configurable SMTP servers.
+
+See the [Workflow Reference](workflow-reference.md#emailsend) for parameters and output.
+
+### S3 Connector
+
+The `s3/put`, `s3/get`, and `s3/list` actions interact with AWS S3 and S3-compatible storage services (MinIO, DigitalOcean Spaces, Backblaze B2). The `endpoint` credential field allows you to point to any S3-compatible API.
+
+See the [Workflow Reference](workflow-reference.md#s3put) for parameters and output.
+
+### Connector Summary
+
+| Action | Description |
+|---|---|
+| `http/request` | HTTP requests to any URL |
+| `ai/completion` | LLM chat completions (OpenAI-compatible) |
+| `slack/send` | Send Slack messages |
+| `slack/history` | Read Slack channel history |
+| `postgres/query` | Execute SQL on external Postgres databases |
+| `email/send` | Send email via SMTP |
+| `s3/put` | Upload objects to S3 |
+| `s3/get` | Download objects from S3 |
+| `s3/list` | List objects in S3 |
+
+## Plugin System
+
+Plugins extend Mantle with third-party connector actions that run as subprocesses. This keeps the core engine isolated from external code while allowing the connector surface area to grow without modifying the Mantle binary.
+
+### How Plugins Work
+
+A plugin is an executable binary that reads JSON from stdin and writes JSON to stdout. The engine invokes the plugin as a subprocess for each step execution, passing the action name, parameters, and credential fields as a JSON payload.
+
+```
+Engine                     Plugin Process
+  |                              |
+  |-- spawn subprocess --------->|
+  |-- write JSON to stdin ------>|
+  |                              |-- execute action
+  |<-- read JSON from stdout ----|
+  |-- process terminates ------->|
+```
+
+### Plugin Contract
+
+The JSON input format:
+
+```json
+{
+  "action": "my-plugin/do-thing",
+  "params": {"key": "value"},
+  "credential": {"api_key": "secret"}
+}
+```
+
+The JSON output format:
+
+```json
+{
+  "result": "success",
+  "data": {"processed": true}
+}
+```
+
+If the plugin writes to stderr or exits with a non-zero code, the step fails with the stderr content as the error message.
+
+### Protobuf Definition
+
+The plugin contract is formally defined in `proto/connector.proto`. While the current V1.1 implementation uses the simpler JSON stdin/stdout protocol, the protobuf definition serves as the specification for a future gRPC-based plugin protocol.
+
+The service defines three RPCs:
+
+- **Execute** -- runs the connector action with parameters and credentials
+- **Validate** -- checks whether parameters are valid for this connector
+- **Describe** -- returns metadata about the connector's supported actions
+
+### Plugin Management
+
+Plugins are stored in the `.mantle/plugins/` directory. Use the CLI to manage them:
+
+```bash
+mantle plugins install ./path/to/my-plugin  # Copy binary to plugin directory
+mantle plugins list                          # List installed plugins
+mantle plugins remove my-plugin              # Remove a plugin
+```
+
+See the [Plugins Guide](plugins-guide.md) for a complete walkthrough of writing and testing a plugin.
+
+## Shared Workflow Library
+
+The workflow library lets teams publish reusable workflow templates and deploy them across environments and teams. This is Mantle's mechanism for sharing best-practice workflows without copy-pasting YAML files.
+
+### Publish/Deploy Model
+
+The library uses a two-step model:
+
+1. **Publish** -- takes a workflow that has been `mantle apply`-ed and stores it as a shared template. The template includes the workflow's name, description, and full definition.
+
+2. **Deploy** -- copies a shared template into a target team's workflow definitions as a new version. The deployed workflow behaves identically to one created through `mantle apply`.
+
+```
+Team A: mantle apply daily-report.yaml
+        mantle library publish --workflow daily-report
+
+Team B: mantle library list
+        mantle library deploy --template daily-report
+```
+
+Publishing the same name again updates the template. Deploying the same template again creates a new version, not a duplicate.
+
+### When to Use the Library
+
+- Sharing standard operational workflows (health checks, data syncs) across teams
+- Creating starter templates for common patterns (fetch-transform-notify)
+- Distributing approved workflows in a multi-tenant environment
+
+See the [CLI Reference](cli-reference.md#mantle-library) for command details.
+
+## Observability
+
+Mantle provides three observability mechanisms: Prometheus metrics, an immutable audit trail, and structured JSON logging. Together, they give you visibility into what your workflows are doing, how they are performing, and who changed what.
+
+### Prometheus Metrics
+
+When running in server mode (`mantle serve`), Mantle exposes a `/metrics` endpoint in Prometheus exposition format. Scrape this endpoint with Prometheus, Grafana Agent, or any compatible collector.
+
+**Exposed metrics:**
+
+| Metric | Type | Labels | Description |
+|---|---|---|---|
+| `mantle_workflow_executions_total` | Counter | `workflow`, `status` | Total workflow executions by name and outcome. |
+| `mantle_step_executions_total` | Counter | `workflow`, `step`, `status` | Total step executions by workflow, step name, and outcome. |
+| `mantle_step_duration_seconds` | Histogram | `workflow`, `step`, `action` | Step execution duration in seconds. |
+| `mantle_connector_duration_seconds` | Histogram | `action` | Connector invocation duration in seconds. |
+| `mantle_active_executions` | Gauge | -- | Number of currently running workflow executions. |
+
+### Audit Trail
+
+Every state-changing operation emits an immutable audit event to the `audit_events` table in Postgres. Events are append-only -- they cannot be modified or deleted.
+
+Query audit events with the `mantle audit` CLI command. See the [CLI Reference](cli-reference.md#mantle-audit) for filter options.
+
+### Structured JSON Logging
+
+In server mode, Mantle emits structured JSON logs to stdout via Go's `slog` package. Each log line is a JSON object with `time`, `level`, `msg`, and contextual fields.
+
+```json
+{"time":"2026-03-18T14:30:00.000Z","level":"INFO","msg":"server listening","address":":8080"}
+{"time":"2026-03-18T14:30:01.000Z","level":"INFO","msg":"cron scheduler started"}
+{"time":"2026-03-18T14:30:05.000Z","level":"INFO","msg":"workflow execution completed","workflow":"hello-world","execution_id":"abc123"}
+```
+
+Configure the log level with the `--log-level` flag, `MANTLE_LOG_LEVEL` environment variable, or `log.level` in `mantle.yaml`. Levels: `debug`, `info`, `warn`, `error`.
+
+The JSON format integrates directly with log aggregation systems like the ELK stack, Datadog, Grafana Loki, and any tool that ingests structured JSON.
 
 ## Secrets and Credential Resolution
 
@@ -280,26 +454,35 @@ Many workflows benefit from both: a cron trigger for periodic runs and a webhook
 
 ## Architecture Summary
 
-Mantle is a single Go binary that connects to a Postgres database. There are no other runtime dependencies.
+Mantle is a single Go binary that connects to a Postgres database. Cloud secret stores are optional; plugins run as subprocesses.
 
 ```
-+------------------+     +-----------+
-|  mantle (binary)  |---->| Postgres  |
-|                  |     |           |
-|  - CLI commands  |     | - workflow_definitions
-|  - Workflow engine|    | - workflow_executions
-|  - Connectors    |     | - step_executions
-|  - API server    |     | - credentials
-|  - Cron scheduler|     +-----------+
-|  - Webhook listener|
-+------------------+
++---------------------------+     +-----------+
+|  mantle (binary)           |---->| Postgres  |
+|                           |     |           |
+|  - CLI commands           |     | - workflow_definitions
+|  - Workflow engine        |     | - workflow_executions
+|  - Built-in connectors   |     | - step_executions
+|  - Plugin manager         |     | - credentials
+|  - API server + /metrics  |     | - audit_events
+|  - Cron scheduler         |     | - shared_workflows
+|  - Webhook listener       |     +-----------+
+|  - Audit emitter          |
+|  - Secret resolver        |---->  Cloud Secret Stores
+|                           |       (AWS, GCP, Azure — optional)
++---------------------------+
+         |
+         |--- spawn ---> Plugin subprocesses
+                          (JSON stdin/stdout)
 ```
 
-**Single binary.** No separate worker processes, message queues, or caches. The binary contains the CLI, the execution engine, the connectors, and the API server.
+**Single binary.** No separate worker processes, message queues, or caches. The binary contains the CLI, the execution engine, the connectors, the plugin manager, and the API server.
 
-**Postgres for everything.** Workflow definitions, execution state, step checkpoints, and encrypted credentials all live in Postgres. This keeps the operational surface area small.
+**Postgres for everything.** Workflow definitions, execution state, step checkpoints, encrypted credentials, audit events, and shared templates all live in Postgres. This keeps the operational surface area small.
 
-**Single-tenant in V1.** There is no authentication, authorization, or team scoping. Mantle assumes it is running in a trusted environment. Multi-tenancy and RBAC are planned for Phase 6.
+**Cloud secret stores are optional.** Mantle resolves credentials from Postgres first, then tries configured cloud backends (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault), and finally falls back to environment variables.
+
+**Plugins are isolated.** Third-party connectors run as subprocesses with a JSON stdin/stdout protocol. They cannot access the engine's memory or database directly.
 
 ## Further Reading
 
@@ -307,5 +490,7 @@ Mantle is a single Go binary that connects to a Postgres database. There are no 
 - [Workflow Reference](workflow-reference.md) -- complete YAML schema documentation
 - [CLI Reference](cli-reference.md) -- every command and flag
 - [Configuration](configuration.md) -- config file, env vars, and flag precedence
-- [Secrets Guide](secrets-guide.md) -- credential encryption, creation, and key rotation
+- [Secrets Guide](secrets-guide.md) -- credential encryption, cloud backends, and key rotation
 - [Server Guide](server-guide.md) -- running Mantle as a persistent server with triggers
+- [Plugins Guide](plugins-guide.md) -- writing and managing third-party connector plugins
+- [Observability Guide](observability-guide.md) -- Prometheus metrics, audit trail, and structured logging

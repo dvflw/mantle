@@ -211,6 +211,78 @@ Cancels a running or pending execution. Equivalent to `mantle cancel`.
 curl -s -X POST http://localhost:8080/api/v1/cancel/abc123-def456
 ```
 
+### List Executions
+
+```
+GET /api/v1/executions
+```
+
+Returns a list of recent executions with optional filtering. Supports query parameters: `workflow`, `status`, `since`, `limit`.
+
+```bash
+curl -s "http://localhost:8080/api/v1/executions?workflow=daily-report&status=completed&limit=10" | jq .
+```
+
+```json
+{
+  "executions": [
+    {
+      "id": "abc123-def456",
+      "workflow": "daily-report",
+      "version": 2,
+      "status": "completed",
+      "started_at": "2026-03-18T09:00:00Z",
+      "completed_at": "2026-03-18T09:00:15Z"
+    }
+  ]
+}
+```
+
+### Get Execution Details
+
+```
+GET /api/v1/executions/{id}
+```
+
+Returns a single execution with step-level detail.
+
+```bash
+curl -s http://localhost:8080/api/v1/executions/abc123-def456 | jq .
+```
+
+```json
+{
+  "id": "abc123-def456",
+  "workflow": "daily-report",
+  "version": 2,
+  "status": "completed",
+  "started_at": "2026-03-18T09:00:00Z",
+  "completed_at": "2026-03-18T09:00:15Z",
+  "steps": [
+    {
+      "name": "fetch-metrics",
+      "status": "completed",
+      "started_at": "2026-03-18T09:00:00Z",
+      "completed_at": "2026-03-18T09:00:05Z"
+    },
+    {
+      "name": "summarize",
+      "status": "completed",
+      "started_at": "2026-03-18T09:00:05Z",
+      "completed_at": "2026-03-18T09:00:15Z"
+    }
+  ]
+}
+```
+
+### Prometheus Metrics
+
+```
+GET /metrics
+```
+
+Returns Prometheus metrics in exposition format. Scrape this endpoint with Prometheus, Grafana Agent, or any compatible collector. See the [Observability Guide](observability-guide.md) for metric names and example PromQL queries.
+
 ### Health Endpoints
 
 | Endpoint | Purpose | Returns 200 When |
@@ -340,5 +412,7 @@ curl -X POST http://localhost:8080/hooks/api-health-check
 
 - [Workflow Reference](workflow-reference.md#triggers) -- trigger YAML syntax
 - [CLI Reference](cli-reference.md#mantle-serve) -- `mantle serve` command flags
+- [CLI Reference](cli-reference.md#rest-api) -- full REST API endpoint documentation
 - [Configuration](configuration.md) -- all configuration options
 - [Concepts](concepts.md#triggers-and-server-mode) -- architectural overview of triggers
+- [Observability Guide](observability-guide.md) -- Prometheus metrics, audit trail, and structured logging

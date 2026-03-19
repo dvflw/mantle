@@ -1,0 +1,57 @@
+name: db-to-slack
+description: >
+  Query a Postgres database for recent records, summarize the results with an
+  AI model, and post the summary to Slack. The quintessential cross-connector
+  workflow demonstrating three connectors chained together: Postgres, AI, and
+  Slack.
+
+steps:
+  - name: query-recent-orders
+    action: postgres/query
+    credential: my-db
+    timeout: "15s"
+    retry:
+      max_attempts: 2
+      backoff: fixed
+    params:
+      query: "SELECT id, customer, total, created_at FROM orders WHERE created_at > now() - interval '24 hours' ORDER BY created_at DESC LIMIT 50"
+
+  - name: summarize-results
+    action: ai/completion
+    credential: openai
+    timeout: "60s"
+    params:
+      model: gpt-4o-mini
+      system_prompt: >
+        You are a concise business analyst. Given a set of recent order records,
+        produce a brief summary with total revenue, order count, and notable
+        trends.
+      prompt: "Summarize these recent orders: {{ steps['query-recent-orders'].output.json }}"
+      output_schema:
+        type: object
+        properties:
+          order_count:
+            type: number
+          total_revenue:
+            type: number
+          summary:
+            type: string
+          highlights:
+            type: array
+            items:
+              type: string
+        required:
+          - order_count
+          - total_revenue
+          - summary
+          - highlights
+        additionalProperties: false
+
+  - name: post-to-slack
+    action: slack/send
+    credential: slack-token
+    timeout: "10s"
+    if: "steps['summarize-results'].output.json.order_count > 0"
+    params:
+      channel: "#daily-orders"
+      text: "Daily Orders Report — {{ steps['summarize-results'].output.json.order_count }} orders, ${{ steps['summarize-results'].output.json.total_revenue }} revenue. {{ steps['summarize-results'].output.json.summary }}"

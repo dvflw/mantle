@@ -1,0 +1,32 @@
+name: email-report
+description: >
+  Fetch data from a public API and email a summary report to a specified
+  recipient. Demonstrates the email connector with workflow inputs and
+  credential-based SMTP authentication.
+
+inputs:
+  recipient:
+    type: string
+    description: Email address to send the report to
+
+steps:
+  - name: fetch-data
+    action: http/request
+    timeout: "10s"
+    retry:
+      max_attempts: 3
+      backoff: exponential
+    params:
+      method: GET
+      url: "https://jsonplaceholder.typicode.com/posts"
+      headers:
+        Accept: "application/json"
+
+  - name: send-email
+    action: email/send
+    credential: email-creds
+    timeout: "15s"
+    params:
+      to: "{{ inputs.recipient }}"
+      subject: "Daily Data Report"
+      body: "Fetched data summary — total items returned: {{ size(steps['fetch-data'].output.json) }}. First item title: {{ steps['fetch-data'].output.json[0].title }}"

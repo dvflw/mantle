@@ -185,11 +185,37 @@ mantle validate workflow.yaml   # works anywhere, no database needed
 mantle version                  # works anywhere
 ```
 
+## Cloud Secret Backend Configuration
+
+Mantle can resolve credentials from external cloud secret stores. Cloud backends are configured through environment variables -- there are no config file fields for these.
+
+| Env Var | Description |
+|---|---|
+| `AWS_REGION` or `AWS_DEFAULT_REGION` | AWS region for Secrets Manager. Enables the AWS backend when AWS credentials are available. |
+| `MANTLE_GCP_PROJECT` | GCP project ID for Secret Manager. Enables the GCP backend. |
+| `MANTLE_AZURE_VAULT_URL` | Azure Key Vault URL (e.g., `https://my-vault.vault.azure.net/`). Enables the Azure backend. |
+
+Cloud backends are optional. If none are configured, Mantle resolves credentials from the Postgres store and environment variable fallback only.
+
+Each cloud backend uses its respective SDK's default credential chain:
+
+- **AWS**: environment variables, shared credentials file, EC2/ECS instance profile
+- **GCP**: Application Default Credentials (`gcloud auth application-default login`, Workload Identity, service account key)
+- **Azure**: DefaultAzureCredential (`az login`, managed identity, environment variables)
+
+See the [Secrets Guide](secrets-guide.md#cloud-secret-backends) for detailed setup instructions and IAM requirements.
+
+## Plugin Configuration
+
+Plugins are stored in `.mantle/plugins/` relative to the current working directory. This location is not currently configurable via the config file -- it uses a fixed path.
+
 ## Reference
 
 See also:
 
 - [CLI Reference](cli-reference.md) -- flag documentation for every command
 - [Getting Started](getting-started.md) -- setup walkthrough using defaults
-- [Secrets Guide](secrets-guide.md) -- credential encryption, creation, and key rotation
+- [Secrets Guide](secrets-guide.md) -- credential encryption, cloud backends, and key rotation
 - [Server Guide](server-guide.md) -- running Mantle as a persistent server with triggers
+- [Plugins Guide](plugins-guide.md) -- writing and managing third-party connector plugins
+- [Observability Guide](observability-guide.md) -- Prometheus metrics, audit trail, and structured logging

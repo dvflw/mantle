@@ -306,20 +306,29 @@ Execution abc123-def456 is already completed
 
 ### mantle logs
 
-View step-by-step execution history with timing, status, and errors.
+View execution logs. When called with an execution ID, shows step-by-step detail. When called without arguments, lists recent executions with optional filters.
 
 ```
 Usage:
-  mantle logs <execution-id>
+  mantle logs [execution-id] [flags]
 ```
 
 **Arguments:**
 
 | Argument | Required | Description |
 |---|---|---|
-| `execution-id` | Yes | UUID of the execution. |
+| `execution-id` | No | UUID of a specific execution. When omitted, lists recent executions. |
 
-**Example:**
+**Flags (list mode only):**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--workflow` | -- | Filter by workflow name. |
+| `--status` | -- | Filter by status: `pending`, `running`, `completed`, `failed`, `cancelled`. |
+| `--since` | -- | Show executions started within this duration. Accepts Go durations (`1h`, `30m`) and day notation (`7d`). |
+| `--limit` | `20` | Maximum number of executions to show. |
+
+**Example -- detail mode (with execution ID):**
 
 ```bash
 $ mantle logs abc123-def456
@@ -341,6 +350,24 @@ If a step failed, the error is shown below the step:
 Steps:
   fetch-data           failed (0.5s)
     error: ai/completion: API returned 401: Unauthorized
+```
+
+**Example -- list mode (without arguments):**
+
+```bash
+$ mantle logs
+ID                                     WORKFLOW             VERSION STATUS     STARTED              COMPLETED
+----------------------------------------------------------------------------------------------------------------------------
+a1b2c3d4-e5f6-7890-abcd-ef1234567890  fetch-and-summarize        2 completed  2026-03-18 14:30:00  2026-03-18 14:30:05
+b2c3d4e5-f6a7-8901-bcde-f12345678901  hello-world                1 completed  2026-03-18 14:28:00  2026-03-18 14:28:01
+
+2 execution(s) shown.
+```
+
+**Example -- filtered list:**
+
+```bash
+$ mantle logs --workflow hello-world --status failed --since 24h --limit 10
 ```
 
 ---
@@ -575,6 +602,286 @@ $ curl -s -X POST http://localhost:8080/hooks/my-workflow \
 ```
 
 Requires a database connection. See the [Server Guide](server-guide.md) for production deployment guidance.
+
+---
+
+### mantle audit
+
+Query the immutable audit trail. Every state-changing operation in Mantle emits an audit event to Postgres. This command queries those events with optional filters.
+
+```
+Usage:
+  mantle audit [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--action` | -- | Filter by action type (e.g., `workflow.applied`, `step.completed`, `execution.cancelled`). |
+| `--actor` | -- | Filter by actor (e.g., `cli`, `engine`, a user ID). |
+| `--resource` | -- | Filter by resource as `type/id` (e.g., `workflow_definition/my-workflow`). |
+| `--since` | -- | Show events within this duration. Accepts Go durations (`1h`, `30m`) and day notation (`7d`). |
+| `--limit` | `50` | Maximum number of events to show. |
+
+**Action Types:**
+
+| Action | Description |
+|---|---|
+| `workflow.applied` | A workflow definition was applied (new version stored). |
+| `workflow.executed` | A workflow execution started. |
+| `step.started` | A step began executing. |
+| `step.completed` | A step finished successfully. |
+| `step.failed` | A step failed. |
+| `step.skipped` | A step was skipped (due to an `if` condition evaluating to `false`). |
+| `execution.cancelled` | An execution was cancelled. |
+
+**Example -- all recent events:**
+
+```bash
+$ mantle audit
+2026-03-18T14:30:00Z  cli           workflow.applied        workflow_definition/hello-world
+2026-03-18T14:30:01Z  engine        workflow.executed        workflow_execution/a1b2c3d4
+2026-03-18T14:30:01Z  engine        step.started            step_execution/fetch
+2026-03-18T14:30:02Z  engine        step.completed          step_execution/fetch
+```
+
+**Example -- filtered:**
+
+```bash
+$ mantle audit --action workflow.applied --since 7d --limit 20
+$ mantle audit --actor cli --resource workflow_definition/hello-world
+```
+
+---
+
+### mantle plugins
+
+Manage third-party connector plugins. Plugins are executable binaries that extend Mantle with custom connector actions.
+
+```
+Usage:
+  mantle plugins list
+  mantle plugins install <path>
+  mantle plugins remove <name>
+```
+
+#### mantle plugins list
+
+List all installed plugins in the plugin directory (`.mantle/plugins/` by default).
+
+```bash
+$ mantle plugins list
+my-custom-connector  .mantle/plugins/my-custom-connector
+```
+
+If no plugins are installed:
+
+```
+(no plugins installed)
+```
+
+#### mantle plugins install
+
+Install a plugin by copying the binary into the plugin directory.
+
+```bash
+$ mantle plugins install ./build/my-custom-connector
+Installed plugin from ./build/my-custom-connector
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|---|---|---|
+| `path` | Yes | Path to the plugin binary to install. |
+
+#### mantle plugins remove
+
+Remove an installed plugin by name.
+
+```bash
+$ mantle plugins remove my-custom-connector
+Removed plugin my-custom-connector
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|---|---|---|
+| `name` | Yes | Name of the plugin to remove (the filename in the plugins directory). |
+
+See the [Plugins Guide](plugins-guide.md) for how to write and test a plugin.
+
+---
+
+### mantle library
+
+Manage the shared workflow template library. Templates let you publish reusable workflow definitions that other teams can deploy.
+
+```
+Usage:
+  mantle library publish [flags]
+  mantle library list
+  mantle library deploy [flags]
+```
+
+#### mantle library publish
+
+Publish a workflow as a shared template. Reads the latest applied version of the named workflow and stores it in the shared library. If a template with the same name already exists, it is updated.
+
+```bash
+$ mantle library publish --workflow daily-report
+Published "daily-report" to shared library
+```
+
+**Flags:**
+
+| Flag | Required | Description |
+|---|---|---|
+| `--workflow` | Yes | Name of the applied workflow to publish. |
+
+#### mantle library list
+
+List all shared workflow templates.
+
+```bash
+$ mantle library list
+NAME            DESCRIPTION
+daily-report    Generate and email a daily summary report
+api-monitor     Hourly API health check with Slack alerts
+```
+
+If no templates exist:
+
+```
+(no templates)
+```
+
+#### mantle library deploy
+
+Deploy a shared template as a workflow definition in the target team. Creates a new version in the workflow_definitions table.
+
+```bash
+$ mantle library deploy --template daily-report
+Deployed "daily-report" as version 1
+```
+
+**Flags:**
+
+| Flag | Required | Description |
+|---|---|---|
+| `--template` | Yes | Name of the template to deploy. |
+| `--team` | No | Target team ID. Defaults to the default team. |
+
+---
+
+## REST API
+
+The `mantle serve` command exposes a REST API for programmatic access to Mantle. All endpoints return JSON.
+
+### Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/v1/run/{workflow}` | Trigger a workflow execution. |
+| `POST` | `/api/v1/cancel/{execution}` | Cancel a running execution. |
+| `GET` | `/api/v1/executions` | List executions with optional filters. |
+| `GET` | `/api/v1/executions/{id}` | Get execution details with step information. |
+| `POST` | `/hooks/{path}` | Webhook trigger endpoint. |
+| `GET` | `/healthz` | Liveness probe. |
+| `GET` | `/readyz` | Readiness probe (checks database connectivity). |
+| `GET` | `/metrics` | Prometheus metrics endpoint. |
+
+### POST /api/v1/run/{workflow}
+
+Triggers a new execution of the named workflow using the latest applied version.
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/run/fetch-and-summarize | jq .
+```
+
+```json
+{
+  "execution_id": "abc123-def456",
+  "workflow": "fetch-and-summarize",
+  "version": 2
+}
+```
+
+### POST /api/v1/cancel/{execution}
+
+Cancels a running or pending execution.
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/cancel/abc123-def456
+```
+
+```json
+{
+  "execution_id": "abc123-def456",
+  "status": "cancelled"
+}
+```
+
+### GET /api/v1/executions
+
+Lists recent executions. Supports query parameters for filtering.
+
+**Query Parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `workflow` | string | Filter by workflow name. |
+| `status` | string | Filter by status: `pending`, `running`, `completed`, `failed`, `cancelled`. |
+| `since` | string | Show executions within this duration (e.g., `1h`, `24h`, `7d`). |
+| `limit` | number | Maximum results. Default: `20`. |
+
+```bash
+curl -s "http://localhost:8080/api/v1/executions?workflow=hello-world&status=completed&limit=5" | jq .
+```
+
+```json
+{
+  "executions": [
+    {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "workflow": "hello-world",
+      "version": 1,
+      "status": "completed",
+      "started_at": "2026-03-18T14:30:00Z",
+      "completed_at": "2026-03-18T14:30:01Z"
+    }
+  ]
+}
+```
+
+### GET /api/v1/executions/{id}
+
+Returns detailed information about a single execution, including all step results.
+
+```bash
+curl -s http://localhost:8080/api/v1/executions/a1b2c3d4-e5f6-7890-abcd-ef1234567890 | jq .
+```
+
+```json
+{
+  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "workflow": "hello-world",
+  "version": 1,
+  "status": "completed",
+  "started_at": "2026-03-18T14:30:00Z",
+  "completed_at": "2026-03-18T14:30:01Z",
+  "steps": [
+    {
+      "name": "fetch",
+      "status": "completed",
+      "started_at": "2026-03-18T14:30:00Z",
+      "completed_at": "2026-03-18T14:30:01Z"
+    }
+  ]
+}
+```
 
 ---
 

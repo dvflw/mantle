@@ -1,0 +1,26 @@
+name: slack-notification
+description: >
+  Fetch data from a public API and send the result as a Slack notification.
+  Demonstrates the Slack connector with CEL expressions referencing a prior
+  step's output.
+
+steps:
+  - name: fetch-data
+    action: http/request
+    timeout: "10s"
+    retry:
+      max_attempts: 3
+      backoff: exponential
+    params:
+      method: GET
+      url: "https://jsonplaceholder.typicode.com/posts/1"
+      headers:
+        Accept: "application/json"
+
+  - name: notify-slack
+    action: slack/send
+    credential: slack-token
+    timeout: "10s"
+    params:
+      channel: "#engineering-alerts"
+      text: "New post fetched: {{ steps['fetch-data'].output.json.title }}"

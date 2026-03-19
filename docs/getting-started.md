@@ -529,10 +529,12 @@ This is a brief overview. Multi-tenancy, role-based access control, and team sco
 
 You have gone from zero to running workflows with data passing, conditional logic, AI integration, server mode, and multi-tenancy. Here is where to go next:
 
-- **[Workflow Reference](workflow-reference.md)** -- complete YAML schema: every field, every validation rule, every connector
-- **[CLI Reference](cli-reference.md)** -- every command, flag, and example
-- **[Secrets Guide](secrets-guide.md)** -- credential types, encryption setup, key rotation, and the security model
+- **[Workflow Reference](workflow-reference.md)** -- complete YAML schema: every field, every validation rule, every connector (HTTP, AI, Slack, Postgres, Email, S3)
+- **[CLI Reference](cli-reference.md)** -- every command, flag, and the REST API
+- **[Secrets Guide](secrets-guide.md)** -- credential types, encryption setup, cloud backends (AWS, GCP, Azure), and key rotation
 - **[Server Guide](server-guide.md)** -- production deployment, Helm chart, cron and webhook triggers, REST API
-- **[Concepts](concepts.md)** -- architecture, checkpointing, CEL expressions, versioning, and connectors
-- **[Configuration](configuration.md)** -- config file, environment variables, and flag precedence
+- **[Concepts](concepts.md)** -- architecture, checkpointing, CEL expressions, versioning, connectors, plugins, and observability
+- **[Plugins Guide](plugins-guide.md)** -- extend Mantle with third-party connector plugins
+- **[Observability Guide](observability-guide.md)** -- Prometheus metrics, audit trail, and structured logging
+- **[Configuration](configuration.md)** -- config file, environment variables, cloud backends, and flag precedence
 - **[examples/](https://github.com/dvflw/mantle/tree/main/examples)** -- ready-to-run workflow files covering HTTP, AI, chained requests, and more

@@ -158,7 +158,10 @@ steps:
 When a step references a credential, the engine resolves it in this order:
 
 1. **Postgres credentials table** -- looks up the credential by name and decrypts it
-2. **Environment variable fallback** -- checks for `MANTLE_SECRET_<UPPER_NAME>`
+2. **Cloud secret backends** -- tries each configured backend in registration order (AWS, GCP, Azure)
+3. **Environment variable fallback** -- checks for `MANTLE_SECRET_<UPPER_NAME>`
+
+The first source to return a value wins. If the credential is not found in any source, the command fails with an error listing all sources that were checked.
 
 The environment variable name is derived from the credential name by converting to uppercase and replacing hyphens with underscores. For example:
 
@@ -169,6 +172,143 @@ The environment variable name is derived from the credential name by converting 
 | `prod-token` | `MANTLE_SECRET_PROD_TOKEN` |
 
 The env var fallback returns the value as a single `key` field, equivalent to a `generic` credential. This is useful for local development or CI where you do not want to set up the full encryption pipeline.
+
+## Cloud Secret Backends
+
+Mantle can resolve credentials from external cloud secret stores in addition to the local Postgres table. This lets you centralize secret management across your infrastructure.
+
+All cloud backends share the same behavior: if the secret value in the cloud store is valid JSON that decodes to a flat `map[string]string`, those key-value pairs are returned directly as credential fields. If the value is an opaque string, it is returned as `{"key": "<value>"}`, equivalent to a `generic` credential.
+
+### AWS Secrets Manager
+
+Mantle resolves secrets from AWS Secrets Manager using the standard AWS SDK credential chain (environment variables, shared config, EC2/ECS instance profile).
+
+**IAM permissions required:**
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "arn:aws:secretsmanager:*:*:secret:*"
+    }
+  ]
+}
+```
+
+Scope the `Resource` field to limit access to specific secrets.
+
+**Secret naming:** The credential name in your workflow maps 1:1 to the secret name in AWS Secrets Manager. If your workflow step references `credential: my-openai`, Mantle calls `GetSecretValue` with `SecretId: "my-openai"`.
+
+**Storing structured credentials in AWS:**
+
+Store the secret as a JSON object to provide multiple fields:
+
+```bash
+aws secretsmanager create-secret \
+  --name my-openai \
+  --secret-string '{"api_key":"sk-proj-abc123","org_id":"org-xyz789"}'
+```
+
+The connector receives the parsed fields `api_key` and `org_id`, the same as a Postgres-stored `openai` credential.
+
+**Storing simple values:**
+
+```bash
+aws secretsmanager create-secret \
+  --name my-api-key \
+  --secret-string "sk-proj-abc123"
+```
+
+This is returned as `{"key": "sk-proj-abc123"}`.
+
+**Setup:** Configure the AWS region through the standard `AWS_REGION` or `AWS_DEFAULT_REGION` environment variables. The backend uses `config.LoadDefaultConfig`, so all standard AWS credential sources are supported.
+
+### GCP Secret Manager
+
+Mantle resolves secrets from GCP Secret Manager using Application Default Credentials (ADC).
+
+**IAM permissions required:**
+
+The service account or user needs the `secretmanager.versions.access` permission on the target secrets. The simplest way is to grant the `roles/secretmanager.secretAccessor` role:
+
+```bash
+gcloud secrets add-iam-policy-binding my-openai \
+  --member="serviceAccount:mantle@my-project.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+```
+
+**Secret naming:** The credential name maps to the secret name in GCP. Mantle constructs the resource path as `projects/{project_id}/secrets/{name}/versions/latest`, always fetching the latest version.
+
+**GCP project ID:** The backend requires a GCP project ID. Configure this through the `MANTLE_GCP_PROJECT` environment variable or the ADC project setting.
+
+**Storing credentials in GCP:**
+
+```bash
+echo -n '{"api_key":"sk-proj-abc123","org_id":"org-xyz789"}' | \
+  gcloud secrets create my-openai --data-file=-
+```
+
+**Authentication setup:** Configure ADC through one of these methods:
+
+- `gcloud auth application-default login` (local development)
+- Workload Identity on GKE
+- Service account key file (set `GOOGLE_APPLICATION_CREDENTIALS`)
+
+### Azure Key Vault
+
+Mantle resolves secrets from Azure Key Vault using the DefaultAzureCredential chain (environment variables, managed identity, Azure CLI, etc.).
+
+**Required permissions:** The identity needs the `Get` secret permission on the Key Vault. Assign it through Azure RBAC or Key Vault access policies:
+
+```bash
+az keyvault set-policy --name my-vault \
+  --object-id <principal-id> \
+  --secret-permissions get
+```
+
+**Vault URL:** Configure the Key Vault URL through the `MANTLE_AZURE_VAULT_URL` environment variable (e.g., `https://my-vault.vault.azure.net/`).
+
+**Secret naming:** The credential name maps 1:1 to the secret name in Key Vault. Mantle always fetches the latest version.
+
+**Storing credentials in Azure:**
+
+```bash
+az keyvault secret set --vault-name my-vault \
+  --name my-openai \
+  --value '{"api_key":"sk-proj-abc123","org_id":"org-xyz789"}'
+```
+
+**Authentication setup:** Configure DefaultAzureCredential through one of these methods:
+
+- `az login` (local development)
+- Managed Identity on Azure VMs, App Service, or AKS
+- Environment variables: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`
+
+### Resolution Order with Cloud Backends
+
+When cloud backends are configured, the full resolution order is:
+
+```
+1. Postgres store (if encryption key is configured)
+2. AWS Secrets Manager (if AWS credentials are available)
+3. GCP Secret Manager (if GCP project is configured)
+4. Azure Key Vault (if vault URL is configured)
+5. Environment variable fallback (MANTLE_SECRET_<NAME>)
+```
+
+Cloud backends are tried in the order they are registered. The engine falls through to the next source on any error (not found, permission denied, network timeout). This means a credential stored in both Postgres and AWS resolves from Postgres because it is checked first.
+
+**When to use cloud backends vs. Postgres:**
+
+| Scenario | Recommendation |
+|---|---|
+| Single-instance deployment | Postgres store is simplest |
+| Secrets shared across multiple services | Cloud backend (centralized management) |
+| Compliance requirement for a specific vault | Cloud backend |
+| Local development | Environment variable fallback |
 
 ## Key Rotation
 
@@ -207,6 +347,6 @@ The rotation command decrypts all credentials with the current key and re-encryp
 ## Further Reading
 
 - [CLI Reference](cli-reference.md) -- full flag documentation for all secrets commands
-- [Workflow Reference](workflow-reference.md) -- the `credential` field on steps and the AI connector
-- [Configuration](configuration.md) -- setting `encryption.key` and `MANTLE_ENCRYPTION_KEY`
+- [Workflow Reference](workflow-reference.md) -- the `credential` field on steps and all connectors
+- [Configuration](configuration.md) -- setting `encryption.key`, `MANTLE_ENCRYPTION_KEY`, and cloud backend env vars
 - [Concepts](concepts.md) -- how credential resolution fits into the engine architecture
