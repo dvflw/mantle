@@ -1,0 +1,151 @@
+# Configuration
+
+Mantle loads configuration from three sources: a YAML config file, environment variables, and CLI flags. This page documents every configuration option and how the sources interact.
+
+## Precedence
+
+When the same setting is specified in multiple places, the highest-priority source wins:
+
+1. **CLI flags** (highest priority)
+2. **Environment variables**
+3. **Config file** (`mantle.yaml`)
+4. **Built-in defaults** (lowest priority)
+
+For example, if `mantle.yaml` sets `database.url` to one value and you pass `--database-url` on the command line, the flag value is used.
+
+## Config File
+
+By default, Mantle looks for a file named `mantle.yaml` in the current working directory. You can specify a different path with the `--config` flag.
+
+### Full Example
+
+```yaml
+database:
+  url: postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable
+
+api:
+  address: ":8080"
+
+log:
+  level: info
+```
+
+### All Config File Fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `database.url` | string | `postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable` | Postgres connection URL. |
+| `api.address` | string | `:8080` | API server listen address. Format: `host:port` or `:port`. |
+| `log.level` | string | `info` | Log verbosity. One of: `debug`, `info`, `warn`, `error`. |
+
+### Config File Discovery
+
+When you do not pass `--config`, Mantle searches for `mantle.yaml` in the current directory. If no config file is found, Mantle silently falls back to defaults. This is intentional -- most commands work fine with defaults when you use the provided `docker-compose.yml`.
+
+When you pass `--config path/to/config.yaml` explicitly, Mantle requires that file to exist and be valid YAML. A missing or unparseable explicit config file is a hard error.
+
+## Environment Variables
+
+All environment variables use the `MANTLE_` prefix with underscores replacing dots and hyphens.
+
+| Env Var | Config File Equivalent | Default |
+|---|---|---|
+| `MANTLE_DATABASE_URL` | `database.url` | `postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable` |
+| `MANTLE_API_ADDRESS` | `api.address` | `:8080` |
+| `MANTLE_LOG_LEVEL` | `log.level` | `info` |
+
+**Example:**
+
+```bash
+export MANTLE_DATABASE_URL="postgres://prod:secret@db.example.com:5432/mantle?sslmode=require"
+export MANTLE_LOG_LEVEL="warn"
+mantle init
+```
+
+Environment variables are useful in container deployments and CI pipelines where you do not want to mount a config file.
+
+## CLI Flags
+
+Every configuration option has a corresponding CLI flag. Flags take the highest priority.
+
+| Flag | Config File Equivalent | Default |
+|---|---|---|
+| `--database-url` | `database.url` | `postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable` |
+| `--api-address` | `api.address` | `:8080` |
+| `--log-level` | `log.level` | `info` |
+| `--config` | -- | `mantle.yaml` (current directory) |
+
+The `--config` flag has no environment variable or config file equivalent -- it controls which config file to load.
+
+**Example:**
+
+```bash
+mantle init --database-url "postgres://prod:secret@db.example.com:5432/mantle?sslmode=require"
+```
+
+## Defaults
+
+If you start Postgres using the included `docker-compose.yml` and run Mantle from the project directory, the defaults work without any configuration:
+
+| Setting | Default Value |
+|---|---|
+| Database URL | `postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable` |
+| API address | `:8080` |
+| Log level | `info` |
+
+## Common Configurations
+
+### Local Development
+
+No config file needed. Start Postgres with `docker-compose up -d` and use defaults:
+
+```bash
+mantle init
+mantle validate workflow.yaml
+mantle apply workflow.yaml
+```
+
+### CI Pipeline
+
+Use environment variables to avoid config files in CI:
+
+```bash
+export MANTLE_DATABASE_URL="postgres://ci:ci@localhost:5432/mantle_test?sslmode=disable"
+mantle init
+mantle validate workflow.yaml
+mantle apply workflow.yaml
+```
+
+### Production
+
+Use a `mantle.yaml` file with production values, or pass everything through environment variables:
+
+```yaml
+# mantle.yaml
+database:
+  url: postgres://mantle:${DB_PASSWORD}@db.internal:5432/mantle?sslmode=require
+
+api:
+  address: ":8080"
+
+log:
+  level: warn
+```
+
+Note: Mantle does not perform variable substitution in the config file. The `${DB_PASSWORD}` example above is illustrative -- use environment variables (`MANTLE_DATABASE_URL`) for secrets instead of embedding them in config files.
+
+### Offline Commands
+
+The `mantle validate` and `mantle version` commands do not require a database connection. They skip config loading entirely, so you can run them without Postgres, a config file, or any environment variables:
+
+```bash
+mantle validate workflow.yaml   # works anywhere, no database needed
+mantle version                  # works anywhere
+```
+
+## Reference
+
+See also:
+
+- [CLI Reference](cli-reference.md) -- flag documentation for every command
+- [Getting Started](getting-started.md) -- setup walkthrough using defaults

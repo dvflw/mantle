@@ -81,6 +81,24 @@ func GetLatestHash(ctx context.Context, database *sql.DB, name string) (string, 
 	return hash, nil
 }
 
+// GetLatestContent returns the JSON content of the latest version for a workflow,
+// or nil if no versions exist.
+func GetLatestContent(ctx context.Context, database *sql.DB, name string) ([]byte, int, error) {
+	var content []byte
+	var version int
+	err := database.QueryRowContext(ctx,
+		`SELECT content, version FROM workflow_definitions WHERE name = $1 ORDER BY version DESC LIMIT 1`,
+		name,
+	).Scan(&content, &version)
+	if err == sql.ErrNoRows {
+		return nil, 0, nil
+	}
+	if err != nil {
+		return nil, 0, fmt.Errorf("querying latest content: %w", err)
+	}
+	return content, version, nil
+}
+
 func sha256Hash(data []byte) string {
 	h := sha256.Sum256(data)
 	return hex.EncodeToString(h[:])
