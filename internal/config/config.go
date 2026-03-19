@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -16,7 +17,10 @@ type Config struct {
 
 // DatabaseConfig holds database connection settings.
 type DatabaseConfig struct {
-	URL string `mapstructure:"url"`
+	URL             string        `mapstructure:"url"`
+	MaxOpenConns    int           `mapstructure:"max_open_conns"`
+	MaxIdleConns    int           `mapstructure:"max_idle_conns"`
+	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
 }
 
 // APIConfig holds API server settings.
@@ -49,6 +53,9 @@ func Load(cmd *cobra.Command) (*Config, error) {
 
 	// Defaults
 	v.SetDefault("database.url", "postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable")
+	v.SetDefault("database.max_open_conns", 25)
+	v.SetDefault("database.max_idle_conns", 10)
+	v.SetDefault("database.conn_max_lifetime", 5*time.Minute)
 	v.SetDefault("api.address", ":8080")
 	v.SetDefault("log.level", "info")
 
@@ -76,6 +83,9 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	// Env vars — explicit binding for nested keys
 	v.SetEnvPrefix("MANTLE")
 	_ = v.BindEnv("database.url", "MANTLE_DATABASE_URL")
+	_ = v.BindEnv("database.max_open_conns", "MANTLE_DATABASE_MAX_OPEN_CONNS")
+	_ = v.BindEnv("database.max_idle_conns", "MANTLE_DATABASE_MAX_IDLE_CONNS")
+	_ = v.BindEnv("database.conn_max_lifetime", "MANTLE_DATABASE_CONN_MAX_LIFETIME")
 	_ = v.BindEnv("api.address", "MANTLE_API_ADDRESS")
 	_ = v.BindEnv("log.level", "MANTLE_LOG_LEVEL")
 

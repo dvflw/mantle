@@ -3,10 +3,12 @@ package db
 import (
 	"context"
 	"testing"
+
+	"github.com/dvflw/mantle/internal/config"
 )
 
 func TestOpen_InvalidURL(t *testing.T) {
-	_, err := Open("not-a-valid-url")
+	_, err := Open(config.DatabaseConfig{URL: "not-a-valid-url"})
 	if err == nil {
 		t.Fatal("Open() expected error for invalid URL, got nil")
 	}
