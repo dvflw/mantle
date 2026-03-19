@@ -22,6 +22,9 @@ By default, Mantle looks for a file named `mantle.yaml` in the current working d
 ```yaml
 database:
   url: postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable
+  max_open_conns: 25
+  max_idle_conns: 10
+  conn_max_lifetime: 5m
 
 api:
   address: ":8080"
@@ -31,6 +34,18 @@ log:
 
 encryption:
   key: "your-64-char-hex-encoded-key-here"
+
+engine:
+  worker_poll_interval: 200ms
+  worker_max_backoff: 5s
+  orchestrator_poll_interval: 500ms
+  step_lease_duration: 60s
+  orchestration_lease_duration: 120s
+  ai_step_lease_duration: 300s
+  reaper_interval: 30s
+  step_output_max_bytes: 1048576
+  default_max_tool_rounds: 10
+  default_max_tool_calls_per_round: 10
 ```
 
 ### All Config File Fields
@@ -41,6 +56,20 @@ encryption:
 | `api.address` | string | `:8080` | Listen address for `mantle serve`. Format: `host:port` or `:port`. Used by the HTTP API, webhook listener, and health endpoints. |
 | `log.level` | string | `info` | Log verbosity. One of: `debug`, `info`, `warn`, `error`. |
 | `encryption.key` | string | -- | Hex-encoded 32-byte master key for credential encryption. Required for `mantle secrets` commands. Generate with `openssl rand -hex 32`. |
+| `database.max_open_conns` | integer | `25` | Maximum number of open connections in the database pool. |
+| `database.max_idle_conns` | integer | `10` | Maximum number of idle connections retained in the pool. |
+| `database.conn_max_lifetime` | duration | `5m` | Maximum time a connection can be reused before it is closed. Uses Go duration format. |
+| `engine.node_id` | string | `hostname:pid` | Unique identifier for this engine node. Auto-generated from hostname and PID if not set. |
+| `engine.worker_poll_interval` | duration | `200ms` | How often workers poll for available step work. |
+| `engine.worker_max_backoff` | duration | `5s` | Maximum backoff duration for worker polling when no work is available. |
+| `engine.orchestrator_poll_interval` | duration | `500ms` | How often the orchestrator polls for workflow executions to advance. |
+| `engine.step_lease_duration` | duration | `60s` | How long a worker holds a lease on a step before it can be reclaimed. |
+| `engine.orchestration_lease_duration` | duration | `120s` | How long a node holds the orchestration lease for a workflow execution. |
+| `engine.ai_step_lease_duration` | duration | `300s` | Lease duration for AI completion steps, which typically take longer than other steps. |
+| `engine.reaper_interval` | duration | `30s` | How often the reaper checks for expired leases and stalled executions. |
+| `engine.step_output_max_bytes` | integer | `1048576` | Maximum size in bytes for a single step's output. Outputs exceeding this limit are truncated. Default is 1 MB. |
+| `engine.default_max_tool_rounds` | integer | `10` | Default maximum number of LLM-tool interaction rounds for AI steps with tools. Can be overridden per step with `max_tool_rounds`. |
+| `engine.default_max_tool_calls_per_round` | integer | `10` | Default maximum number of tool calls the LLM can make per round. Can be overridden per step with `max_tool_calls_per_round`. |
 
 ### Config File Discovery
 
@@ -58,6 +87,20 @@ All environment variables use the `MANTLE_` prefix with underscores replacing do
 | `MANTLE_API_ADDRESS` | `api.address` | `:8080` |
 | `MANTLE_LOG_LEVEL` | `log.level` | `info` |
 | `MANTLE_ENCRYPTION_KEY` | `encryption.key` | -- |
+| `MANTLE_DATABASE_MAX_OPEN_CONNS` | `database.max_open_conns` | `25` |
+| `MANTLE_DATABASE_MAX_IDLE_CONNS` | `database.max_idle_conns` | `10` |
+| `MANTLE_DATABASE_CONN_MAX_LIFETIME` | `database.conn_max_lifetime` | `5m` |
+| `MANTLE_ENGINE_NODE_ID` | `engine.node_id` | `hostname:pid` |
+| `MANTLE_ENGINE_WORKER_POLL_INTERVAL` | `engine.worker_poll_interval` | `200ms` |
+| `MANTLE_ENGINE_WORKER_MAX_BACKOFF` | `engine.worker_max_backoff` | `5s` |
+| `MANTLE_ENGINE_ORCHESTRATOR_POLL_INTERVAL` | `engine.orchestrator_poll_interval` | `500ms` |
+| `MANTLE_ENGINE_STEP_LEASE_DURATION` | `engine.step_lease_duration` | `60s` |
+| `MANTLE_ENGINE_ORCHESTRATION_LEASE_DURATION` | `engine.orchestration_lease_duration` | `120s` |
+| `MANTLE_ENGINE_AI_STEP_LEASE_DURATION` | `engine.ai_step_lease_duration` | `300s` |
+| `MANTLE_ENGINE_REAPER_INTERVAL` | `engine.reaper_interval` | `30s` |
+| `MANTLE_ENGINE_STEP_OUTPUT_MAX_BYTES` | `engine.step_output_max_bytes` | `1048576` |
+| `MANTLE_ENGINE_DEFAULT_MAX_TOOL_ROUNDS` | `engine.default_max_tool_rounds` | `10` |
+| `MANTLE_ENGINE_DEFAULT_MAX_TOOL_CALLS_PER_ROUND` | `engine.default_max_tool_calls_per_round` | `10` |
 
 **Example:**
 

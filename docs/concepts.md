@@ -137,7 +137,39 @@ The data flows like this:
 4. Step `summarize` reads `steps.fetch-data.output.body` to build its prompt.
 5. The AI connector returns the completion result.
 
-Each step can only reference outputs from steps that appear earlier in the list. Referencing a step that has not yet executed is an error.
+Each step can only reference outputs from steps that have completed before it runs. The engine detects these references automatically and treats them as implicit dependencies. When combined with explicit `depends_on` declarations, this enables parallel execution -- see [Parallel Execution](#parallel-execution) below.
+
+## Parallel Execution
+
+Mantle does not execute steps strictly in list order. Instead, it builds a directed acyclic graph (DAG) from both explicit `depends_on` declarations and implicit dependencies detected from CEL expression analysis (e.g., `steps.fetch-data.output`), then schedules steps for concurrent execution when their dependencies allow it.
+
+**How it works:**
+
+1. Steps with no dependencies start immediately and run in parallel.
+2. When a step completes (or is skipped), the engine checks which downstream steps now have all dependencies resolved and starts them.
+3. If a step fails, all downstream steps that transitively depend on it are cancelled.
+
+**Implicit dependency detection:** When you reference `steps['fetch-data'].output.body` in a step's `params` or `if` field, the engine automatically adds `fetch-data` as a dependency. You do not need to redundantly list it in `depends_on`.
+
+**Skipped steps count as resolved.** If a step's `if` condition evaluates to `false`, it is marked as skipped. Downstream steps that depend on it are still unblocked -- they can proceed, though referencing the skipped step's output will yield an empty value.
+
+For the full `depends_on` field reference and a fan-out/fan-in YAML example, see the [Workflow Reference](workflow-reference.md#parallel-execution).
+
+## AI Tool Use
+
+The `ai/completion` connector supports multi-turn tool use (function calling). You declare tools in the step's `params`, each mapping a tool name to a Mantle connector action. The engine then orchestrates a loop between the LLM and your tools:
+
+1. The engine sends the prompt (and tool definitions) to the LLM.
+2. The LLM responds with either a text completion or one or more tool call requests.
+3. For each tool call, the engine executes the corresponding connector action and collects the result.
+4. The tool results are appended to the conversation and sent back to the LLM.
+5. Steps 2-4 repeat until the LLM produces a final text response, or the configured round limit is reached.
+
+**Safety limits:** The `max_tool_rounds` param (default: 10) caps the number of LLM-tool round trips. The `max_tool_calls_per_round` param (default: 10) caps how many tools the LLM can invoke in a single turn. If the round limit is exhausted, the engine makes one final call asking the LLM to respond with the information gathered so far.
+
+**Error handling:** If a tool execution fails, the error message is sent back to the LLM as the tool result rather than crashing the workflow. This gives the LLM the opportunity to retry with different arguments or proceed without that tool's output.
+
+See the [Workflow Reference](workflow-reference.md#tool-declarations) for the tool schema and a complete YAML example.
 
 ## Connectors
 
@@ -164,7 +196,7 @@ Key design points:
 - **BYOK (Bring Your Own Key)** -- Mantle does not proxy through a hosted service. You provide your own API keys through the secrets system and reference them with the `credential` field on your workflow step.
 - **Structured output** -- you can pass an `output_schema` parameter with a JSON Schema, and the model returns JSON conforming to that schema. The parsed result is available as `steps.STEP_NAME.output.json`.
 - **Custom endpoints** -- the `base_url` parameter lets you point to any OpenAI-compatible API (Azure OpenAI, Ollama, vLLM, etc.) instead of the default `https://api.openai.com/v1`.
-- **No tool use in V1** -- function calling and tool use are planned for V1.1.
+- **Tool use (function calling)** -- you can declare `tools` on an AI step, each mapping to a Mantle connector action. The engine runs a multi-turn loop: the LLM requests tool calls, the engine executes them via connectors, feeds results back, and repeats until the LLM produces a final text response or configured limits (`max_tool_rounds`, `max_tool_calls_per_round`) are reached.
 
 See the [Workflow Reference](workflow-reference.md#aicompletion) for the complete parameter and output specification.
 

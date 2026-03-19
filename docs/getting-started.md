@@ -10,14 +10,14 @@ Mantle is a headless AI workflow automation platform. You define workflows as YA
 
 You need the following installed on your machine:
 
-- **Go 1.22+** -- [install instructions](https://go.dev/doc/install)
+- **Go 1.25+** -- [install instructions](https://go.dev/doc/install)
 - **Docker and Docker Compose** -- [install instructions](https://docs.docker.com/get-docker/)
 - **Make** -- included on macOS and most Linux distributions
 
 Verify your setup:
 
 ```bash
-go version    # go1.22 or later
+go version    # go1.25 or later
 docker --version
 ```
 
@@ -383,7 +383,6 @@ Running ai-structured-extraction (version 1)...
 Execution d4e5f6a7-b8c9-0123-defa-234567890123: completed
   fetch-page: completed
   extract-metadata: completed
-  post-extracted-data: completed
 ```
 
 ### Key AI Connector Details
