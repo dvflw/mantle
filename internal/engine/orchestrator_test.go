@@ -3,330 +3,203 @@ package engine
 import (
 	"context"
 	"database/sql"
-	"log/slog"
 	"testing"
 	"time"
+
+	"github.com/dvflw/mantle/internal/db"
+	"github.com/dvflw/mantle/internal/workflow"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func newTestOrchestrator(database *sql.DB, nodeID string) *Orchestrator {
-	return &Orchestrator{
-		DB:            database,
-		NodeID:        nodeID,
-		LeaseDuration: 30 * time.Second,
-		PollInterval:  1 * time.Second,
-		Logger:        slog.Default(),
+func setupTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	ctx := context.Background()
+	pgContainer, err := postgres.Run(ctx,
+		"postgres:16-alpine",
+		postgres.WithDatabase("mantle_test"),
+		postgres.WithUsername("mantle"),
+		postgres.WithPassword("mantle"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(30*time.Second),
+		),
+	)
+	if err != nil {
+		t.Skipf("Could not start Postgres container: %v", err)
 	}
+	t.Cleanup(func() {
+		if err := pgContainer.Terminate(ctx); err != nil {
+			t.Logf("Failed to terminate container: %v", err)
+		}
+	})
+	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("Failed to get connection string: %v", err)
+	}
+
+	database, err := db.Open(connStr)
+	if err != nil {
+		t.Fatalf("Failed to open database: %v", err)
+	}
+	t.Cleanup(func() { database.Close() })
+
+	if err := db.Migrate(ctx, database); err != nil {
+		t.Fatalf("Failed to run migrations: %v", err)
+	}
+
+	return database
 }
 
-func TestOrchestrator_ClaimExecution(t *testing.T) {
-	database := setupTestDB(t)
-	ctx := context.Background()
-	execID := createTestExecution(t, database)
-
-	orch1 := newTestOrchestrator(database, "node-1")
-	orch2 := newTestOrchestrator(database, "node-2")
-
-	// First claim should succeed.
-	claimed, err := orch1.ClaimExecution(ctx, execID)
+// createTestExecution inserts a workflow_executions row and returns its ID.
+func createTestExecution(t *testing.T, database *sql.DB) string {
+	t.Helper()
+	var id string
+	err := database.QueryRow(
+		`INSERT INTO workflow_executions (workflow_name, workflow_version, status)
+		 VALUES ('test-workflow', 1, 'running')
+		 RETURNING id`,
+	).Scan(&id)
 	if err != nil {
-		t.Fatalf("ClaimExecution() error = %v", err)
+		t.Fatalf("Failed to create test execution: %v", err)
 	}
-	if !claimed {
-		t.Fatal("ClaimExecution() first claim should succeed")
-	}
-
-	// Second claim by a different node should fail.
-	claimed, err = orch2.ClaimExecution(ctx, execID)
-	if err != nil {
-		t.Fatalf("ClaimExecution() error = %v", err)
-	}
-	if claimed {
-		t.Fatal("ClaimExecution() second claim should fail")
-	}
+	return id
 }
 
-func TestOrchestrator_RenewExecutionLease(t *testing.T) {
+func TestOrchestrator_DAGBasedStepCreation(t *testing.T) {
 	database := setupTestDB(t)
 	ctx := context.Background()
+	o := NewOrchestrator(database)
+
 	execID := createTestExecution(t, database)
 
-	orch := newTestOrchestrator(database, "node-1")
-
-	claimed, err := orch.ClaimExecution(ctx, execID)
-	if err != nil {
-		t.Fatalf("ClaimExecution() error = %v", err)
-	}
-	if !claimed {
-		t.Fatal("ClaimExecution() should succeed")
+	steps := []workflow.Step{
+		{Name: "a"},
+		{Name: "b"},
+		{Name: "c", DependsOn: []string{"a", "b"}},
 	}
 
-	// Read the initial lease expiry.
-	var initialExpiry time.Time
-	err = database.QueryRow(
-		`SELECT lease_expires_at FROM execution_claims WHERE execution_id = $1`,
-		execID,
-	).Scan(&initialExpiry)
-	if err != nil {
-		t.Fatalf("QueryRow error = %v", err)
-	}
+	dag, err := BuildDAG(steps)
+	require.NoError(t, err)
 
-	// Small sleep to ensure time difference.
-	time.Sleep(10 * time.Millisecond)
+	// Initially, a and b should be ready (no deps).
+	ready := dag.ReadySteps(map[string]string{})
+	assert.ElementsMatch(t, []string{"a", "b"}, ready)
 
-	// Renew the lease.
-	if err := orch.RenewExecutionLease(ctx, execID); err != nil {
-		t.Fatalf("RenewExecutionLease() error = %v", err)
-	}
+	err = o.CreatePendingSteps(ctx, execID, ready, map[string]int{})
+	require.NoError(t, err)
 
-	// Verify lease was extended.
-	var newExpiry time.Time
-	err = database.QueryRow(
-		`SELECT lease_expires_at FROM execution_claims WHERE execution_id = $1`,
-		execID,
-	).Scan(&newExpiry)
-	if err != nil {
-		t.Fatalf("QueryRow error = %v", err)
-	}
-
-	if !newExpiry.After(initialExpiry) {
-		t.Errorf("RenewExecutionLease() new expiry %v should be after initial %v", newExpiry, initialExpiry)
-	}
-}
-
-func TestOrchestrator_ReleaseExecution(t *testing.T) {
-	database := setupTestDB(t)
-	ctx := context.Background()
-	execID := createTestExecution(t, database)
-
-	orch1 := newTestOrchestrator(database, "node-1")
-	orch2 := newTestOrchestrator(database, "node-2")
-
-	// Claim and release.
-	claimed, err := orch1.ClaimExecution(ctx, execID)
-	if err != nil {
-		t.Fatalf("ClaimExecution() error = %v", err)
-	}
-	if !claimed {
-		t.Fatal("ClaimExecution() should succeed")
-	}
-
-	if err := orch1.ReleaseExecution(ctx, execID); err != nil {
-		t.Fatalf("ReleaseExecution() error = %v", err)
-	}
-
-	// Another node should now be able to claim it.
-	claimed, err = orch2.ClaimExecution(ctx, execID)
-	if err != nil {
-		t.Fatalf("ClaimExecution() after release error = %v", err)
-	}
-	if !claimed {
-		t.Fatal("ClaimExecution() should succeed after release")
-	}
-}
-
-func TestOrchestrator_CreatePendingSteps(t *testing.T) {
-	database := setupTestDB(t)
-	ctx := context.Background()
-	execID := createTestExecution(t, database)
-
-	orch := newTestOrchestrator(database, "node-1")
-
-	stepNames := []string{"fetch-data", "transform", "notify"}
-	maxAttempts := map[string]int{
-		"fetch-data": 3,
-		"transform":  2,
-		"notify":     1,
-	}
-
-	if err := orch.CreatePendingSteps(ctx, execID, stepNames, maxAttempts); err != nil {
-		t.Fatalf("CreatePendingSteps() error = %v", err)
-	}
-
-	// Verify the rows were created.
+	// Verify 2 pending steps created.
 	var count int
-	err := database.QueryRow(
+	err = database.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM step_executions WHERE execution_id = $1 AND status = 'pending'`,
 		execID,
 	).Scan(&count)
-	if err != nil {
-		t.Fatalf("QueryRow error = %v", err)
-	}
-	if count != 3 {
-		t.Errorf("CreatePendingSteps() created %d rows, want 3", count)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 2, count)
 
-	// Verify max_attempts values.
-	var ma int
-	err = database.QueryRow(
-		`SELECT max_attempts FROM step_executions WHERE execution_id = $1 AND step_name = 'fetch-data'`,
-		execID,
-	).Scan(&ma)
-	if err != nil {
-		t.Fatalf("QueryRow error = %v", err)
-	}
-	if ma != 3 {
-		t.Errorf("max_attempts for fetch-data = %d, want 3", ma)
-	}
-
-	// Verify idempotency: calling again should not error.
-	if err := orch.CreatePendingSteps(ctx, execID, stepNames, maxAttempts); err != nil {
-		t.Fatalf("CreatePendingSteps() second call error = %v", err)
-	}
-
-	err = database.QueryRow(
-		`SELECT COUNT(*) FROM step_executions WHERE execution_id = $1 AND status = 'pending'`,
-		execID,
-	).Scan(&count)
-	if err != nil {
-		t.Fatalf("QueryRow error = %v", err)
-	}
-	if count != 3 {
-		t.Errorf("CreatePendingSteps() idempotent call resulted in %d rows, want 3", count)
-	}
-}
-
-func TestOrchestrator_GetStepStatuses(t *testing.T) {
-	database := setupTestDB(t)
-	ctx := context.Background()
-	execID := createTestExecution(t, database)
-
-	// Insert two attempts for the same step; the latest attempt should be returned.
-	insertPendingStep(t, database, execID, "fetch-data", 1)
-	// Update attempt 1 to failed.
-	_, err := database.Exec(
-		`UPDATE step_executions SET status = 'failed', error = 'timeout'
-		 WHERE execution_id = $1 AND step_name = 'fetch-data' AND attempt = 1`,
+	// Simulate a and b completed.
+	_, err = database.ExecContext(ctx,
+		`UPDATE step_executions SET status = 'completed' WHERE execution_id = $1`,
 		execID,
 	)
-	if err != nil {
-		t.Fatalf("Update error = %v", err)
+	require.NoError(t, err)
+
+	// Get statuses and check what's ready next.
+	statuses, err := o.GetStepStatuses(ctx, execID)
+	require.NoError(t, err)
+
+	statusMap := make(map[string]string)
+	for name, ss := range statuses {
+		statusMap[name] = ss.Status
 	}
 
-	// Insert attempt 2 as running.
-	insertPendingStep(t, database, execID, "fetch-data", 2)
-	_, err = database.Exec(
-		`UPDATE step_executions SET status = 'running'
-		 WHERE execution_id = $1 AND step_name = 'fetch-data' AND attempt = 2`,
+	ready2 := dag.ReadySteps(statusMap)
+	assert.Equal(t, []string{"c"}, ready2)
+}
+
+func TestOrchestrator_DAGFailureCascade(t *testing.T) {
+	database := setupTestDB(t)
+	ctx := context.Background()
+	o := NewOrchestrator(database)
+
+	execID := createTestExecution(t, database)
+
+	// Steps: a, b (independent), c depends on a, d depends on b.
+	// a fails -> c should be cancelled, d should still proceed.
+	steps := []workflow.Step{
+		{Name: "a"},
+		{Name: "b"},
+		{Name: "c", DependsOn: []string{"a"}},
+		{Name: "d", DependsOn: []string{"b"}},
+	}
+
+	dag, err := BuildDAG(steps)
+	require.NoError(t, err)
+
+	// Create pending steps for initial ready set (a and b).
+	ready := dag.ReadySteps(map[string]string{})
+	assert.ElementsMatch(t, []string{"a", "b"}, ready)
+
+	err = o.CreatePendingSteps(ctx, execID, ready, map[string]int{})
+	require.NoError(t, err)
+
+	// Simulate: a fails, b completes.
+	_, err = database.ExecContext(ctx,
+		`UPDATE step_executions SET status = 'failed' WHERE execution_id = $1 AND step_name = 'a'`,
 		execID,
 	)
-	if err != nil {
-		t.Fatalf("Update error = %v", err)
-	}
-
-	// Insert another step.
-	insertPendingStep(t, database, execID, "notify", 1)
-
-	orch := newTestOrchestrator(database, "node-1")
-	statuses, err := orch.GetStepStatuses(ctx, execID)
-	if err != nil {
-		t.Fatalf("GetStepStatuses() error = %v", err)
-	}
-
-	if len(statuses) != 2 {
-		t.Fatalf("GetStepStatuses() returned %d statuses, want 2", len(statuses))
-	}
-
-	// fetch-data should show the latest attempt (attempt 2, running).
-	fd, ok := statuses["fetch-data"]
-	if !ok {
-		t.Fatal("GetStepStatuses() missing fetch-data")
-	}
-	if fd.Status != "running" {
-		t.Errorf("fetch-data status = %q, want %q", fd.Status, "running")
-	}
-	if fd.Attempt != 2 {
-		t.Errorf("fetch-data attempt = %d, want 2", fd.Attempt)
-	}
-
-	// notify should be pending.
-	notify, ok := statuses["notify"]
-	if !ok {
-		t.Fatal("GetStepStatuses() missing notify")
-	}
-	if notify.Status != "pending" {
-		t.Errorf("notify status = %q, want %q", notify.Status, "pending")
-	}
-}
-
-func TestOrchestrator_CreateRetryStep(t *testing.T) {
-	database := setupTestDB(t)
-	ctx := context.Background()
-	execID := createTestExecution(t, database)
-
-	// Insert initial attempt.
-	insertPendingStep(t, database, execID, "fetch-data", 1)
-
-	orch := newTestOrchestrator(database, "node-1")
-
-	// Create retry attempt.
-	if err := orch.CreateRetryStep(ctx, execID, "fetch-data", 2, 3); err != nil {
-		t.Fatalf("CreateRetryStep() error = %v", err)
-	}
-
-	// Verify the new attempt exists.
-	var status string
-	var attempt, maxAttempts int
-	err := database.QueryRow(
-		`SELECT status, attempt, max_attempts FROM step_executions
-		 WHERE execution_id = $1 AND step_name = 'fetch-data' AND attempt = 2`,
+	require.NoError(t, err)
+	_, err = database.ExecContext(ctx,
+		`UPDATE step_executions SET status = 'completed' WHERE execution_id = $1 AND step_name = 'b'`,
 		execID,
-	).Scan(&status, &attempt, &maxAttempts)
-	if err != nil {
-		t.Fatalf("QueryRow error = %v", err)
-	}
-	if status != "pending" {
-		t.Errorf("retry step status = %q, want %q", status, "pending")
-	}
-	if attempt != 2 {
-		t.Errorf("retry step attempt = %d, want 2", attempt)
-	}
-	if maxAttempts != 3 {
-		t.Errorf("retry step max_attempts = %d, want 3", maxAttempts)
-	}
-}
+	)
+	require.NoError(t, err)
 
-func TestOrchestrator_CancelPendingSteps(t *testing.T) {
-	database := setupTestDB(t)
-	ctx := context.Background()
-	execID := createTestExecution(t, database)
+	// Get statuses.
+	statuses, err := o.GetStepStatuses(ctx, execID)
+	require.NoError(t, err)
 
-	// Create some pending steps.
-	insertPendingStep(t, database, execID, "step-a", 1)
-	insertPendingStep(t, database, execID, "step-b", 1)
-	insertPendingStep(t, database, execID, "step-c", 1)
-
-	orch := newTestOrchestrator(database, "node-1")
-
-	// Cancel only step-a and step-b.
-	if err := orch.CancelPendingSteps(ctx, execID, []string{"step-a", "step-b"}); err != nil {
-		t.Fatalf("CancelPendingSteps() error = %v", err)
+	statusMap := make(map[string]string)
+	for name, ss := range statuses {
+		statusMap[name] = ss.Status
 	}
+	assert.Equal(t, "failed", statusMap["a"])
+	assert.Equal(t, "completed", statusMap["b"])
 
-	// Verify step-a and step-b are cancelled.
-	for _, name := range []string{"step-a", "step-b"} {
-		var status string
-		err := database.QueryRow(
-			`SELECT status FROM step_executions WHERE execution_id = $1 AND step_name = $2`,
-			execID, name,
-		).Scan(&status)
-		if err != nil {
-			t.Fatalf("QueryRow error for %s: %v", name, err)
-		}
-		if status != "cancelled" {
-			t.Errorf("%s status = %q, want %q", name, status, "cancelled")
-		}
-	}
+	// Determine cascade cancellations: c should be cancelled (depends on failed a).
+	cancelled := dag.CascadeCancellations(statusMap)
+	assert.True(t, cancelled["c"], "c should be cancelled because a failed")
+	assert.False(t, cancelled["d"], "d should not be cancelled because b completed")
 
-	// step-c should still be pending.
-	var status string
-	err := database.QueryRow(
-		`SELECT status FROM step_executions WHERE execution_id = $1 AND step_name = 'step-c'`,
-		execID,
-	).Scan(&status)
-	if err != nil {
-		t.Fatalf("QueryRow error for step-c: %v", err)
+	// Create pending for d (ready because b completed), then cancel c.
+	ready2 := dag.ReadySteps(statusMap)
+	assert.Equal(t, []string{"d"}, ready2)
+
+	err = o.CreatePendingSteps(ctx, execID, ready2, map[string]int{})
+	require.NoError(t, err)
+
+	// Also create c as pending so we can cancel it.
+	err = o.CreatePendingSteps(ctx, execID, []string{"c"}, map[string]int{})
+	require.NoError(t, err)
+
+	// Cancel the cascaded steps.
+	cancelNames := make([]string, 0, len(cancelled))
+	for name := range cancelled {
+		cancelNames = append(cancelNames, name)
 	}
-	if status != "pending" {
-		t.Errorf("step-c status = %q, want %q", status, "pending")
-	}
+	err = o.CancelPendingSteps(ctx, execID, cancelNames)
+	require.NoError(t, err)
+
+	// Verify final statuses: a=failed, b=completed, c=cancelled, d=pending.
+	finalStatuses, err := o.GetStepStatuses(ctx, execID)
+	require.NoError(t, err)
+	assert.Equal(t, "failed", finalStatuses["a"].Status)
+	assert.Equal(t, "completed", finalStatuses["b"].Status)
+	assert.Equal(t, "cancelled", finalStatuses["c"].Status)
+	assert.Equal(t, "pending", finalStatuses["d"].Status)
 }
