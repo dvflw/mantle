@@ -1,0 +1,40 @@
+name: scheduled-health-check
+description: >
+  Run every 5 minutes via cron to check whether a service is healthy.
+  If the health endpoint returns a non-200 status, post an alert to a
+  notification webhook. Demonstrates cron triggers, retry policies, and
+  conditional alerting.
+
+triggers:
+  - type: cron
+    schedule: "*/5 * * * *"
+
+steps:
+  - name: check-health
+    action: http/request
+    timeout: "15s"
+    retry:
+      max_attempts: 3
+      backoff: exponential
+    params:
+      method: GET
+      url: "https://jsonplaceholder.typicode.com/posts/1"
+      headers:
+        Accept: "application/json"
+
+  - name: send-alert
+    action: http/request
+    if: "steps['check-health'].output.status != 200"
+    timeout: "10s"
+    retry:
+      max_attempts: 2
+      backoff: fixed
+    params:
+      method: POST
+      url: "https://jsonplaceholder.typicode.com/posts"
+      headers:
+        Content-Type: "application/json"
+      body:
+        title: "Health check failed"
+        body: "Service returned status {{ steps['check-health'].output.status }}"
+        severity: "critical"

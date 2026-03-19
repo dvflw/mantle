@@ -1,0 +1,66 @@
+name: cron-and-webhook
+description: >
+  A daily report workflow that runs on a weekday schedule (9 AM Mon-Fri)
+  and can also be triggered on-demand via webhook. Demonstrates multiple
+  triggers on a single workflow — a common pattern for reports that need
+  both scheduled and manual execution.
+
+triggers:
+  - type: cron
+    schedule: "0 9 * * 1-5"
+  - type: webhook
+    path: "/hooks/report"
+
+steps:
+  - name: fetch-data
+    action: http/request
+    timeout: "15s"
+    retry:
+      max_attempts: 3
+      backoff: exponential
+    params:
+      method: GET
+      url: "https://jsonplaceholder.typicode.com/posts"
+      headers:
+        Accept: "application/json"
+
+  - name: summarize
+    action: ai/completion
+    credential: openai
+    timeout: "60s"
+    params:
+      model: gpt-4o-mini
+      system_prompt: >
+        You are a concise report generator. Given a list of items, produce
+        a brief executive summary with key highlights.
+      prompt: "Generate a daily summary report from this data: {{ steps['fetch-data'].output.body }}"
+      output_schema:
+        type: object
+        properties:
+          summary:
+            type: string
+          highlights:
+            type: array
+            items:
+              type: string
+          item_count:
+            type: number
+        required:
+          - summary
+          - highlights
+          - item_count
+        additionalProperties: false
+
+  - name: post-report
+    action: http/request
+    if: "size(steps.summarize.output.json.highlights) > 0"
+    timeout: "10s"
+    params:
+      method: POST
+      url: "https://jsonplaceholder.typicode.com/posts"
+      headers:
+        Content-Type: "application/json"
+      body:
+        title: "Daily Report"
+        body: "{{ steps.summarize.output.json.summary }}"
+        item_count: "{{ steps.summarize.output.json.item_count }}"

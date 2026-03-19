@@ -1,0 +1,86 @@
+name: data-pipeline
+description: >
+  A four-step data pipeline that fetches raw data from a source URL,
+  transforms it with an AI model using structured output, validates the
+  result, and conditionally posts the final output. Demonstrates chaining
+  HTTP and AI steps, structured extraction, credentials, retry policies,
+  and conditional execution.
+
+inputs:
+  source_url:
+    type: string
+    description: URL to fetch raw data from
+
+steps:
+  - name: fetch-source
+    action: http/request
+    timeout: "15s"
+    retry:
+      max_attempts: 3
+      backoff: exponential
+    params:
+      method: GET
+      url: "{{ inputs.source_url }}"
+      headers:
+        Accept: "application/json"
+
+  - name: transform
+    action: ai/completion
+    credential: openai
+    timeout: "60s"
+    params:
+      model: gpt-4o
+      system_prompt: >
+        You are a data transformation engine. Given raw JSON data, extract and
+        normalize the key fields into a clean structured format.
+      prompt: "Transform this data into a normalized record: {{ steps['fetch-source'].output.body }}"
+      output_schema:
+        type: object
+        properties:
+          title:
+            type: string
+          summary:
+            type: string
+          tags:
+            type: array
+            items:
+              type: string
+          confidence:
+            type: number
+        required:
+          - title
+          - summary
+          - tags
+          - confidence
+        additionalProperties: false
+
+  - name: validate
+    action: http/request
+    timeout: "10s"
+    retry:
+      max_attempts: 2
+      backoff: fixed
+    params:
+      method: POST
+      url: "https://jsonplaceholder.typicode.com/posts"
+      headers:
+        Content-Type: "application/json"
+      body:
+        title: "Validation check"
+        body: "{{ steps.transform.output.json.summary }}"
+        tags: "{{ steps.transform.output.json.tags }}"
+
+  - name: publish-result
+    action: http/request
+    if: "steps.validate.output.status == 201"
+    timeout: "10s"
+    params:
+      method: POST
+      url: "https://jsonplaceholder.typicode.com/posts"
+      headers:
+        Content-Type: "application/json"
+      body:
+        title: "{{ steps.transform.output.json.title }}"
+        body: "{{ steps.transform.output.json.summary }}"
+        source: "{{ inputs.source_url }}"
+        confidence: "{{ steps.transform.output.json.confidence }}"

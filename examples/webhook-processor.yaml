@@ -1,0 +1,40 @@
+name: webhook-processor
+description: >
+  Process incoming webhook payloads. Triggered by HTTP POST to /hooks/process,
+  the workflow echoes the payload to an external API and conditionally logs
+  the result based on status code. Demonstrates webhook triggers and
+  trigger.payload access in CEL expressions.
+
+triggers:
+  - type: webhook
+    path: "/hooks/process"
+
+steps:
+  - name: echo-payload
+    action: http/request
+    timeout: "10s"
+    retry:
+      max_attempts: 3
+      backoff: exponential
+    params:
+      method: POST
+      url: "https://jsonplaceholder.typicode.com/posts"
+      headers:
+        Content-Type: "application/json"
+      body:
+        title: "Webhook payload received"
+        body: "{{ inputs.trigger.payload }}"
+        source_path: "{{ inputs.trigger.path }}"
+
+  - name: log-success
+    action: http/request
+    if: "steps['echo-payload'].output.status == 201"
+    params:
+      method: POST
+      url: "https://jsonplaceholder.typicode.com/posts"
+      headers:
+        Content-Type: "application/json"
+      body:
+        title: "Webhook processed successfully"
+        body: "Echo returned status 201"
+        echo_id: "{{ steps['echo-payload'].output.json.id }}"
