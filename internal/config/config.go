@@ -2,6 +2,9 @@ package config
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -12,6 +15,16 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	API      APIConfig      `mapstructure:"api"`
 	Log      LogConfig      `mapstructure:"log"`
+	Engine   EngineConfig   `mapstructure:"engine"`
+}
+
+// EngineConfig holds distributed engine settings.
+type EngineConfig struct {
+	NodeID             string        `mapstructure:"node_id"`
+	WorkerPollInterval time.Duration `mapstructure:"worker_poll_interval"`
+	WorkerMaxBackoff   time.Duration `mapstructure:"worker_max_backoff"`
+	StepLeaseDuration  time.Duration `mapstructure:"step_lease_duration"`
+	ReaperInterval     time.Duration `mapstructure:"reaper_interval"`
 }
 
 // DatabaseConfig holds database connection settings.
@@ -52,6 +65,12 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	v.SetDefault("api.address", ":8080")
 	v.SetDefault("log.level", "info")
 
+	// Engine defaults
+	v.SetDefault("engine.worker_poll_interval", 200*time.Millisecond)
+	v.SetDefault("engine.worker_max_backoff", 5*time.Second)
+	v.SetDefault("engine.step_lease_duration", 60*time.Second)
+	v.SetDefault("engine.reaper_interval", 30*time.Second)
+
 	// Config file
 	configPath, _ := cmd.Flags().GetString("config")
 	if configPath != "" {
@@ -79,6 +98,13 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	_ = v.BindEnv("api.address", "MANTLE_API_ADDRESS")
 	_ = v.BindEnv("log.level", "MANTLE_LOG_LEVEL")
 
+	// Engine env var bindings
+	_ = v.BindEnv("engine.node_id", "MANTLE_ENGINE_NODE_ID")
+	_ = v.BindEnv("engine.worker_poll_interval", "MANTLE_ENGINE_WORKER_POLL_INTERVAL")
+	_ = v.BindEnv("engine.worker_max_backoff", "MANTLE_ENGINE_WORKER_MAX_BACKOFF")
+	_ = v.BindEnv("engine.step_lease_duration", "MANTLE_ENGINE_STEP_LEASE_DURATION")
+	_ = v.BindEnv("engine.reaper_interval", "MANTLE_ENGINE_REAPER_INTERVAL")
+
 	// CLI flag binding
 	if f := cmd.Flags().Lookup("database-url"); f != nil {
 		_ = v.BindPFlag("database.url", f)
@@ -93,6 +119,12 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, err
+	}
+
+	// Generate default NodeID if not set.
+	if cfg.Engine.NodeID == "" {
+		hostname, _ := os.Hostname()
+		cfg.Engine.NodeID = fmt.Sprintf("%s:%d", hostname, os.Getpid())
 	}
 
 	return &cfg, nil
