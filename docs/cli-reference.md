@@ -478,24 +478,103 @@ After rotating, update `MANTLE_ENCRYPTION_KEY` (or `encryption.key` in `mantle.y
 
 ---
 
-## Coming Soon
-
-The following commands are planned but not yet implemented.
-
 ### mantle serve
 
-Start Mantle as a persistent server with cron scheduling and webhook ingestion.
+Start Mantle as a persistent server with an HTTP API, cron scheduler, and webhook listener. This is the primary way to run Mantle in production.
 
 ```
 Usage:
   mantle serve [flags]
 ```
 
-**Expected flags:**
+**Flags:**
 
-| Flag | Description |
-|---|---|
-| `--api-address` | Listen address for the API server (default `:8080`). |
+| Flag | Env Var | Default | Description |
+|---|---|---|---|
+| `--api-address` | `MANTLE_API_ADDRESS` | `:8080` | Listen address for the HTTP server. |
+
+**Behavior:**
+
+When you run `mantle serve`, Mantle:
+
+1. Runs all pending database migrations automatically
+2. Starts the HTTP API on the configured address
+3. Starts the cron scheduler, polling every 30 seconds for due triggers
+4. Registers webhook listener endpoints for all applied workflows with webhook triggers
+5. Serves health endpoints at `/healthz` and `/readyz`
+
+**Example:**
+
+```bash
+$ mantle serve
+Running migrations...
+Migrations complete.
+Starting server on :8080
+Cron scheduler started (poll interval: 30s)
+```
+
+**Custom address:**
+
+```bash
+$ mantle serve --api-address :9090
+Starting server on :9090
+```
+
+**Graceful shutdown:**
+
+Mantle shuts down gracefully on `SIGTERM` or `SIGINT`. When the signal is received:
+
+1. The HTTP server stops accepting new connections
+2. In-flight requests are allowed to complete
+3. Running workflow executions finish their current step and checkpoint
+4. The process exits with code 0
+
+```bash
+$ mantle serve
+Starting server on :8080
+^C
+Shutting down gracefully...
+Server stopped.
+```
+
+**REST API endpoints:**
+
+The server exposes these API endpoints:
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/v1/run/{workflow}` | Trigger a workflow execution. Returns the execution ID, workflow name, and version. |
+| `POST` | `/api/v1/cancel/{execution}` | Cancel a running execution. |
+| `POST` | `/hooks/<path>` | Webhook trigger endpoint. The request body is available as `trigger.payload` in the workflow's inputs. |
+| `GET` | `/healthz` | Liveness probe. Returns 200 when the process is running. |
+| `GET` | `/readyz` | Readiness probe. Returns 200 when the database connection is healthy and migrations are applied. |
+
+**Example -- trigger a workflow via the API:**
+
+```bash
+$ curl -s -X POST http://localhost:8080/api/v1/run/fetch-and-summarize | jq .
+{
+  "execution_id": "abc123-def456",
+  "workflow": "fetch-and-summarize",
+  "version": 2
+}
+```
+
+**Example -- cancel an execution via the API:**
+
+```bash
+$ curl -s -X POST http://localhost:8080/api/v1/cancel/abc123-def456
+```
+
+**Example -- trigger a webhook:**
+
+```bash
+$ curl -s -X POST http://localhost:8080/hooks/my-workflow \
+    -H "Content-Type: application/json" \
+    -d '{"event": "deploy", "repo": "my-app"}'
+```
+
+Requires a database connection. See the [Server Guide](server-guide.md) for production deployment guidance.
 
 ---
 

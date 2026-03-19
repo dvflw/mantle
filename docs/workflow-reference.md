@@ -16,6 +16,12 @@ inputs:
     type: number
     description: Maximum number of retries for the HTTP request
 
+triggers:
+  - type: cron
+    schedule: "0 * * * *"
+  - type: webhook
+    path: "/hooks/fetch-and-summarize"
+
 steps:
   - name: fetch-data
     action: http/request
@@ -52,6 +58,7 @@ steps:
 | `name` | string | Yes | Unique identifier for the workflow. Must be kebab-case: lowercase letters, digits, and hyphens. Pattern: `^[a-z][a-z0-9-]*$`. |
 | `description` | string | No | Human-readable description of what the workflow does. |
 | `inputs` | map | No | Input parameters the workflow accepts at runtime. |
+| `triggers` | list | No | Automatic triggers that start the workflow. See [Triggers](#triggers). |
 | `steps` | list | Yes | Ordered list of steps to execute. At least one step is required. |
 
 ### Name Rules
@@ -183,6 +190,7 @@ Mantle uses [CEL (Common Expression Language)](https://github.com/google/cel-go)
 | `inputs.NAME` | Value of the input parameter `NAME`. |
 | `steps.STEP_NAME.output` | Output of the step named `STEP_NAME`. The structure depends on the connector. |
 | `env.NAME` | Value of the environment variable `NAME`. |
+| `trigger.payload` | Request body from a webhook trigger, parsed as JSON. Only available for webhook-triggered executions. |
 
 ### Expression Examples
 
@@ -339,6 +347,137 @@ The structured output is available as `steps.extract-entities.output.json.people
 ```
 
 **Authentication:** The AI connector reads the credential's `api_key` field (or `token` or `key` as fallbacks) and sends it as a Bearer token. If the credential includes an `org_id` field, it is sent as the `OpenAI-Organization` header. See the [Secrets Guide](secrets-guide.md) for how to create an `openai`-type credential.
+
+## Triggers
+
+Triggers define how a workflow is started automatically when Mantle runs in server mode (`mantle serve`). A workflow can have zero, one, or multiple triggers.
+
+```yaml
+triggers:
+  - type: cron
+    schedule: "*/5 * * * *"
+  - type: webhook
+    path: "/hooks/my-workflow"
+```
+
+Triggers are optional. Without them, the workflow can still be executed manually with `mantle run` or via the REST API (`POST /api/v1/run/{workflow}`).
+
+### Trigger Lifecycle
+
+Triggers are managed through the standard IaC lifecycle. When you run `mantle apply`:
+
+- **New triggers** in the YAML are registered with the server
+- **Changed triggers** (e.g., updated cron schedule) are updated
+- **Removed triggers** (deleted from the YAML) are deregistered
+
+You do not manage triggers separately. The workflow definition is the single source of truth.
+
+### Trigger Fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `type` | string | Yes | Trigger type. One of: `cron`, `webhook`. |
+| `schedule` | string | Cron only | Cron expression defining the schedule. Required when `type` is `cron`. |
+| `path` | string | Webhook only | URL path for the webhook endpoint. Required when `type` is `webhook`. |
+
+### Cron Triggers
+
+Cron triggers execute the workflow on a recurring schedule. The `schedule` field uses standard 5-field cron syntax:
+
+```
+┌───────────── minute (0-59)
+│ ┌───────────── hour (0-23)
+│ │ ┌───────────── day of month (1-31)
+│ │ │ ┌───────────── month (1-12)
+│ │ │ │ ┌───────────── day of week (0-6, Sunday=0)
+│ │ │ │ │
+* * * * *
+```
+
+**Supported syntax:**
+
+| Syntax | Meaning | Example |
+|---|---|---|
+| `*` | Every value | `* * * * *` -- every minute |
+| `*/N` | Every N intervals | `*/5 * * * *` -- every 5 minutes |
+| `N-M` | Range from N to M | `0 9-17 * * *` -- every hour from 9 AM to 5 PM |
+| `N,M,O` | Comma-separated list | `0 0 1,15 * *` -- 1st and 15th of the month |
+
+**Examples:**
+
+```yaml
+# Every 5 minutes
+triggers:
+  - type: cron
+    schedule: "*/5 * * * *"
+
+# Daily at midnight
+triggers:
+  - type: cron
+    schedule: "0 0 * * *"
+
+# Weekdays at 9 AM
+triggers:
+  - type: cron
+    schedule: "0 9 * * 1-5"
+
+# Every hour on the hour
+triggers:
+  - type: cron
+    schedule: "0 * * * *"
+```
+
+The cron scheduler polls every 30 seconds. Executions may start up to 30 seconds after the scheduled time.
+
+### Webhook Triggers
+
+Webhook triggers execute the workflow when an HTTP POST request is received at the configured path. The request body is available inside the workflow as `trigger.payload`.
+
+```yaml
+triggers:
+  - type: webhook
+    path: "/hooks/deploy-notifier"
+```
+
+When the server receives a POST to `/hooks/deploy-notifier`, it starts a new execution. The full request body is parsed as JSON and made available through the `trigger.payload` variable in CEL expressions:
+
+```yaml
+name: deploy-notifier
+triggers:
+  - type: webhook
+    path: "/hooks/deploy-notifier"
+
+steps:
+  - name: notify
+    action: http/request
+    params:
+      method: POST
+      url: https://hooks.slack.com/services/T00/B00/xxx
+      body:
+        text: "Deployed {{ trigger.payload.repo }} to {{ trigger.payload.environment }}"
+```
+
+Triggering the webhook:
+
+```bash
+curl -X POST http://localhost:8080/hooks/deploy-notifier \
+  -H "Content-Type: application/json" \
+  -d '{"repo": "my-app", "environment": "production"}'
+```
+
+### Multiple Triggers
+
+A workflow can have multiple triggers of different types. Each trigger independently starts a new execution:
+
+```yaml
+triggers:
+  - type: cron
+    schedule: "0 * * * *"
+  - type: webhook
+    path: "/hooks/my-workflow"
+```
+
+This workflow runs every hour on the hour via cron, and can also be triggered on demand via a webhook POST.
 
 ## Validation Rules Summary
 

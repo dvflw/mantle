@@ -207,6 +207,77 @@ The resolved credential fields are injected directly into the connector as an in
 
 For the full operational guide, see the [Secrets Guide](secrets-guide.md).
 
+## Triggers and Server Mode
+
+Up to this point, every concept on this page describes workflows that are triggered manually: you run `mantle run` and the engine executes the latest applied version. Triggers and server mode introduce automatic execution.
+
+### Server Mode
+
+`mantle serve` starts Mantle as a long-running process. Instead of executing a single workflow and exiting, the server stays up and:
+
+- Accepts HTTP API requests to trigger and cancel executions
+- Polls for due cron triggers every 30 seconds
+- Listens for incoming webhook requests
+- Serves health endpoints for load balancer and Kubernetes probes
+
+The server runs migrations automatically on startup, so you do not need a separate `mantle init` step in your deployment pipeline.
+
+### Cron Triggers
+
+A cron trigger tells Mantle to start a new workflow execution on a recurring schedule. The schedule uses standard 5-field cron syntax (minute, hour, day-of-month, month, day-of-week).
+
+```yaml
+triggers:
+  - type: cron
+    schedule: "*/5 * * * *"
+```
+
+The cron scheduler is built into the `mantle serve` process. It polls every 30 seconds, checks which cron triggers are due, and starts new executions for them. Cron triggers have no effect when running workflows manually with `mantle run` -- they only fire in server mode.
+
+### Webhook Triggers
+
+A webhook trigger tells Mantle to start a new workflow execution when an HTTP POST arrives at a specific path. The request body is parsed as JSON and made available as `trigger.payload` in CEL expressions.
+
+```yaml
+triggers:
+  - type: webhook
+    path: "/hooks/on-deploy"
+```
+
+This is the primary way to integrate Mantle with external systems: CI pipelines, monitoring alerts, GitHub webhooks, and third-party SaaS tools can all POST to a webhook endpoint to kick off a workflow.
+
+### Trigger Lifecycle
+
+Triggers are managed through the same IaC lifecycle as the rest of the workflow definition. When you run `mantle apply`:
+
+- Triggers defined in the YAML are registered (or updated) in the database
+- Triggers that were previously registered but are no longer in the YAML are deregistered
+
+This means the workflow YAML file is the single source of truth for trigger configuration. You do not create, update, or delete triggers separately -- they are part of the apply cycle.
+
+```
+# First apply: registers the cron trigger
+mantle apply workflow.yaml
+
+# Edit workflow.yaml: change schedule from */5 to */10
+mantle apply workflow.yaml    # Updates the trigger
+
+# Edit workflow.yaml: remove the triggers section entirely
+mantle apply workflow.yaml    # Deregisters all triggers
+```
+
+### Cron vs Webhook: When to Use Which
+
+| Use Case | Trigger Type | Why |
+|---|---|---|
+| Periodic data sync | Cron | Runs on a fixed schedule regardless of external events |
+| Deploy notifications | Webhook | Fires in response to an external event (CI pipeline) |
+| Daily report generation | Cron | Time-based, no external signal needed |
+| GitHub push handler | Webhook | Event-driven, triggered by an external system |
+| Scheduled cleanup | Cron | Maintenance task on a recurring schedule |
+
+Many workflows benefit from both: a cron trigger for periodic runs and a webhook trigger for on-demand execution by external systems.
+
 ## Architecture Summary
 
 Mantle is a single Go binary that connects to a Postgres database. There are no other runtime dependencies.
@@ -218,7 +289,9 @@ Mantle is a single Go binary that connects to a Postgres database. There are no 
 |  - CLI commands  |     | - workflow_definitions
 |  - Workflow engine|    | - workflow_executions
 |  - Connectors    |     | - step_executions
-|  - API server    |     +-----------+
+|  - API server    |     | - credentials
+|  - Cron scheduler|     +-----------+
+|  - Webhook listener|
 +------------------+
 ```
 
@@ -235,3 +308,4 @@ Mantle is a single Go binary that connects to a Postgres database. There are no 
 - [CLI Reference](cli-reference.md) -- every command and flag
 - [Configuration](configuration.md) -- config file, env vars, and flag precedence
 - [Secrets Guide](secrets-guide.md) -- credential encryption, creation, and key rotation
+- [Server Guide](server-guide.md) -- running Mantle as a persistent server with triggers

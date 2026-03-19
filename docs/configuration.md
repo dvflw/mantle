@@ -38,7 +38,7 @@ encryption:
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `database.url` | string | `postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable` | Postgres connection URL. |
-| `api.address` | string | `:8080` | API server listen address. Format: `host:port` or `:port`. |
+| `api.address` | string | `:8080` | Listen address for `mantle serve`. Format: `host:port` or `:port`. Used by the HTTP API, webhook listener, and health endpoints. |
 | `log.level` | string | `info` | Log verbosity. One of: `debug`, `info`, `warn`, `error`. |
 | `encryption.key` | string | -- | Hex-encoded 32-byte master key for credential encryption. Required for `mantle secrets` commands. Generate with `openssl rand -hex 32`. |
 
@@ -149,6 +149,33 @@ mantle secrets create --name prod-openai --type openai --field api_key=sk-...
 
 The encryption key has no default value. It is only required when you use `mantle secrets` commands or run workflows that reference credentials. All other Mantle commands work without it.
 
+### Server Mode
+
+When running `mantle serve`, the `api.address` setting controls which address the HTTP server, webhook listener, and health endpoints bind to:
+
+```yaml
+# mantle.yaml
+database:
+  url: postgres://mantle:secret@db.internal:5432/mantle?sslmode=require
+
+api:
+  address: ":8080"
+
+log:
+  level: info
+```
+
+Or with environment variables:
+
+```bash
+export MANTLE_DATABASE_URL="postgres://mantle:secret@db.internal:5432/mantle?sslmode=require"
+export MANTLE_API_ADDRESS=":8080"
+export MANTLE_ENCRYPTION_KEY="$(cat /run/secrets/mantle-key)"
+mantle serve
+```
+
+The server runs migrations automatically on startup, so you do not need a separate `mantle init` step.
+
 ### Offline Commands
 
 The `mantle validate` and `mantle version` commands do not require a database connection. They skip config loading entirely, so you can run them without Postgres, a config file, or any environment variables:
@@ -165,3 +192,4 @@ See also:
 - [CLI Reference](cli-reference.md) -- flag documentation for every command
 - [Getting Started](getting-started.md) -- setup walkthrough using defaults
 - [Secrets Guide](secrets-guide.md) -- credential encryption, creation, and key rotation
+- [Server Guide](server-guide.md) -- running Mantle as a persistent server with triggers
