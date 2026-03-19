@@ -9,48 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dvflw/mantle/internal/db"
 	"github.com/dvflw/mantle/internal/workflow"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
-
-func setupTestDB(t *testing.T) *sql.DB {
-	t.Helper()
-	ctx := context.Background()
-	pgContainer, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("mantle_test"),
-		postgres.WithUsername("mantle"),
-		postgres.WithPassword("mantle"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(30*time.Second),
-		),
-	)
-	if err != nil {
-		t.Skipf("Could not start Postgres container: %v", err)
-	}
-	t.Cleanup(func() { pgContainer.Terminate(ctx) })
-
-	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("Failed to get connection string: %v", err)
-	}
-
-	database, err := db.Open(connStr)
-	if err != nil {
-		t.Fatalf("Failed to open database: %v", err)
-	}
-	t.Cleanup(func() { database.Close() })
-
-	if err := db.Migrate(ctx, database); err != nil {
-		t.Fatalf("Failed to run migrations: %v", err)
-	}
-	return database
-}
 
 // applyWorkflow stores a workflow definition and returns the version number.
 func applyWorkflow(t *testing.T, database *sql.DB, yamlContent []byte) int {
