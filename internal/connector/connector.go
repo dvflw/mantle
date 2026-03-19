@@ -22,6 +22,13 @@ func NewRegistry() *Registry {
 	}
 	r.Register("http/request", &HTTPConnector{})
 	r.Register("ai/completion", &AIConnector{})
+	r.Register("slack/send", &SlackSendConnector{})
+	r.Register("slack/history", &SlackHistoryConnector{})
+	r.Register("postgres/query", &PostgresQueryConnector{})
+	r.Register("email/send", &EmailSendConnector{})
+	r.Register("s3/put", &S3PutConnector{})
+	r.Register("s3/get", &S3GetConnector{})
+	r.Register("s3/list", &S3ListConnector{})
 	return r
 }
 

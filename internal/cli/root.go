@@ -43,6 +43,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(newTeamsCommand())
 	cmd.AddCommand(newUsersCommand())
 	cmd.AddCommand(newRolesCommand())
+	cmd.AddCommand(newPluginsCommand())
 
 	return cmd
 }

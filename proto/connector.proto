@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package mantle.connector.v1;
+
+option go_package = "github.com/dvflw/mantle/proto/connectorpb";
+
+// Connector is the gRPC service that all Mantle plugins must implement.
+// Plugins run as subprocesses and communicate with the engine over gRPC.
+service Connector {
+  // Execute runs the connector action with the given parameters.
+  rpc Execute(ExecuteRequest) returns (ExecuteResponse);
+
+  // Validate checks whether the given parameters are valid for this connector.
+  rpc Validate(ValidateRequest) returns (ValidateResponse);
+
+  // Describe returns metadata about the connector and its supported actions.
+  rpc Describe(DescribeRequest) returns (DescribeResponse);
+}
+
+message ExecuteRequest {
+  string action = 1;
+  map<string, string> params = 2;
+  map<string, string> credential = 3;
+}
+
+message ExecuteResponse {
+  map<string, string> output = 1;
+  string error = 2;
+}
+
+message ValidateRequest {
+  string action = 1;
+  map<string, string> params = 2;
+}
+
+message ValidateResponse {
+  bool valid = 1;
+  repeated string errors = 2;
+}
+
+message DescribeRequest {}
+
+message DescribeResponse {
+  string name = 1;
+  string version = 2;
+  string description = 3;
+  repeated ActionDescriptor actions = 4;
+}
+
+message ActionDescriptor {
+  string name = 1;
+  string description = 2;
+  repeated FieldDescriptor params = 3;
+}
+
+message FieldDescriptor {
+  string name = 1;
+  string description = 2;
+  string type = 3;
+  bool required = 4;
+}
