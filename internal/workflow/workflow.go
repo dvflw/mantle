@@ -18,12 +18,13 @@ type Input struct {
 
 // Step defines a single step within a workflow.
 type Step struct {
-	Name    string         `yaml:"name"`
-	Action  string         `yaml:"action"`
-	Params  map[string]any `yaml:"params"`
-	If      string         `yaml:"if"`
-	Retry   *RetryPolicy   `yaml:"retry"`
-	Timeout string         `yaml:"timeout"`
+	Name      string         `yaml:"name"`
+	Action    string         `yaml:"action"`
+	Params    map[string]any `yaml:"params"`
+	If        string         `yaml:"if"`
+	DependsOn []string       `yaml:"depends_on"`
+	Retry     *RetryPolicy   `yaml:"retry"`
+	Timeout   string         `yaml:"timeout"`
 }
 
 // RetryPolicy configures retry behavior for a step.

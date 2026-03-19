@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	namePattern  = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
-	inputPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+	namePattern    = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+	inputPattern   = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+	stepRefPattern = regexp.MustCompile(`steps\.(\w+)`)
 
 	validInputTypes   = map[string]bool{"string": true, "number": true, "boolean": true}
 	validBackoffTypes = map[string]bool{"fixed": true, "exponential": true}
@@ -139,7 +140,84 @@ func Validate(result *ParseResult) []ValidationError {
 		}
 	}
 
+	// Validate dependency references (explicit + implicit from CEL expressions).
+	for i, step := range w.Steps {
+		prefix := fmt.Sprintf("steps[%d]", i)
+		allDeps := mergeUnique(step.DependsOn, ExtractImplicitDeps(step))
+		for _, dep := range allDeps {
+			if !seen[dep] {
+				errs = append(errs, ValidationError{
+					Field:   prefix + ".depends_on",
+					Message: fmt.Sprintf("references undefined step %q", dep),
+				})
+			}
+		}
+	}
+
 	return errs
+}
+
+// ExtractImplicitDeps extracts step names referenced in CEL expressions within
+// a step's If condition and Params values. It uses regex matching to find
+// static references of the form steps.<name>. Results are deduplicated.
+func ExtractImplicitDeps(step Step) []string {
+	seen := make(map[string]bool)
+	var refs []string
+
+	// Scan the If condition.
+	if step.If != "" {
+		for _, match := range stepRefPattern.FindAllStringSubmatch(step.If, -1) {
+			name := match[1]
+			if !seen[name] {
+				seen[name] = true
+				refs = append(refs, name)
+			}
+		}
+	}
+
+	// Scan params recursively.
+	scanParamsForRefs(step.Params, seen, &refs)
+
+	return refs
+}
+
+// scanParamsForRefs walks a params map recursively, extracting step references
+// from string values using the stepRefPattern regex.
+func scanParamsForRefs(params map[string]any, seen map[string]bool, refs *[]string) {
+	for _, v := range params {
+		switch val := v.(type) {
+		case string:
+			for _, match := range stepRefPattern.FindAllStringSubmatch(val, -1) {
+				name := match[1]
+				if !seen[name] {
+					seen[name] = true
+					*refs = append(*refs, name)
+				}
+			}
+		case map[string]any:
+			scanParamsForRefs(val, seen, refs)
+		}
+	}
+}
+
+// mergeUnique combines two string slices, returning a new slice with no duplicates.
+// Order is preserved: elements from a appear first, then new elements from b.
+func mergeUnique(a, b []string) []string {
+	seen := make(map[string]bool, len(a)+len(b))
+	var result []string
+	for _, s := range a {
+		if !seen[s] {
+			seen[s] = true
+			result = append(result, s)
+		}
+	}
+	for _, s := range b {
+		if !seen[s] {
+			seen[s] = true
+			result = append(result, s)
+		}
+	}
+	return result
 }
 
 // findFieldPosition searches the root mapping node for a top-level key and
