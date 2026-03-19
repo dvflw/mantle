@@ -49,7 +49,7 @@ func BuildDAG(steps []workflow.Step) (*DAG, error) {
 		}
 	}
 
-	order, err := topoSort(d.deps, d.steps)
+	order, err := topoSort(d.deps, d.rdeps, d.steps)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (d *DAG) AddImplicitDeps(implicit map[string][]string) error {
 		}
 	}
 
-	order, err := topoSort(d.deps, d.steps)
+	order, err := topoSort(d.deps, d.rdeps, d.steps)
 	if err != nil {
 		return err
 	}
@@ -148,9 +148,11 @@ func (d *DAG) Order() []string {
 	return slices.Clone(d.order)
 }
 
-// topoSort performs a topological sort using Kahn's algorithm. It returns an
-// error if a cycle is detected.
-func topoSort(deps map[string][]string, steps map[string]*workflow.Step) ([]string, error) {
+// topoSort performs a topological sort using Kahn's algorithm. It uses the
+// pre-computed reverse dependency map (rdeps) for O(V+E) complexity instead
+// of scanning all deps for each dequeued node. It returns an error if a
+// cycle is detected.
+func topoSort(deps, rdeps map[string][]string, steps map[string]*workflow.Step) ([]string, error) {
 	inDegree := make(map[string]int, len(steps))
 	for name := range steps {
 		inDegree[name] = len(deps[name])
@@ -172,17 +174,12 @@ func topoSort(deps map[string][]string, steps map[string]*workflow.Step) ([]stri
 		order = append(order, node)
 
 		// For each step that depends on this node, decrement in-degree.
-		for other, otherDeps := range deps {
-			for _, d := range otherDeps {
-				if d == node {
-					inDegree[other]--
-					if inDegree[other] == 0 {
-						// Insert sorted to keep deterministic order.
-						idx, _ := slices.BinarySearch(queue, other)
-						queue = slices.Insert(queue, idx, other)
-					}
-					break
-				}
+		for _, dependent := range rdeps[node] {
+			inDegree[dependent]--
+			if inDegree[dependent] == 0 {
+				// Insert sorted to keep deterministic order.
+				idx, _ := slices.BinarySearch(queue, dependent)
+				queue = slices.Insert(queue, idx, dependent)
 			}
 		}
 	}

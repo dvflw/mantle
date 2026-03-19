@@ -31,12 +31,12 @@ type Orchestrator struct {
 // Returns true if the claim was acquired, false if another node already holds it.
 // Uses INSERT ... ON CONFLICT DO NOTHING for atomic claim acquisition.
 func (o *Orchestrator) ClaimExecution(ctx context.Context, executionID string) (bool, error) {
-	leaseExpiry := time.Now().Add(o.LeaseDuration)
+	interval := fmt.Sprintf("%d", int(o.LeaseDuration.Seconds()))
 	result, err := o.DB.ExecContext(ctx,
 		`INSERT INTO execution_claims (execution_id, claimed_by, lease_expires_at)
-		 VALUES ($1, $2, $3)
+		 VALUES ($1, $2, NOW() + ($3 || ' seconds')::interval)
 		 ON CONFLICT (execution_id) DO NOTHING`,
-		executionID, o.NodeID, leaseExpiry,
+		executionID, o.NodeID, interval,
 	)
 	if err != nil {
 		return false, fmt.Errorf("claiming execution %s: %w", executionID, err)
@@ -51,12 +51,12 @@ func (o *Orchestrator) ClaimExecution(ctx context.Context, executionID string) (
 // RenewExecutionLease extends the lease expiry for an execution claimed by this node.
 // The update is fenced by claimed_by to prevent a node from renewing another node's lease.
 func (o *Orchestrator) RenewExecutionLease(ctx context.Context, executionID string) error {
-	newExpiry := time.Now().Add(o.LeaseDuration)
+	interval := fmt.Sprintf("%d", int(o.LeaseDuration.Seconds()))
 	result, err := o.DB.ExecContext(ctx,
 		`UPDATE execution_claims
-		 SET lease_expires_at = $1
-		 WHERE execution_id = $2 AND claimed_by = $3`,
-		newExpiry, executionID, o.NodeID,
+		 SET lease_expires_at = NOW() + ($2 || ' seconds')::interval
+		 WHERE execution_id = $1 AND claimed_by = $3`,
+		executionID, interval, o.NodeID,
 	)
 	if err != nil {
 		return fmt.Errorf("renewing lease for execution %s: %w", executionID, err)

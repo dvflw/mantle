@@ -145,6 +145,10 @@ func (c *Claimer) CompleteStep(ctx context.Context, stepID string, output []byte
 		SET status = $1,
 		    output = $2,
 		    error = $3,
+<<<<<<< HEAD
+=======
+		    lease_expires_at = NULL,
+>>>>>>> worktree-agent-a6c97b7c
 		    completed_at = NOW(),
 		    updated_at = NOW()
 		WHERE id = $4
