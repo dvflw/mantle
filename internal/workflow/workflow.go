@@ -33,6 +33,17 @@ type Step struct {
 	Retry      *RetryPolicy   `yaml:"retry"`
 	Timeout    string         `yaml:"timeout"`
 	Credential string         `yaml:"credential"`
+	DependsOn  []string       `yaml:"depends_on"`
+}
+
+// FindStep returns a pointer to the step with the given name, or nil if not found.
+func (w *Workflow) FindStep(name string) *Step {
+	for i := range w.Steps {
+		if w.Steps[i].Name == name {
+			return &w.Steps[i]
+		}
+	}
+	return nil
 }
 
 // RetryPolicy configures retry behavior for a step.
