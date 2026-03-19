@@ -11,6 +11,7 @@ import (
 
 	"github.com/dvflw/mantle/internal/api/health"
 	"github.com/dvflw/mantle/internal/auth"
+	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/engine"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -77,6 +78,35 @@ func (s *Server) Start(ctx context.Context) error {
 	s.httpServer = &http.Server{
 		Addr:    s.Address,
 		Handler: handler,
+	}
+
+	// Start distributed engine components (worker + reaper).
+	if cfg := config.FromContext(ctx); cfg != nil {
+		claimer := &engine.Claimer{
+			DB:            s.DB,
+			NodeID:        cfg.Engine.NodeID,
+			LeaseDuration: cfg.Engine.StepLeaseDuration,
+		}
+		worker := &engine.Worker{
+			Claimer: claimer,
+			StepExecutor: func(wCtx context.Context, stepName string, attempt int) (map[string]any, error) {
+				return nil, fmt.Errorf("step executor not yet wired to engine")
+			},
+			PollInterval:       cfg.Engine.WorkerPollInterval,
+			MaxBackoff:         cfg.Engine.WorkerMaxBackoff,
+			LeaseRenewInterval: cfg.Engine.StepLeaseDuration / 3,
+			Logger:             s.Logger,
+		}
+		go worker.Run(ctx)
+		s.Logger.Info("worker started", "node_id", cfg.Engine.NodeID)
+
+		reaper := &engine.Reaper{
+			DB:       s.DB,
+			Interval: cfg.Engine.ReaperInterval,
+			Logger:   s.Logger,
+		}
+		go reaper.Run(ctx)
+		s.Logger.Info("reaper started", "interval", cfg.Engine.ReaperInterval)
 	}
 
 	// Start cron scheduler.
