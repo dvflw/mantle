@@ -15,10 +15,11 @@ steps:
 
   - name: summarize
     action: ai/completion
+    credential: my-openai-key
     params:
-      provider: openai
       model: gpt-4o
-      prompt: "Summarize this data: {{ steps.fetch-data.output.body }}"
+      prompt: "Summarize this data in 2-3 sentences: {{ steps['fetch-data'].output.body }}"
+      system_prompt: "You are a concise data summarizer."
       output_schema:
         type: object
         properties:
@@ -28,13 +29,17 @@ steps:
             type: array
             items:
               type: string
+        required:
+          - summary
+          - key_points
+        additionalProperties: false
 
   - name: post-result
     action: http/request
-    if: "steps.summarize.output.key_points.size() > 0"
+    if: "size(steps.summarize.output.json.key_points) > 0"
     params:
       method: POST
-      url: https://hooks.example.com/results
+      url: https://jsonplaceholder.typicode.com/posts
       body:
-        summary: "{{ steps.summarize.output.summary }}"
-        points: "{{ steps.summarize.output.key_points }}"
+        title: "Summary"
+        body: "{{ steps.summarize.output.json.summary }}"

@@ -21,6 +21,7 @@ func NewRegistry() *Registry {
 		connectors: make(map[string]Connector),
 	}
 	r.Register("http/request", &HTTPConnector{})
+	r.Register("ai/completion", &AIConnector{})
 	return r
 }
 
