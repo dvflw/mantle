@@ -18,7 +18,9 @@
 ```sql
 ALTER TABLE step_executions ADD COLUMN claimed_by TEXT;
 ALTER TABLE step_executions ADD COLUMN lease_expires_at TIMESTAMPTZ;
+ALTER TABLE step_executions ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE step_executions ADD COLUMN parent_step_id UUID REFERENCES step_executions(id);
+ALTER TABLE step_executions ADD COLUMN cached_llm_responses JSONB DEFAULT '[]'::jsonb;
 
 CREATE INDEX idx_step_executions_claimable
   ON step_executions (execution_id, status)
@@ -27,7 +29,11 @@ CREATE INDEX idx_step_executions_claimable
 
 - `claimed_by` — node identifier (`hostname:pid` or UUID), set when a worker claims a step.
 - `lease_expires_at` — null when not leased. Workers must renew before expiry or the reaper reclaims the step.
-- `parent_step_id` — null for top-level steps. Used by Phase 8 for tool-use sub-steps.
+- `max_attempts` — populated from the step's retry policy at row creation time. Denormalized here so the reaper can make retry decisions without loading the workflow definition.
+- `parent_step_id` — null for top-level steps. Added now as a forward-looking schema addition so Phase 8 doesn't require an ALTER TABLE on a hot table. No Phase 7 code reads or writes this column.
+- `cached_llm_responses` — used by Phase 8 for tool-use crash recovery. Added in the same migration to avoid future schema changes.
+
+All columns added in a single goose migration (next sequential number after the latest existing migration). The migration includes the `execution_claims` table creation.
 
 ### New table: `execution_claims`
 
@@ -68,16 +74,27 @@ COMMIT;
 
 Run the connector, get the result.
 
-### Complete transaction (fast)
+### Complete transaction — success (fast)
 
 ```sql
 UPDATE step_executions
   SET status = 'completed', output = $2,
       completed_at = NOW(), lease_expires_at = NULL
-  WHERE id = $1 AND claimed_by = $3;
+  WHERE id = $1 AND claimed_by = $3 AND status = 'running';
 ```
 
-The `claimed_by` check on completion acts as a **fencing token**. If the reaper reclaimed this step and another worker picked it up, the original worker's completion silently fails (0 rows updated). The worker detects this and discards its result.
+### Complete transaction — failure (fast)
+
+```sql
+UPDATE step_executions
+  SET status = 'failed', error = $2,
+      completed_at = NOW(), lease_expires_at = NULL
+  WHERE id = $1 AND claimed_by = $3 AND status = 'running';
+```
+
+Both completion queries include `AND status = 'running'` to prevent a late-completing worker from overwriting a step that was already reclaimed and transitioned by the reaper. The `claimed_by` check acts as a **fencing token** — if the reaper reclaimed this step and another worker picked it up, the original worker's completion silently fails (0 rows updated). The worker detects this (0 rows affected) and discards its result.
+
+**Fencing race note**: If a worker's lease expires but it completes work before another worker claims the step, the completion returns 0 rows (the reaper cleared `claimed_by`). This is safe — the step is back in `pending` and another worker will pick it up. No work is lost, though the original result is discarded.
 
 ### Lease renewal
 
@@ -132,27 +149,20 @@ A single goroutine per replica reclaims orphaned work. All replicas run the reap
 
 ### Step reaper (runs every 30s)
 
-Reset steps that can be retried:
+**Retry model**: When the reaper reclaims a step, it marks the current row as `failed` and the orchestrator is responsible for creating a new `step_execution` row with `attempt + 1` (matching the existing unique constraint `(execution_id, step_name, attempt)`). This is consistent with the existing retry model where each attempt is a separate row.
+
+Mark expired steps as failed:
 
 ```sql
 UPDATE step_executions
-  SET status = 'pending', claimed_by = NULL, lease_expires_at = NULL
+  SET status = 'failed', error = 'lease expired',
+      completed_at = NOW(), claimed_by = NULL, lease_expires_at = NULL
   WHERE status = 'running'
     AND lease_expires_at < NOW()
-    AND attempt < max_attempts
-  RETURNING id, step_name, execution_id;
+  RETURNING id, step_name, execution_id, attempt, max_attempts;
 ```
 
-Fail steps that have exhausted retries:
-
-```sql
-UPDATE step_executions
-  SET status = 'failed', error = 'lease expired, retries exhausted',
-      completed_at = NOW(), lease_expires_at = NULL
-  WHERE status = 'running'
-    AND lease_expires_at < NOW()
-    AND attempt >= max_attempts;
-```
+The orchestrator, on its next poll, checks for failed steps where `attempt < max_attempts` and creates a new row with `attempt + 1`. Steps where `attempt >= max_attempts` remain failed and trigger execution failure handling.
 
 ### Execution orchestrator reaper (runs every 30s, offset 15s from step reaper)
 
@@ -178,12 +188,24 @@ Lease duration is configurable per step type via `timeout` in workflow YAML — 
 
 Multiple reapers running is safe — the UPDATE/DELETE statements are idempotent. If two reapers fire simultaneously, one gets the rows and the other gets 0 rows affected.
 
+### Orchestrator failure handling
+
+When a step fails (either from connector error or reaper expiry), the orchestrator:
+
+1. Checks if `attempt < max_attempts` — if so, creates a new `step_execution` row with `attempt + 1` and `status = 'pending'`.
+2. If retries are exhausted, marks the `workflow_execution` as `failed`. All pending steps for this execution are set to `cancelled` (not executed).
+3. In-flight steps for the same execution are allowed to complete (their results are checkpointed but the execution is already marked failed).
+
+### Timestamp discipline
+
+All lease timestamps use database server time via `NOW()`, never application-level timestamps. This eliminates clock skew issues between replicas and the database. Workers and reapers never compute lease expiry using local clocks.
+
 ## 6. Scaling Considerations
 
 ### Medium scale (5–20 replicas) — design target
 
 - SKIP LOCKED contention is negligible at this scale.
-- Connection count: ~3 connections per replica (orchestrator, worker, reaper). 20 replicas = 60 connections, within Postgres defaults.
+- Connection count: ~4 connections per replica (orchestrator, worker, reaper, lease renewal). 20 replicas = 80 connections, within Postgres defaults.
 - Partial index on `status = 'pending'` keeps claim queries fast regardless of historical row count.
 
 ### Large scale inflection points (50+ replicas)
@@ -206,7 +228,35 @@ Multiple reapers running is safe — the UPDATE/DELETE statements are idempotent
 - `mantle_lease_expirations_total` (counter) — indicates node failures or slow steps
 - `mantle_reaper_reclaimed_total` (counter)
 
-## 8. Configuration
+## 8. Testing Strategy
+
+Concurrency tests are required to prove correctness under load with deliberate crashes.
+
+### Test harness
+
+Integration tests using testcontainers (real Postgres). Multiple worker goroutines within a single test process simulate multi-node behavior — each goroutine gets its own `node_id` and runs independent orchestrator/worker/reaper loops.
+
+### Invariants to assert
+
+- **No step lost**: every step in every workflow execution reaches a terminal state (`completed`, `failed`, `skipped`, `cancelled`).
+- **No step duplicated**: for a given `(execution_id, step_name, attempt)`, at most one row has `status = 'completed'` with non-null output.
+- **All executions complete**: every workflow execution reaches `completed` or `failed` within a timeout.
+- **Fencing correctness**: a worker whose lease expired cannot overwrite a step completed by another worker.
+
+### Crash simulation tests
+
+1. **Worker crash mid-execution**: Kill a worker goroutine (cancel its context) while a step is `running`. Verify: reaper reclaims the step within `lease_timeout + reaper_interval`, another worker picks it up, step completes.
+2. **Orchestrator crash**: Kill the orchestrator goroutine for an execution. Verify: reaper releases the `execution_claims` row, another orchestrator picks up the execution and continues from checkpoint.
+3. **Multiple simultaneous crashes**: Kill 2 of 3 workers. Verify: remaining worker completes all work, no steps lost.
+4. **Reaper under load**: Run 10 workflows with 5 workers, kill 3 workers mid-flight. Verify: all workflows eventually complete with the remaining 2 workers.
+
+### Load tests
+
+- 3+ worker goroutines, 50 concurrent workflow executions, each with 5-10 steps.
+- Assert all invariants hold after completion.
+- Measure: claim latency, queue depth over time, total throughput.
+
+## 9. Configuration
 
 New `mantle.yaml` keys under `engine:`:
 

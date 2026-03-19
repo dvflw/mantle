@@ -47,7 +47,13 @@ The orchestrator from Phase 7 changes minimally. Instead of creating steps seque
 
 ### Implicit dependency detection
 
-If a step's CEL expressions reference `steps.foo.output`, `foo` is added as an implicit dependency even without an explicit `depends_on`. This is validated at `mantle validate` time — the validator parses CEL expressions and extracts step references.
+If a step's CEL expressions reference `steps.foo.output`, `foo` is added as an implicit dependency even without an explicit `depends_on`. This is validated at `mantle validate` time.
+
+**Scanning scope**: The validator extracts step references from all CEL-evaluated fields: `params` values (including nested maps), `if:` conditions, and tool `params` inside AI steps. It walks YAML string values looking for `{{ ... }}` template expressions and `steps.<name>` references within them.
+
+**Detection method**: Regex extraction of `steps\.(\w+)` patterns from CEL expression strings. This is deliberately simple — it does not use the CEL AST. Only static, literal step name references are detected. Dynamic references (e.g., step names constructed via string concatenation) are not detected and require explicit `depends_on`.
+
+**Merge behavior**: Implicit dependencies are unioned with explicit `depends_on`. If a step both declares `depends_on: [foo]` and references `steps.foo.output` in a param, `foo` appears once in the dependency set.
 
 ### Validation rules
 
@@ -55,6 +61,14 @@ If a step's CEL expressions reference `steps.foo.output`, `foo` is added as an i
 - References to undefined step names are errors.
 - `depends_on` must be an array of step names.
 - Conditional steps (`if:`) can be depended on — if skipped, dependents still proceed (skipped counts as "resolved").
+
+### Cascading failure model
+
+When a step fails (after exhausting retries):
+
+- **All steps that transitively depend on the failed step** are marked `cancelled` (not executed). The orchestrator walks the DAG forward from the failed step and sets all reachable pending steps to `cancelled`.
+- **Steps with no dependency on the failed step** continue executing. The execution completes in `failed` state once all non-cancelled steps reach a terminal state.
+- **No `continue_on_failure` option in V1.1.** This is noted as a future enhancement. The cascading model is simple: one failure poisons its entire downstream subgraph, but independent subgraphs are unaffected.
 
 ## 3. Tool Use Execution Model
 
@@ -68,19 +82,57 @@ steps:
       model: gpt-4o
       system_prompt: "You are a research assistant."
       prompt: "Find the current weather in {{ inputs.city }}"
+      max_tool_rounds: 10
+      max_tool_calls_per_round: 5
       tools:
         - name: get_weather
+          description: "Get current weather for a city"
+          input_schema:
+            type: object
+            properties:
+              city: { type: string, description: "City name" }
+            required: [city]
           action: http/request
           params:
             url: "https://api.weather.com/v1/current?city={{ tool_input.city }}"
         - name: get_forecast
+          description: "Get weather forecast for a city"
+          input_schema:
+            type: object
+            properties:
+              city: { type: string, description: "City name" }
+            required: [city]
           action: http/request
           params:
             url: "https://api.weather.com/v1/forecast?city={{ tool_input.city }}"
-      max_tool_rounds: 10
 ```
 
-Tools are declared inline on the AI step. Each tool maps to a connector action. `tool_input` is a CEL variable populated from the LLM's tool call arguments. `max_tool_rounds` limits the number of LLM↔tool round-trips (default: 10).
+Tools are declared inline on the AI step. Each tool maps to a connector action. `tool_input` is a CEL variable populated from the LLM's tool call arguments. `max_tool_rounds` limits the number of LLM↔tool round-trips (default: 10). `max_tool_calls_per_round` limits tool calls per LLM response (default: 10).
+
+### Tool input schema
+
+LLM tool-use APIs (e.g., OpenAI function calling) require a JSON Schema describing each tool's input parameters. Each tool declaration includes an explicit `input_schema`:
+
+```yaml
+tools:
+  - name: get_weather
+    description: "Get current weather for a city"
+    input_schema:
+      type: object
+      properties:
+        city:
+          type: string
+          description: "City name"
+      required: [city]
+    action: http/request
+    params:
+      url: "https://api.weather.com/v1/current?city={{ tool_input.city }}"
+```
+
+- `description` (required) — human-readable description sent to the LLM.
+- `input_schema` (required) — JSON Schema object describing the tool's parameters. Sent directly to the LLM as the function's `parameters` field.
+- The LLM's tool call arguments are validated against `input_schema` before execution. Invalid arguments fail the tool call (not the whole step) and the error is returned to the LLM.
+- `tool_input` in CEL expressions is populated from the validated arguments object.
 
 ### Execution flow
 
@@ -138,22 +190,40 @@ UPDATE step_executions
 
 ### Schema addition
 
-```sql
-ALTER TABLE step_executions ADD COLUMN cached_llm_responses JSONB DEFAULT '[]'::jsonb;
-```
+Both `cached_llm_responses` and `parent_step_id` are included in Phase 7's migration (see [Phase 7 Design, Section 2](2026-03-19-multi-node-distribution-design.md#2-schema-changes)). No additional schema migration is needed for Phase 8.
 
 ### Recovery flow
 
 When a crashed AI step is reclaimed and restarted:
 
 1. Load `cached_llm_responses` from the parent row.
-2. Load all child `step_execution` rows and their statuses/outputs.
-3. Reconstruct the conversation state:
-   - For each cached round: the LLM response is known, the tool results are known (from child rows).
-   - If all tool calls in the last round are `completed`: replay from cache, continue to next round.
-   - If some tool calls in the last round are `pending` or `running`: wait for them (they're already in the system).
-   - If the crash happened before tool call rows were created: create them from the cached LLM response.
-   - If the crash happened before the LLM response was cached: re-call the LLM (this is the only case where work is redone — one LLM call).
+2. Load all child `step_execution` rows, ordered by `step_name` (which encodes the round index).
+3. Reconstruct the conversation using the following algorithm:
+
+```
+conversation = [system_prompt, user_prompt]
+for i, llm_response in enumerate(cached_llm_responses):
+    append llm_response to conversation
+    if llm_response contains tool_calls:
+        for each tool_call in llm_response.tool_calls:
+            child_name = "{parent}/tool/{tool_call.name}/{i}"
+            child_row = lookup child step_execution by step_name = child_name
+            if child_row exists and status == 'completed':
+                append tool_result(child_row.output) to conversation
+            elif child_row exists and status in ('pending', 'running'):
+                wait for child_row to complete, then append
+            elif child_row does not exist:
+                create child_row from cached tool_call, wait for completion, append
+```
+
+4. After replaying all cached rounds:
+   - If the last cached round ended with all tool results collected: call the LLM with the full reconstructed conversation.
+   - If the last cached round's tools are still in-flight: wait, then call the LLM.
+   - If no cached rounds exist (crash before first LLM response): start fresh — call the LLM with the original prompt.
+
+**Key invariant**: The conversation is always reconstructed from `cached_llm_responses` (interleaved with child row outputs by round), never from memory. This ensures deterministic recovery regardless of which worker picks up the step.
+
+**Attempt reuse**: Recovery of AI steps reuses the same attempt number. The reaper marks the parent row as `failed`, and the orchestrator creates a new attempt. The new attempt starts with an empty `cached_llm_responses` — it does NOT inherit from the previous attempt. Each attempt is independent. Child rows from the failed attempt remain in the database for auditability but are not referenced by the new attempt.
 
 ### Recovery scenarios
 
@@ -228,5 +298,5 @@ New `mantle.yaml` keys:
 engine:
   default_max_tool_rounds: 10
   default_max_tool_calls_per_round: 10
-  ai_step_lease_duration: 300s       # longer lease for tool-use loops
+  ai_step_lease_duration: 300s       # overrides Phase 7's default step_lease_duration for AI steps
 ```

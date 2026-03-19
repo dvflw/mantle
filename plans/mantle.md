@@ -191,7 +191,7 @@ Multi-node work distribution using Postgres SKIP LOCKED with the claim/lease/rea
 - [ ] Lease timeout: steps stuck in `running` beyond timeout are reclaimed by reaper
 - [ ] No step lost or duplicated under normal operation with 3+ replicas
 - [ ] Concurrency tests proving correctness under load with deliberate crashes
-- [ ] PgBouncer documented as recommended for 10+ replica deployments
+- [ ] PgBouncer documented as recommended for 50+ replica deployments
 - [ ] `step_executions` table: partial index on `status = 'pending'`, archival strategy for completed executions
 - [ ] Step output size limits documented; large payloads reference object storage
 
@@ -211,8 +211,8 @@ Requires design doc before implementation. AI tool use: LLM steps can invoke oth
 - [ ] LLM can invoke declared tools; multi-turn tool use works
 - [ ] Tool calls logged in step execution record
 - [ ] Recursion depth limit enforced
-- [ ] Parallel steps: `parallel: true` or explicit fan-out/fan-in syntax in workflow YAML
-- [ ] Parallel steps respect dependency declarations
+- [ ] Parallel steps: independent steps execute in parallel based on `depends_on` dependency graph resolution
+- [ ] Steps without dependencies (or whose dependencies are all met) run concurrently automatically
 - [ ] Parallel execution works correctly with checkpointing and multi-node distribution
 
 ---
