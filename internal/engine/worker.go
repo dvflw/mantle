@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"math/rand"
 	"time"
+
+	"github.com/dvflw/mantle/internal/metrics"
 )
 
 // StepExecutor is called by the worker to execute a step.
@@ -56,6 +58,7 @@ func (w *Worker) Run(ctx context.Context) {
 		default:
 		}
 
+		pollStart := time.Now()
 		claim, executionID, err := w.Claimer.ClaimAnyStep(ctx)
 		if err != nil {
 			w.Logger.Error("claim error", "error", err)
@@ -71,7 +74,8 @@ func (w *Worker) Run(ctx context.Context) {
 			continue
 		}
 
-		// Work found — reset backoff.
+		// Work found — record claim duration and reset backoff.
+		metrics.RecordClaimDuration(time.Since(pollStart))
 		backoff = w.PollInterval
 		if backoff == 0 {
 			backoff = time.Second
@@ -133,6 +137,7 @@ func (w *Worker) executeWithLeaseRenewal(ctx context.Context, claim *StepClaim) 
 					cancel()
 					return
 				}
+				metrics.RecordLeaseRenewal()
 			}
 		}
 	}()

@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"log/slog"
 	"time"
+
+	"github.com/dvflw/mantle/internal/metrics"
 )
 
 // Reaper periodically reclaims step executions and execution claims
@@ -68,6 +70,10 @@ func (r *Reaper) Run(ctx context.Context) {
 				r.Logger.Error("reaper: failed to reap steps", "error", err)
 			} else if n > 0 {
 				r.Logger.Info("reaper: reclaimed expired step leases", "count", n)
+				metrics.RecordReaperReclaimed(int(n))
+				for range n {
+					metrics.RecordLeaseExpiration()
+				}
 			}
 
 			// Reset the claim timer for the next offset cycle.
