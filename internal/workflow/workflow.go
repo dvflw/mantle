@@ -7,7 +7,15 @@ type Workflow struct {
 	Name        string           `yaml:"name"`
 	Description string           `yaml:"description"`
 	Inputs      map[string]Input `yaml:"inputs"`
+	Triggers    []Trigger        `yaml:"triggers"`
 	Steps       []Step           `yaml:"steps"`
+}
+
+// Trigger defines an automatic execution trigger for a workflow.
+type Trigger struct {
+	Type     string `yaml:"type"`     // "cron" or "webhook"
+	Schedule string `yaml:"schedule"` // cron expression (for type: cron)
+	Path     string `yaml:"path"`     // webhook path (for type: webhook)
 }
 
 // Input defines a workflow input parameter.
