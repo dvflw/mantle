@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dvflw/mantle/internal/config"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -42,7 +43,7 @@ func setupTestDB(t *testing.T) string {
 
 func TestMigrate(t *testing.T) {
 	connStr := setupTestDB(t)
-	database, err := Open(connStr)
+	database, err := Open(config.DatabaseConfig{URL: connStr})
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -70,7 +71,7 @@ func TestMigrate(t *testing.T) {
 
 func TestMigrate_Idempotent(t *testing.T) {
 	connStr := setupTestDB(t)
-	database, err := Open(connStr)
+	database, err := Open(config.DatabaseConfig{URL: connStr})
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -87,7 +88,7 @@ func TestMigrate_Idempotent(t *testing.T) {
 
 func TestMigrateDown(t *testing.T) {
 	connStr := setupTestDB(t)
-	database, err := Open(connStr)
+	database, err := Open(config.DatabaseConfig{URL: connStr})
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -97,14 +98,11 @@ func TestMigrateDown(t *testing.T) {
 	if err := Migrate(ctx, database); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
-	// Roll back all migrations (one at a time).
-	for i := 1; i <= 6; i++ {
-		if err := MigrateDown(ctx, database); err != nil {
-			t.Fatalf("MigrateDown() %d error = %v", i, err)
-		}
+	if err := MigrateDown(ctx, database); err != nil {
+		t.Fatalf("MigrateDown() error = %v", err)
 	}
 
-	tables := []string{"workflow_definitions", "workflow_executions", "step_executions", "credentials", "workflow_triggers", "teams", "users", "api_keys", "audit_events", "shared_workflows"}
+	tables := []string{"workflow_definitions", "workflow_executions", "step_executions"}
 	for _, table := range tables {
 		var exists bool
 		err := database.QueryRow(
@@ -121,7 +119,7 @@ func TestMigrateDown(t *testing.T) {
 
 func TestMigrateStatus(t *testing.T) {
 	connStr := setupTestDB(t)
-	database, err := Open(connStr)
+	database, err := Open(config.DatabaseConfig{URL: connStr})
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}

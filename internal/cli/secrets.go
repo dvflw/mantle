@@ -148,7 +148,7 @@ func newSecretStore(cmd *cobra.Command) (*secret.Store, func(), error) {
 		return nil, nil, fmt.Errorf("initializing encryptor: %w", err)
 	}
 
-	database, err := db.Open(cfg.Database.URL)
+	database, err := db.Open(cfg.Database)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to database: %w", err)
 	}

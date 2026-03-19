@@ -30,7 +30,7 @@ func newServeCommand() *cobra.Command {
 			// Configure structured JSON logging before any other work.
 			logging.Setup(cfg.Log.Level)
 
-			database, err := db.Open(cfg.Database.URL)
+			database, err := db.Open(cfg.Database)
 			if err != nil {
 				return fmt.Errorf("failed to connect to database: %w", err)
 			}
