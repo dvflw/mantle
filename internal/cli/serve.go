@@ -5,6 +5,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/dvflw/mantle/internal/auth"
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
 	"github.com/dvflw/mantle/internal/engine"
@@ -52,6 +53,7 @@ func newServeCommand() *cobra.Command {
 			}
 
 			srv := server.New(database, eng, cfg.API.Address)
+			srv.AuthStore = &auth.Store{DB: database}
 
 			// Handle SIGTERM and SIGINT for graceful shutdown.
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)

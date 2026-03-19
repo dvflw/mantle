@@ -9,8 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dvflw/mantle/internal/engine"
 	"github.com/dvflw/mantle/internal/api/health"
+	"github.com/dvflw/mantle/internal/auth"
+	"github.com/dvflw/mantle/internal/engine"
 )
 
 // Server is the long-running Mantle process that hosts the API,
@@ -18,6 +19,7 @@ import (
 type Server struct {
 	DB         *sql.DB
 	Engine     *engine.Engine
+	AuthStore  *auth.Store
 	Address    string
 	Logger     *slog.Logger
 
@@ -60,9 +62,15 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("POST /api/v1/run/{workflow}", s.handleRun)
 	mux.HandleFunc("POST /api/v1/cancel/{execution}", s.handleCancel)
 
+	// Wrap with auth middleware if AuthStore is configured.
+	var handler http.Handler = mux
+	if s.AuthStore != nil {
+		handler = auth.AuthMiddleware(s.AuthStore, mux)
+	}
+
 	s.httpServer = &http.Server{
 		Addr:    s.Address,
-		Handler: mux,
+		Handler: handler,
 	}
 
 	// Start cron scheduler.
