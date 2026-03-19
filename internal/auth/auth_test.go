@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -37,7 +38,7 @@ func setupTestStore(t *testing.T) *Store {
 	if err != nil {
 		t.Fatalf("Failed to get connection string: %v", err)
 	}
-	database, err := db.Open(connStr)
+	database, err := db.Open(config.DatabaseConfig{URL: connStr})
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}

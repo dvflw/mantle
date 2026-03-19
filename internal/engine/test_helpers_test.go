@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
 
 	"github.com/testcontainers/testcontainers-go"
@@ -40,7 +41,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 		t.Fatalf("Failed to get connection string: %v", err)
 	}
 
-	database, err := db.Open(connStr)
+	database, err := db.Open(config.DatabaseConfig{URL: connStr})
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
