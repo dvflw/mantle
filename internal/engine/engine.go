@@ -105,7 +105,9 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 	}
 
 	// Update execution status to running.
-	e.updateExecutionStatus(ctx, execID, "running", "")
+	if err := e.updateExecutionStatus(ctx, execID, "running", ""); err != nil {
+		return nil, fmt.Errorf("checkpoint: %w", err)
+	}
 
 	// Execute steps sequentially.
 	for _, step := range wf.Steps {
@@ -128,12 +130,16 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 		} else if stepResult.Status == "failed" {
 			result.Status = "failed"
 			result.Error = fmt.Sprintf("step %q failed: %s", step.Name, stepResult.Error)
-			e.updateExecutionStatus(ctx, execID, "failed", result.Error)
+			if err := e.updateExecutionStatus(ctx, execID, "failed", result.Error); err != nil {
+				return nil, fmt.Errorf("checkpoint: %w", err)
+			}
 			return result, nil
 		}
 	}
 
-	e.updateExecutionStatus(ctx, execID, "completed", "")
+	if err := e.updateExecutionStatus(ctx, execID, "completed", ""); err != nil {
+		return nil, fmt.Errorf("checkpoint: %w", err)
+	}
 	return result, nil
 }
 
@@ -142,11 +148,15 @@ func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.S
 	if step.If != "" {
 		shouldRun, err := e.CEL.EvalBool(step.If, celCtx)
 		if err != nil {
-			e.recordStep(ctx, execID, step.Name, "failed", nil, err.Error())
+			if cpErr := e.recordStep(ctx, execID, step.Name, "failed", nil, err.Error()); cpErr != nil {
+				return StepResult{Status: "failed", Error: fmt.Sprintf("checkpoint failure: %v (original: evaluating if condition: %v)", cpErr, err)}
+			}
 			return StepResult{Status: "failed", Error: fmt.Sprintf("evaluating if condition: %v", err)}
 		}
 		if !shouldRun {
-			e.recordStep(ctx, execID, step.Name, "skipped", nil, "")
+			if cpErr := e.recordStep(ctx, execID, step.Name, "skipped", nil, ""); cpErr != nil {
+				return StepResult{Status: "failed", Error: fmt.Sprintf("checkpoint failure: %v", cpErr)}
+			}
 			e.Auditor.Emit(ctx, audit.Event{
 				Timestamp: time.Now(),
 				Actor:     "engine",
@@ -158,7 +168,9 @@ func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.S
 	}
 
 	// Record step as running.
-	e.recordStep(ctx, execID, step.Name, "running", nil, "")
+	if cpErr := e.recordStep(ctx, execID, step.Name, "running", nil, ""); cpErr != nil {
+		return StepResult{Status: "failed", Error: fmt.Sprintf("checkpoint failure: %v", cpErr)}
+	}
 	e.Auditor.Emit(ctx, audit.Event{
 		Timestamp: time.Now(),
 		Actor:     "engine",
@@ -170,7 +182,9 @@ func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.S
 	resolvedParams, err := e.CEL.ResolveParams(step.Params, celCtx)
 	if err != nil {
 		errMsg := fmt.Sprintf("resolving params: %v", err)
-		e.updateStep(ctx, execID, step.Name, "failed", nil, errMsg)
+		if cpErr := e.updateStep(ctx, execID, step.Name, "failed", nil, errMsg); cpErr != nil {
+			return StepResult{Status: "failed", Error: fmt.Sprintf("checkpoint failure: %v (original: %s)", cpErr, errMsg)}
+		}
 		return StepResult{Status: "failed", Error: errMsg}
 	}
 
@@ -179,7 +193,9 @@ func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.S
 		credData, credErr := e.Resolver.Resolve(ctx, step.Credential)
 		if credErr != nil {
 			errMsg := fmt.Sprintf("resolving credential %q: %v", step.Credential, credErr)
-			e.updateStep(ctx, execID, step.Name, "failed", nil, errMsg)
+			if cpErr := e.updateStep(ctx, execID, step.Name, "failed", nil, errMsg); cpErr != nil {
+				return StepResult{Status: "failed", Error: fmt.Sprintf("checkpoint failure: %v (original: %s)", cpErr, errMsg)}
+			}
 			return StepResult{Status: "failed", Error: errMsg}
 		}
 		resolvedParams["_credential"] = credData
@@ -189,7 +205,9 @@ func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.S
 	conn, err := e.Registry.Get(step.Action)
 	if err != nil {
 		errMsg := fmt.Sprintf("unknown action: %v", err)
-		e.updateStep(ctx, execID, step.Name, "failed", nil, errMsg)
+		if cpErr := e.updateStep(ctx, execID, step.Name, "failed", nil, errMsg); cpErr != nil {
+			return StepResult{Status: "failed", Error: fmt.Sprintf("checkpoint failure: %v (original: %s)", cpErr, errMsg)}
+		}
 		return StepResult{Status: "failed", Error: errMsg}
 	}
 
@@ -238,7 +256,9 @@ func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.S
 
 	if lastErr != nil {
 		errMsg := lastErr.Error()
-		e.updateStep(ctx, execID, step.Name, "failed", output, errMsg)
+		if cpErr := e.updateStep(ctx, execID, step.Name, "failed", output, errMsg); cpErr != nil {
+			return StepResult{Status: "failed", Output: output, Error: fmt.Sprintf("checkpoint failure: %v (original: %s)", cpErr, errMsg)}
+		}
 		e.Auditor.Emit(ctx, audit.Event{
 			Timestamp: time.Now(),
 			Actor:     "engine",
@@ -249,7 +269,9 @@ func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.S
 	}
 
 	// Checkpoint: record completed step with output.
-	e.updateStep(ctx, execID, step.Name, "completed", output, "")
+	if cpErr := e.updateStep(ctx, execID, step.Name, "completed", output, ""); cpErr != nil {
+		return StepResult{Status: "failed", Error: fmt.Sprintf("checkpoint failure: %v", cpErr)}
+	}
 	e.Auditor.Emit(ctx, audit.Event{
 		Timestamp: time.Now(),
 		Actor:     "engine",
@@ -302,38 +324,52 @@ func (e *Engine) createExecution(ctx context.Context, workflowName string, versi
 }
 
 // updateExecutionStatus updates the status of a workflow execution.
-func (e *Engine) updateExecutionStatus(ctx context.Context, execID, status, errMsg string) {
+func (e *Engine) updateExecutionStatus(ctx context.Context, execID, status, errMsg string) error {
 	var completedAt any
 	if status == "completed" || status == "failed" || status == "cancelled" {
 		completedAt = time.Now()
 	}
 
-	e.DB.ExecContext(ctx,
+	_, err := e.DB.ExecContext(ctx,
 		`UPDATE workflow_executions SET status = $1, completed_at = $2, updated_at = NOW() WHERE id = $3`,
 		status, completedAt, execID,
 	)
+	if err != nil {
+		return fmt.Errorf("updating execution %s status to %s: %w", execID, status, err)
+	}
+	return nil
 }
 
 // recordStep inserts a new step_executions row.
-func (e *Engine) recordStep(ctx context.Context, execID, stepName, status string, output map[string]any, errMsg string) {
-	outputJSON, _ := json.Marshal(output)
+func (e *Engine) recordStep(ctx context.Context, execID, stepName, status string, output map[string]any, errMsg string) error {
+	outputJSON, err := json.Marshal(output)
+	if err != nil {
+		return fmt.Errorf("marshaling step %s output: %w", stepName, err)
+	}
 
 	var errorVal *string
 	if errMsg != "" {
 		errorVal = &errMsg
 	}
 
-	e.DB.ExecContext(ctx,
+	_, err = e.DB.ExecContext(ctx,
 		`INSERT INTO step_executions (execution_id, step_name, status, output, error, started_at)
 		 VALUES ($1, $2, $3, $4, $5, NOW())
 		 ON CONFLICT (execution_id, step_name, attempt) DO NOTHING`,
 		execID, stepName, status, outputJSON, errorVal,
 	)
+	if err != nil {
+		return fmt.Errorf("recording step %s: %w", stepName, err)
+	}
+	return nil
 }
 
 // updateStep updates an existing step_executions row.
-func (e *Engine) updateStep(ctx context.Context, execID, stepName, status string, output map[string]any, errMsg string) {
-	outputJSON, _ := json.Marshal(output)
+func (e *Engine) updateStep(ctx context.Context, execID, stepName, status string, output map[string]any, errMsg string) error {
+	outputJSON, err := json.Marshal(output)
+	if err != nil {
+		return fmt.Errorf("marshaling step %s output: %w", stepName, err)
+	}
 
 	var errorVal *string
 	if errMsg != "" {
@@ -345,11 +381,15 @@ func (e *Engine) updateStep(ctx context.Context, execID, stepName, status string
 		completedAt = time.Now()
 	}
 
-	e.DB.ExecContext(ctx,
+	_, err = e.DB.ExecContext(ctx,
 		`UPDATE step_executions SET status = $1, output = $2, error = $3, completed_at = $4, updated_at = NOW()
 		 WHERE execution_id = $5 AND step_name = $6 AND attempt = 1`,
 		status, outputJSON, errorVal, completedAt, execID, stepName,
 	)
+	if err != nil {
+		return fmt.Errorf("updating step %s: %w", stepName, err)
+	}
+	return nil
 }
 
 // loadCompletedSteps loads outputs of already-completed steps for checkpoint recovery.
