@@ -44,6 +44,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(newUsersCommand())
 	cmd.AddCommand(newRolesCommand())
 	cmd.AddCommand(newPluginsCommand())
+	cmd.AddCommand(newLibraryCommand())
 
 	return cmd
 }
