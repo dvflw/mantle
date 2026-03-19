@@ -242,3 +242,95 @@ func TestResolveParams(t *testing.T) {
 		t.Errorf("nested.body = %v, want %q", nested["body"], "hello world")
 	}
 }
+
+func TestEvaluator_ToolInput(t *testing.T) {
+	eval, err := NewEvaluator()
+	if err != nil {
+		t.Fatalf("NewEvaluator() error: %v", err)
+	}
+
+	ctx := &Context{
+		Steps:  map[string]map[string]any{},
+		Inputs: map[string]any{},
+		ToolInput: map[string]any{
+			"city":  "London",
+			"units": "celsius",
+		},
+	}
+
+	city, err := eval.ResolveString(`{{ tool_input.city }}`, ctx)
+	if err != nil {
+		t.Fatalf("ResolveString(tool_input.city) error: %v", err)
+	}
+	if city != "London" {
+		t.Errorf("tool_input.city = %v, want %q", city, "London")
+	}
+
+	units, err := eval.ResolveString(`{{ tool_input.units }}`, ctx)
+	if err != nil {
+		t.Fatalf("ResolveString(tool_input.units) error: %v", err)
+	}
+	if units != "celsius" {
+		t.Errorf("tool_input.units = %v, want %q", units, "celsius")
+	}
+}
+
+func TestEvaluator_ToolInputNil(t *testing.T) {
+	eval, err := NewEvaluator()
+	if err != nil {
+		t.Fatalf("NewEvaluator() error: %v", err)
+	}
+
+	ctx := newTestContext() // ToolInput is nil
+
+	result, err := eval.ResolveString(`{{ inputs.url }}`, ctx)
+	if err != nil {
+		t.Fatalf("ResolveString() error: %v", err)
+	}
+	if result != "https://example.com" {
+		t.Errorf("ResolveString() = %v, want %q", result, "https://example.com")
+	}
+}
+
+func TestEvaluator_ToolInputInParams(t *testing.T) {
+	eval, err := NewEvaluator()
+	if err != nil {
+		t.Fatalf("NewEvaluator() error: %v", err)
+	}
+
+	ctx := &Context{
+		Steps:  map[string]map[string]any{},
+		Inputs: map[string]any{},
+		ToolInput: map[string]any{
+			"city":  "London",
+			"units": "celsius",
+		},
+	}
+
+	params := map[string]any{
+		"url":    "https://api.weather.com/{{ tool_input.city }}",
+		"method": "GET",
+		"query": map[string]any{
+			"units": "{{ tool_input.units }}",
+		},
+	}
+
+	resolved, err := eval.ResolveParams(params, ctx)
+	if err != nil {
+		t.Fatalf("ResolveParams() error: %v", err)
+	}
+
+	if resolved["url"] != "https://api.weather.com/London" {
+		t.Errorf("url = %v, want %q", resolved["url"], "https://api.weather.com/London")
+	}
+	if resolved["method"] != "GET" {
+		t.Errorf("method = %v, want %q", resolved["method"], "GET")
+	}
+	query, ok := resolved["query"].(map[string]any)
+	if !ok {
+		t.Fatalf("query = %T, want map[string]any", resolved["query"])
+	}
+	if query["units"] != "celsius" {
+		t.Errorf("query.units = %v, want %q", query["units"], "celsius")
+	}
+}
