@@ -155,15 +155,15 @@ func (c *AIConnector) Execute(ctx context.Context, params map[string]any) (map[s
 	return output, nil
 }
 
-// toolCall represents an OpenAI function calling tool invocation.
-type toolCall struct {
+// ToolCall represents an OpenAI function calling tool invocation.
+type ToolCall struct {
 	ID       string       `json:"id"`
 	Type     string       `json:"type"`
-	Function toolFunction `json:"function"`
+	Function ToolFunction `json:"function"`
 }
 
-// toolFunction holds the function name and JSON-encoded arguments.
-type toolFunction struct {
+// ToolFunction holds the function name and JSON-encoded arguments.
+type ToolFunction struct {
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
 }
@@ -171,7 +171,7 @@ type toolFunction struct {
 // chatMessage represents the assistant's response message.
 type chatMessage struct {
 	Content   string     `json:"content"`
-	ToolCalls []toolCall `json:"tool_calls"`
+	ToolCalls []ToolCall `json:"tool_calls"`
 }
 
 type chatCompletionResponse struct {

@@ -328,9 +328,9 @@ func TestAIConnector_FunctionCallingRequest(t *testing.T) {
 	if output["finish_reason"] != "tool_calls" {
 		t.Errorf("finish_reason = %v, want %q", output["finish_reason"], "tool_calls")
 	}
-	toolCalls, ok := output["tool_calls"].([]toolCall)
+	toolCalls, ok := output["tool_calls"].([]ToolCall)
 	if !ok {
-		t.Fatalf("tool_calls type = %T, want []toolCall", output["tool_calls"])
+		t.Fatalf("tool_calls type = %T, want []ToolCall", output["tool_calls"])
 	}
 	if len(toolCalls) != 1 {
 		t.Fatalf("len(tool_calls) = %d, want 1", len(toolCalls))
@@ -506,7 +506,7 @@ func TestAIConnector_FunctionCallingThenText(t *testing.T) {
 	if output1["finish_reason"] != "tool_calls" {
 		t.Errorf("call 1: finish_reason = %v, want %q", output1["finish_reason"], "tool_calls")
 	}
-	toolCalls, ok := output1["tool_calls"].([]toolCall)
+	toolCalls, ok := output1["tool_calls"].([]ToolCall)
 	if !ok || len(toolCalls) != 1 {
 		t.Fatalf("call 1: tool_calls = %v", output1["tool_calls"])
 	}

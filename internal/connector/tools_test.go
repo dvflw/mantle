@@ -43,11 +43,11 @@ func TestToolLoop_SingleRound(t *testing.T) {
 	aiResponses := []map[string]any{
 		{
 			"finish_reason": "tool_calls",
-			"tool_calls": []toolCall{
+			"tool_calls": []ToolCall{
 				{
 					ID:   "call_001",
 					Type: "function",
-					Function: toolFunction{
+					Function: ToolFunction{
 						Name:      "get_weather",
 						Arguments: `{"location":"NYC"}`,
 					},
@@ -98,10 +98,10 @@ func TestToolLoop_MultipleToolCallsPerRound(t *testing.T) {
 	aiResponses := []map[string]any{
 		{
 			"finish_reason": "tool_calls",
-			"tool_calls": []toolCall{
-				{ID: "call_a", Type: "function", Function: toolFunction{Name: "tool_alpha", Arguments: `{}`}},
-				{ID: "call_b", Type: "function", Function: toolFunction{Name: "tool_beta", Arguments: `{"x":1}`}},
-				{ID: "call_c", Type: "function", Function: toolFunction{Name: "tool_gamma", Arguments: `{"y":"hello"}`}},
+			"tool_calls": []ToolCall{
+				{ID: "call_a", Type: "function", Function: ToolFunction{Name: "tool_alpha", Arguments: `{}`}},
+				{ID: "call_b", Type: "function", Function: ToolFunction{Name: "tool_beta", Arguments: `{"x":1}`}},
+				{ID: "call_c", Type: "function", Function: ToolFunction{Name: "tool_gamma", Arguments: `{"y":"hello"}`}},
 			},
 		},
 		{
@@ -147,8 +147,8 @@ func TestToolLoop_MaxRoundsEnforced(t *testing.T) {
 	// LLM always returns tool calls — never stops on its own.
 	toolCallResponse := map[string]any{
 		"finish_reason": "tool_calls",
-		"tool_calls": []toolCall{
-			{ID: "call_loop", Type: "function", Function: toolFunction{Name: "looping_tool", Arguments: `{}`}},
+		"tool_calls": []ToolCall{
+			{ID: "call_loop", Type: "function", Function: ToolFunction{Name: "looping_tool", Arguments: `{}`}},
 		},
 	}
 
@@ -188,12 +188,12 @@ func TestToolLoop_MaxCallsPerRoundExceeded(t *testing.T) {
 	aiResponses := []map[string]any{
 		{
 			"finish_reason": "tool_calls",
-			"tool_calls": []toolCall{
-				{ID: "c1", Type: "function", Function: toolFunction{Name: "t1", Arguments: `{}`}},
-				{ID: "c2", Type: "function", Function: toolFunction{Name: "t2", Arguments: `{}`}},
-				{ID: "c3", Type: "function", Function: toolFunction{Name: "t3", Arguments: `{}`}},
-				{ID: "c4", Type: "function", Function: toolFunction{Name: "t4", Arguments: `{}`}},
-				{ID: "c5", Type: "function", Function: toolFunction{Name: "t5", Arguments: `{}`}},
+			"tool_calls": []ToolCall{
+				{ID: "c1", Type: "function", Function: ToolFunction{Name: "t1", Arguments: `{}`}},
+				{ID: "c2", Type: "function", Function: ToolFunction{Name: "t2", Arguments: `{}`}},
+				{ID: "c3", Type: "function", Function: ToolFunction{Name: "t3", Arguments: `{}`}},
+				{ID: "c4", Type: "function", Function: ToolFunction{Name: "t4", Arguments: `{}`}},
+				{ID: "c5", Type: "function", Function: ToolFunction{Name: "t5", Arguments: `{}`}},
 			},
 		},
 	}
@@ -237,11 +237,11 @@ func TestToolLoop_InvalidToolArguments(t *testing.T) {
 		if aiCallCount == 1 {
 			return map[string]any{
 				"finish_reason": "tool_calls",
-				"tool_calls": []toolCall{
+				"tool_calls": []ToolCall{
 					{
 						ID:   "call_bad",
 						Type: "function",
-						Function: toolFunction{
+						Function: ToolFunction{
 							Name:      "broken_tool",
 							Arguments: `{not valid json!!!`,
 						},

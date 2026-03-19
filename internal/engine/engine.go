@@ -258,6 +258,14 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 		resolvedParams["_credential"] = credData
 	}
 
+	// Check for AI tool use — delegate to tool-use loop if tools are declared.
+	if step.Action == "ai/completion" {
+		tools, _ := workflow.ParseTools(step.Params)
+		if len(tools) > 0 {
+			return e.executeToolUseStep(ctx, execID, step, celCtx, tools)
+		}
+	}
+
 	// Look up connector.
 	conn, err := e.Registry.Get(step.Action)
 	if err != nil {

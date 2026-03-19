@@ -43,7 +43,7 @@ func (tl *ToolLoop) Run(ctx context.Context, params map[string]any) (map[string]
 		tl.MaxCallsPerRound = 20
 	}
 
-	messages := buildInitialMessages(params)
+	messages := BuildInitialMessages(params)
 	baseParams := copyParams(params)
 	delete(baseParams, "prompt")
 	delete(baseParams, "system_prompt")
@@ -80,7 +80,7 @@ func (tl *ToolLoop) Run(ctx context.Context, params map[string]any) (map[string]
 			return output, nil
 		}
 
-		calls, ok := rawCalls.([]toolCall)
+		calls, ok := rawCalls.([]ToolCall)
 		if !ok {
 			metrics.RecordToolRoundDuration(stepLabel, time.Since(roundStart))
 			return nil, fmt.Errorf("tool loop round %d: unexpected tool_calls type %T", round+1, rawCalls)
@@ -99,7 +99,7 @@ func (tl *ToolLoop) Run(ctx context.Context, params map[string]any) (map[string]
 		assistantMsg := map[string]any{
 			"role":       "assistant",
 			"content":    "",
-			"tool_calls": serializeToolCalls(calls),
+			"tool_calls": SerializeToolCalls(calls),
 		}
 		messages = append(messages, assistantMsg)
 
@@ -164,10 +164,10 @@ func (tl *ToolLoop) Run(ctx context.Context, params map[string]any) (map[string]
 	return output, nil
 }
 
-// buildInitialMessages constructs the initial message array from params.
+// BuildInitialMessages constructs the initial message array from params.
 // If _messages is already provided, it is used directly. Otherwise, system_prompt
 // and prompt are assembled into the standard system + user message pair.
-func buildInitialMessages(params map[string]any) []map[string]any {
+func BuildInitialMessages(params map[string]any) []map[string]any {
 	if raw, ok := params["_messages"]; ok {
 		if msgs, ok := raw.([]map[string]any); ok {
 			// Return a copy to avoid mutating the caller's slice.
@@ -208,9 +208,9 @@ func parseToolArguments(argsJSON string) (map[string]any, error) {
 	return args, nil
 }
 
-// serializeToolCalls converts []toolCall into []map[string]any for the
+// SerializeToolCalls converts []ToolCall into []map[string]any for the
 // OpenAI messages format.
-func serializeToolCalls(calls []toolCall) []map[string]any {
+func SerializeToolCalls(calls []ToolCall) []map[string]any {
 	out := make([]map[string]any, len(calls))
 	for i, tc := range calls {
 		out[i] = map[string]any{
