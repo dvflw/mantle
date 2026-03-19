@@ -150,3 +150,160 @@ steps:
 		t.Errorf("if: got %q, want %q", step.If, "inputs.enabled == true")
 	}
 }
+
+func TestParseTools(t *testing.T) {
+	params := map[string]any{
+		"model":  "gpt-4",
+		"prompt": "Help the user",
+		"tools": []any{
+			map[string]any{
+				"name":        "get_weather",
+				"description": "Get current weather for a location",
+				"input_schema": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"location": map[string]any{
+							"type":        "string",
+							"description": "City name",
+						},
+					},
+					"required": []any{"location"},
+				},
+				"action": "http.request",
+				"params": map[string]any{
+					"method": "GET",
+					"url":    "https://api.weather.com/${input.location}",
+				},
+			},
+		},
+	}
+
+	tools, err := ParseTools(params)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(tools) != 1 {
+		t.Fatalf("tools: got %d, want 1", len(tools))
+	}
+
+	tool := tools[0]
+	if tool.Name != "get_weather" {
+		t.Errorf("name: got %q, want %q", tool.Name, "get_weather")
+	}
+	if tool.Description != "Get current weather for a location" {
+		t.Errorf("description: got %q, want %q", tool.Description, "Get current weather for a location")
+	}
+	if tool.Action != "http.request" {
+		t.Errorf("action: got %q, want %q", tool.Action, "http.request")
+	}
+	if tool.InputSchema == nil {
+		t.Fatal("input_schema is nil")
+	}
+	if tool.InputSchema["type"] != "object" {
+		t.Errorf("input_schema type: got %v, want %q", tool.InputSchema["type"], "object")
+	}
+	if tool.Params == nil {
+		t.Fatal("params is nil")
+	}
+	if tool.Params["method"] != "GET" {
+		t.Errorf("params method: got %v, want %q", tool.Params["method"], "GET")
+	}
+}
+
+func TestParseTools_NoTools(t *testing.T) {
+	params := map[string]any{
+		"model":  "gpt-4",
+		"prompt": "Hello",
+	}
+
+	tools, err := ParseTools(params)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tools != nil {
+		t.Fatalf("tools: got %v, want nil", tools)
+	}
+}
+
+func TestParseTools_InvalidType(t *testing.T) {
+	params := map[string]any{
+		"tools": "not-an-array",
+	}
+
+	_, err := ParseTools(params)
+	if err == nil {
+		t.Fatal("expected error for non-array tools")
+	}
+}
+
+func TestParse_ToolUseStep(t *testing.T) {
+	path := writeTestFile(t, `
+name: tool-use-workflow
+description: Workflow with AI tool use
+steps:
+  - name: ai-with-tools
+    action: ai.completion
+    params:
+      model: gpt-4
+      prompt: "Help the user check the weather"
+      tools:
+        - name: get_weather
+          description: Get current weather
+          input_schema:
+            type: object
+            properties:
+              location:
+                type: string
+          action: http.request
+          params:
+            method: GET
+            url: "https://api.weather.com"
+        - name: get_forecast
+          description: Get weather forecast
+          input_schema:
+            type: object
+            properties:
+              location:
+                type: string
+              days:
+                type: integer
+          action: http.request
+          params:
+            method: GET
+            url: "https://api.weather.com/forecast"
+`)
+
+	result, err := Parse(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	step := result.Workflow.Steps[0]
+	if step.Name != "ai-with-tools" {
+		t.Errorf("step name: got %q, want %q", step.Name, "ai-with-tools")
+	}
+	if step.Action != "ai.completion" {
+		t.Errorf("step action: got %q, want %q", step.Action, "ai.completion")
+	}
+
+	tools, err := ParseTools(step.Params)
+	if err != nil {
+		t.Fatalf("ParseTools error: %v", err)
+	}
+	if len(tools) != 2 {
+		t.Fatalf("tools: got %d, want 2", len(tools))
+	}
+
+	if tools[0].Name != "get_weather" {
+		t.Errorf("tool[0] name: got %q, want %q", tools[0].Name, "get_weather")
+	}
+	if tools[0].Action != "http.request" {
+		t.Errorf("tool[0] action: got %q, want %q", tools[0].Action, "http.request")
+	}
+	if tools[1].Name != "get_forecast" {
+		t.Errorf("tool[1] name: got %q, want %q", tools[1].Name, "get_forecast")
+	}
+	if tools[1].InputSchema == nil {
+		t.Fatal("tool[1] input_schema is nil")
+	}
+}
