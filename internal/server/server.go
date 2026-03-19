@@ -13,6 +13,7 @@ import (
 	"github.com/dvflw/mantle/internal/auth"
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/engine"
+	"github.com/dvflw/mantle/internal/metrics"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -109,6 +110,9 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 		go reaper.Run(ctx)
 		s.Logger.Info("reaper started", "interval", cfg.Engine.ReaperInterval)
+
+		// Periodically update queue depth metric.
+		go s.pollQueueDepth(ctx, cfg.Engine.ReaperInterval)
 	}
 
 	// Start cron scheduler.
@@ -251,6 +255,29 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"execution_id":"%s","status":"cancelled"}`, execID)
+}
+
+// pollQueueDepth periodically queries the count of pending steps and updates
+// the Prometheus gauge. It runs on the same interval as the reaper.
+func (s *Server) pollQueueDepth(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			var count int
+			err := s.DB.QueryRowContext(ctx,
+				`SELECT COUNT(*) FROM step_executions WHERE status = 'pending'`,
+			).Scan(&count)
+			if err != nil {
+				s.Logger.Error("failed to query queue depth", "error", err)
+				continue
+			}
+			metrics.SetQueueDepth(count)
+		}
+	}
 }
 
 func getLatestVersion(ctx context.Context, db *sql.DB, name string) (int, error) {

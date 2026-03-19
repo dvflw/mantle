@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
+
+	"github.com/dvflw/mantle/internal/metrics"
 )
 
 // ToolExecutor executes a named tool with the given arguments and returns the result.
@@ -21,6 +24,7 @@ type ToolLoop struct {
 	ToolExecutor     ToolExecutor
 	MaxRounds        int
 	MaxCallsPerRound int
+	StepName         string                                          // used for metrics labels
 	OnLLMResponse    func(response map[string]any) error           // for crash recovery caching
 	OnToolResult     func(toolName string, round int, result map[string]any) error
 }
@@ -45,7 +49,15 @@ func (tl *ToolLoop) Run(ctx context.Context, params map[string]any) (map[string]
 	delete(baseParams, "system_prompt")
 	delete(baseParams, "_messages")
 
+	stepLabel := tl.StepName
+	if stepLabel == "" {
+		stepLabel = "unknown"
+	}
+
 	for round := 0; round < tl.MaxRounds; round++ {
+		roundStart := time.Now()
+		metrics.RecordToolRound(stepLabel)
+
 		callParams := copyParams(baseParams)
 		callParams["_messages"] = messages
 
@@ -64,14 +76,17 @@ func (tl *ToolLoop) Run(ctx context.Context, params map[string]any) (map[string]
 		// If no tool calls, this is the final response.
 		rawCalls, hasToolCalls := output["tool_calls"]
 		if !hasToolCalls || rawCalls == nil {
+			metrics.RecordToolRoundDuration(stepLabel, time.Since(roundStart))
 			return output, nil
 		}
 
 		calls, ok := rawCalls.([]toolCall)
 		if !ok {
+			metrics.RecordToolRoundDuration(stepLabel, time.Since(roundStart))
 			return nil, fmt.Errorf("tool loop round %d: unexpected tool_calls type %T", round+1, rawCalls)
 		}
 		if len(calls) == 0 {
+			metrics.RecordToolRoundDuration(stepLabel, time.Since(roundStart))
 			return output, nil
 		}
 
@@ -97,13 +112,16 @@ func (tl *ToolLoop) Run(ctx context.Context, params map[string]any) (map[string]
 				// Send the parse error back to the LLM as the tool result
 				// rather than crashing the loop.
 				resultContent = fmt.Sprintf(`{"error":"invalid tool arguments: %s"}`, parseErr.Error())
+				metrics.RecordToolCall(stepLabel, tc.Function.Name, "failed")
 			} else {
 				result, execErr := tl.ToolExecutor(ctx, tc.Function.Name, args)
 				if execErr != nil {
 					resultContent = fmt.Sprintf(`{"error":"%s"}`, execErr.Error())
+					metrics.RecordToolCall(stepLabel, tc.Function.Name, "failed")
 				} else {
 					encoded, _ := json.Marshal(result)
 					resultContent = string(encoded)
+					metrics.RecordToolCall(stepLabel, tc.Function.Name, "completed")
 
 					if tl.OnToolResult != nil {
 						if err := tl.OnToolResult(tc.Function.Name, round+1, result); err != nil {
@@ -120,6 +138,8 @@ func (tl *ToolLoop) Run(ctx context.Context, params map[string]any) (map[string]
 			}
 			messages = append(messages, toolMsg)
 		}
+
+		metrics.RecordToolRoundDuration(stepLabel, time.Since(roundStart))
 	}
 
 	// MaxRounds exhausted — make one final call asking the LLM to respond
