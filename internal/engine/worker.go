@@ -11,6 +11,21 @@ import (
 // StepExecutor is called by the worker to execute a step.
 type StepExecutor func(ctx context.Context, stepName string, attempt int) (map[string]any, error)
 
+// executionIDKey is the context key for passing the execution ID to the StepExecutor.
+type executionIDKey struct{}
+
+// WithExecutionID returns a context that carries the given execution ID.
+func WithExecutionID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, executionIDKey{}, id)
+}
+
+// ExecutionIDFromContext extracts the execution ID from the context, or returns
+// an empty string if none is present.
+func ExecutionIDFromContext(ctx context.Context) string {
+	id, _ := ctx.Value(executionIDKey{}).(string)
+	return id
+}
+
 // Worker polls for pending steps and executes them with lease renewal.
 type Worker struct {
 	Claimer            *Claimer
@@ -69,7 +84,10 @@ func (w *Worker) Run(ctx context.Context) {
 			"attempt", claim.Attempt,
 		)
 
-		w.executeWithLeaseRenewal(ctx, claim)
+		// Inject execution ID into context so StepExecutor can look up
+		// the workflow definition and CEL context for this execution.
+		stepCtx := WithExecutionID(ctx, executionID)
+		w.executeWithLeaseRenewal(stepCtx, claim)
 	}
 }
 

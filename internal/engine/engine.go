@@ -333,6 +333,77 @@ func (e *Engine) MakeStepExecutor(wf *workflow.Workflow, execID string, celCtx *
 	}
 }
 
+// MakeGlobalStepExecutor creates a StepExecutor that resolves the workflow and
+// CEL context dynamically from the execution ID stored in the context. This is
+// used by the distributed worker, which claims arbitrary steps across all
+// executions and therefore cannot be pre-bound to a single workflow.
+func (e *Engine) MakeGlobalStepExecutor() StepExecutor {
+	return func(ctx context.Context, stepName string, attempt int) (map[string]any, error) {
+		execID := ExecutionIDFromContext(ctx)
+		if execID == "" {
+			return nil, fmt.Errorf("no execution ID in context")
+		}
+
+		// Look up workflow name and version for this execution.
+		var workflowName string
+		var workflowVersion int
+		err := e.DB.QueryRowContext(ctx,
+			`SELECT workflow_name, workflow_version FROM workflow_executions WHERE id = $1`,
+			execID,
+		).Scan(&workflowName, &workflowVersion)
+		if err != nil {
+			return nil, fmt.Errorf("loading execution metadata for %s: %w", execID, err)
+		}
+
+		// Load workflow definition.
+		wf, err := e.loadWorkflow(ctx, workflowName, workflowVersion)
+		if err != nil {
+			return nil, fmt.Errorf("loading workflow %s v%d: %w", workflowName, workflowVersion, err)
+		}
+
+		step := wf.FindStep(stepName)
+		if step == nil {
+			return nil, fmt.Errorf("step %q not found in workflow %s", stepName, workflowName)
+		}
+
+		// Build CEL context from completed steps and execution inputs.
+		completedSteps, err := e.loadCompletedSteps(ctx, execID)
+		if err != nil {
+			return nil, fmt.Errorf("loading completed steps for %s: %w", execID, err)
+		}
+
+		var inputs map[string]any
+		var inputsJSON []byte
+		if scanErr := e.DB.QueryRowContext(ctx,
+			`SELECT inputs FROM workflow_executions WHERE id = $1`, execID,
+		).Scan(&inputsJSON); scanErr == nil && len(inputsJSON) > 0 {
+			json.Unmarshal(inputsJSON, &inputs) //nolint:errcheck // best-effort
+		}
+
+		celCtx := &mantleCEL.Context{
+			Steps:  make(map[string]map[string]any),
+			Inputs: inputs,
+		}
+		if celCtx.Inputs == nil {
+			celCtx.Inputs = make(map[string]any)
+		}
+		for name, output := range completedSteps {
+			celCtx.Steps[name] = map[string]any{"output": output}
+		}
+
+		output, err := e.executeStepLogic(ctx, execID, *step, celCtx)
+		if err != nil {
+			return output, err
+		}
+
+		// Validate output size before returning to the worker.
+		if sizeErr := checkOutputSize(output, defaultMaxOutputBytes); sizeErr != nil {
+			return nil, sizeErr
+		}
+		return output, nil
+	}
+}
+
 // loadWorkflow retrieves a workflow definition from the database.
 func (e *Engine) loadWorkflow(ctx context.Context, name string, version int) (*workflow.Workflow, error) {
 	var content []byte
