@@ -26,8 +26,8 @@ func UserFromContext(ctx context.Context) *User {
 // Health check endpoints are excluded from authentication.
 func AuthMiddleware(store *Store, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Skip auth for health checks.
-		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
+		// Skip auth for health checks and metrics.
+		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" || r.URL.Path == "/metrics" {
 			next.ServeHTTP(w, r)
 			return
 		}

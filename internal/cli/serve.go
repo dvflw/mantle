@@ -5,10 +5,12 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/dvflw/mantle/internal/audit"
 	"github.com/dvflw/mantle/internal/auth"
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
 	"github.com/dvflw/mantle/internal/engine"
+	"github.com/dvflw/mantle/internal/logging"
 	"github.com/dvflw/mantle/internal/secret"
 	"github.com/dvflw/mantle/internal/server"
 	"github.com/spf13/cobra"
@@ -25,6 +27,9 @@ func newServeCommand() *cobra.Command {
 				return fmt.Errorf("config not loaded")
 			}
 
+			// Configure structured JSON logging before any other work.
+			logging.Setup(cfg.Log.Level)
+
 			database, err := db.Open(cfg.Database.URL)
 			if err != nil {
 				return fmt.Errorf("failed to connect to database: %w", err)
@@ -40,6 +45,9 @@ func newServeCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("creating engine: %w", err)
 			}
+
+			// Wire up Postgres-backed audit emitter.
+			eng.Auditor = &audit.PostgresEmitter{DB: database}
 
 			// Wire up credential resolver if encryption key is configured.
 			if cfg.Encryption.Key != "" {

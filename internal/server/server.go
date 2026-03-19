@@ -12,6 +12,7 @@ import (
 	"github.com/dvflw/mantle/internal/api/health"
 	"github.com/dvflw/mantle/internal/auth"
 	"github.com/dvflw/mantle/internal/engine"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Server is the long-running Mantle process that hosts the API,
@@ -55,12 +56,17 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("/healthz", health.HealthzHandler())
 	mux.Handle("/readyz", health.ReadyzHandler(s.DB))
 
+	// Prometheus metrics endpoint.
+	mux.Handle("/metrics", promhttp.Handler())
+
 	// Webhook endpoints.
 	mux.HandleFunc("/hooks/", s.webhooks.ServeHTTP)
 
 	// API endpoints.
 	mux.HandleFunc("POST /api/v1/run/{workflow}", s.handleRun)
 	mux.HandleFunc("POST /api/v1/cancel/{execution}", s.handleCancel)
+	mux.HandleFunc("GET /api/v1/executions", s.handleListExecutions)
+	mux.HandleFunc("GET /api/v1/executions/{id}", s.handleGetExecution)
 
 	// Wrap with auth middleware if AuthStore is configured.
 	var handler http.Handler = mux
