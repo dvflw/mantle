@@ -166,6 +166,39 @@ func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.S
 		Resource:  audit.Resource{Type: "step_execution", ID: step.Name},
 	})
 
+	// Check for AI tool-use steps: if this is an ai/completion step with tools
+	// declared, delegate to the tool-use loop instead of the single-shot path.
+	if step.Action == "ai/completion" {
+		tools, toolsErr := workflow.ParseTools(step.Params)
+		if toolsErr != nil {
+			errMsg := fmt.Sprintf("parsing tools: %v", toolsErr)
+			e.updateStep(ctx, execID, step.Name, "failed", nil, errMsg)
+			return StepResult{Status: "failed", Error: errMsg}
+		}
+		if len(tools) > 0 {
+			output, toolErr := e.executeToolUseStep(ctx, execID, step, celCtx, tools)
+			if toolErr != nil {
+				errMsg := toolErr.Error()
+				e.updateStep(ctx, execID, step.Name, "failed", output, errMsg)
+				e.Auditor.Emit(ctx, audit.Event{
+					Timestamp: time.Now(),
+					Actor:     "engine",
+					Action:    audit.ActionStepFailed,
+					Resource:  audit.Resource{Type: "step_execution", ID: step.Name},
+				})
+				return StepResult{Status: "failed", Output: output, Error: errMsg}
+			}
+			e.updateStep(ctx, execID, step.Name, "completed", output, "")
+			e.Auditor.Emit(ctx, audit.Event{
+				Timestamp: time.Now(),
+				Actor:     "engine",
+				Action:    audit.ActionStepCompleted,
+				Resource:  audit.Resource{Type: "step_execution", ID: step.Name},
+			})
+			return StepResult{Status: "completed", Output: output}
+		}
+	}
+
 	// Resolve CEL expressions in params.
 	resolvedParams, err := e.CEL.ResolveParams(step.Params, celCtx)
 	if err != nil {

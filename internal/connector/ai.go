@@ -21,22 +21,32 @@ func (c *AIConnector) Execute(ctx context.Context, params map[string]any) (map[s
 		return nil, fmt.Errorf("ai/completion: model is required")
 	}
 
-	prompt, _ := params["prompt"].(string)
-	if prompt == "" {
-		return nil, fmt.Errorf("ai/completion: prompt is required")
+	// Build messages: use _messages passthrough if provided, otherwise build from prompt/system_prompt.
+	var messages any
+	if rawMessages, ok := params["_messages"]; ok {
+		messages = rawMessages
+	} else {
+		prompt, _ := params["prompt"].(string)
+		if prompt == "" {
+			return nil, fmt.Errorf("ai/completion: prompt is required")
+		}
+		var msgList []map[string]string
+		if systemPrompt, _ := params["system_prompt"].(string); systemPrompt != "" {
+			msgList = append(msgList, map[string]string{"role": "system", "content": systemPrompt})
+		}
+		msgList = append(msgList, map[string]string{"role": "user", "content": prompt})
+		messages = msgList
 	}
-
-	// Build messages array.
-	var messages []map[string]string
-	if systemPrompt, _ := params["system_prompt"].(string); systemPrompt != "" {
-		messages = append(messages, map[string]string{"role": "system", "content": systemPrompt})
-	}
-	messages = append(messages, map[string]string{"role": "user", "content": prompt})
 
 	// Build request body.
 	reqBody := map[string]any{
 		"model":    model,
 		"messages": messages,
+	}
+
+	// Include tools for function calling.
+	if tools, ok := params["_tools"]; ok {
+		reqBody["tools"] = tools
 	}
 
 	// Structured output via response_format.
@@ -115,10 +125,9 @@ func (c *AIConnector) Execute(ctx context.Context, params map[string]any) (map[s
 		return nil, fmt.Errorf("ai/completion: no choices returned")
 	}
 
-	text := apiResp.Choices[0].Message.Content
+	choice := apiResp.Choices[0]
 
 	output := map[string]any{
-		"text":  text,
 		"model": apiResp.Model,
 		"usage": map[string]any{
 			"prompt_tokens":     apiResp.Usage.PromptTokens,
@@ -127,21 +136,48 @@ func (c *AIConnector) Execute(ctx context.Context, params map[string]any) (map[s
 		},
 	}
 
-	// Try to parse response as JSON (for structured output).
-	var parsed any
-	if json.Unmarshal([]byte(text), &parsed) == nil {
-		output["json"] = parsed
+	// If the model returned tool calls, surface them instead of text.
+	if len(choice.Message.ToolCalls) > 0 {
+		output["tool_calls"] = choice.Message.ToolCalls
+		output["finish_reason"] = "tool_calls"
+	} else {
+		text := choice.Message.Content
+		output["text"] = text
+		output["finish_reason"] = "stop"
+
+		// Try to parse response as JSON (for structured output).
+		var parsed any
+		if json.Unmarshal([]byte(text), &parsed) == nil {
+			output["json"] = parsed
+		}
 	}
 
 	return output, nil
 }
 
+// ToolCall represents an OpenAI function calling tool invocation.
+type ToolCall struct {
+	ID       string       `json:"id"`
+	Type     string       `json:"type"`
+	Function ToolFunction `json:"function"`
+}
+
+// ToolFunction holds the function name and JSON-encoded arguments.
+type ToolFunction struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
+// chatMessage represents the assistant's response message.
+type chatMessage struct {
+	Content   string     `json:"content"`
+	ToolCalls []ToolCall `json:"tool_calls"`
+}
+
 type chatCompletionResponse struct {
 	Model   string `json:"model"`
 	Choices []struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
+		Message chatMessage `json:"message"`
 	} `json:"choices"`
 	Usage struct {
 		PromptTokens     int `json:"prompt_tokens"`
