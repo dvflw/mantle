@@ -1,0 +1,9 @@
+name: hello-world
+description: Fetch a random fact from a public API — the simplest possible Mantle workflow
+
+steps:
+  - name: fetch
+    action: http/request
+    params:
+      method: GET
+      url: "https://jsonplaceholder.typicode.com/posts/1"

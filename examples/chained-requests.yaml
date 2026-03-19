@@ -1,0 +1,17 @@
+name: chained-requests
+description: >
+  Fetch a user from a public API, then fetch their posts using the user's ID.
+  Demonstrates CEL data passing between steps via steps.<name>.output.
+
+steps:
+  - name: get-user
+    action: http/request
+    params:
+      method: GET
+      url: "https://jsonplaceholder.typicode.com/users/1"
+
+  - name: get-user-posts
+    action: http/request
+    params:
+      method: GET
+      url: "https://jsonplaceholder.typicode.com/posts?userId={{ steps['get-user'].output.json.id }}"

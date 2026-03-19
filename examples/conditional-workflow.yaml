@@ -1,0 +1,33 @@
+name: conditional-workflow
+description: >
+  Fetch todos for a user, then conditionally post a summary only if there are
+  incomplete todos. Demonstrates conditional execution with if: and retry policies.
+
+inputs:
+  user_id:
+    type: string
+    description: JSONPlaceholder user ID (1-10)
+
+steps:
+  - name: get-todos
+    action: http/request
+    timeout: "10s"
+    retry:
+      max_attempts: 3
+      backoff: exponential
+    params:
+      method: GET
+      url: "https://jsonplaceholder.typicode.com/todos?userId={{ inputs.user_id }}"
+
+  - name: post-summary
+    action: http/request
+    if: "steps['get-todos'].output.status == 200"
+    params:
+      method: POST
+      url: "https://jsonplaceholder.typicode.com/posts"
+      headers:
+        Content-Type: "application/json"
+      body:
+        title: "Todo summary"
+        body: "Fetched todos for user {{ inputs.user_id }}"
+        userId: "{{ inputs.user_id }}"
