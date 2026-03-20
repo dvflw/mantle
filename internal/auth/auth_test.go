@@ -10,6 +10,7 @@ import (
 
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -196,7 +197,7 @@ func TestHasMinRole(t *testing.T) {
 }
 
 func TestAuthMiddleware_NoHeader(t *testing.T) {
-	handler := AuthMiddleware(&Store{}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := AuthMiddleware(&Store{}, nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("handler should not be called without auth")
 	}))
 
@@ -211,7 +212,7 @@ func TestAuthMiddleware_NoHeader(t *testing.T) {
 
 func TestAuthMiddleware_HealthBypass(t *testing.T) {
 	called := false
-	handler := AuthMiddleware(&Store{}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := AuthMiddleware(&Store{}, nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(200)
 	}))
@@ -225,6 +226,148 @@ func TestAuthMiddleware_HealthBypass(t *testing.T) {
 	}
 	if rec.Code != 200 {
 		t.Errorf("status = %d, want 200", rec.Code)
+	}
+}
+
+func TestAuthMiddleware_OIDCToken(t *testing.T) {
+	store := setupTestStore(t)
+	ctx := context.Background()
+
+	// Pre-provision user.
+	_, err := store.CreateUser(ctx, "alice@example.com", "Alice", DefaultTeamID, RoleOperator)
+	if err != nil {
+		t.Fatalf("CreateUser() error: %v", err)
+	}
+
+	// Set up mock OIDC server.
+	key, err := generateTestRSAKey()
+	if err != nil {
+		t.Fatalf("generating RSA key: %v", err)
+	}
+	srv := mockOIDCServer(t, key)
+
+	validator, err := NewOIDCValidator(ctx, srv.URL, srv.URL, srv.URL, nil)
+	if err != nil {
+		t.Fatalf("NewOIDCValidator() error: %v", err)
+	}
+
+	// Sign a JWT with matching email.
+	token := signTestJWT(t, key, jwt.MapClaims{
+		"iss":            srv.URL,
+		"aud":            srv.URL,
+		"sub":            "user-123",
+		"email":          "alice@example.com",
+		"email_verified": true,
+		"exp":            time.Now().Add(time.Hour).Unix(),
+		"iat":            time.Now().Unix(),
+	})
+
+	var capturedUser *User
+	var capturedMethod string
+	handler := AuthMiddleware(store, validator, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedUser = UserFromContext(r.Context())
+		capturedMethod = AuthMethodFromContext(r.Context())
+		w.WriteHeader(200)
+	}))
+
+	req := httptest.NewRequest("GET", "/api/test", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+	if capturedUser == nil {
+		t.Fatal("user should be set in context")
+	}
+	if capturedUser.Email != "alice@example.com" {
+		t.Errorf("email = %q, want %q", capturedUser.Email, "alice@example.com")
+	}
+	if capturedMethod != "oidc" {
+		t.Errorf("auth method = %q, want %q", capturedMethod, "oidc")
+	}
+}
+
+func TestAuthMiddleware_OIDCToken_UserNotFound(t *testing.T) {
+	store := setupTestStore(t)
+	ctx := context.Background()
+
+	key, err := generateTestRSAKey()
+	if err != nil {
+		t.Fatalf("generating RSA key: %v", err)
+	}
+	srv := mockOIDCServer(t, key)
+
+	validator, err := NewOIDCValidator(ctx, srv.URL, srv.URL, srv.URL, nil)
+	if err != nil {
+		t.Fatalf("NewOIDCValidator() error: %v", err)
+	}
+
+	// Sign a JWT for a user that does NOT exist in the database.
+	token := signTestJWT(t, key, jwt.MapClaims{
+		"iss":            srv.URL,
+		"aud":            srv.URL,
+		"sub":            "user-999",
+		"email":          "nobody@example.com",
+		"email_verified": true,
+		"exp":            time.Now().Add(time.Hour).Unix(),
+		"iat":            time.Now().Unix(),
+	})
+
+	handler := AuthMiddleware(store, validator, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("handler should not be called for unknown user")
+	}))
+
+	req := httptest.NewRequest("GET", "/api/test", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want %d; body = %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+func TestAuthMiddleware_APIKeyStillWorks(t *testing.T) {
+	store := setupTestStore(t)
+	ctx := context.Background()
+
+	user, err := store.CreateUser(ctx, "bob@example.com", "Bob", DefaultTeamID, RoleAdmin)
+	if err != nil {
+		t.Fatalf("CreateUser() error: %v", err)
+	}
+
+	rawKey, _, err := store.CreateAPIKey(ctx, user.ID, "test-key")
+	if err != nil {
+		t.Fatalf("CreateAPIKey() error: %v", err)
+	}
+
+	var capturedUser *User
+	var capturedMethod string
+	// Pass nil for oidcValidator — API keys should still work.
+	handler := AuthMiddleware(store, nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedUser = UserFromContext(r.Context())
+		capturedMethod = AuthMethodFromContext(r.Context())
+		w.WriteHeader(200)
+	}))
+
+	req := httptest.NewRequest("GET", "/api/test", nil)
+	req.Header.Set("Authorization", "Bearer "+rawKey)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+	if capturedUser == nil {
+		t.Fatal("user should be set in context")
+	}
+	if capturedUser.Email != "bob@example.com" {
+		t.Errorf("email = %q, want %q", capturedUser.Email, "bob@example.com")
+	}
+	if capturedMethod != "api_key" {
+		t.Errorf("auth method = %q, want %q", capturedMethod, "api_key")
 	}
 }
 

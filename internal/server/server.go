@@ -20,11 +20,12 @@ import (
 // Server is the long-running Mantle process that hosts the API,
 // cron scheduler, and webhook listener.
 type Server struct {
-	DB         *sql.DB
-	Engine     *engine.Engine
-	AuthStore  *auth.Store
-	Address    string
-	Logger     *slog.Logger
+	DB            *sql.DB
+	Engine        *engine.Engine
+	AuthStore     *auth.Store
+	OIDCValidator *auth.OIDCValidator
+	Address       string
+	Logger        *slog.Logger
 
 	httpServer *http.Server
 	cron       *CronScheduler
@@ -144,7 +145,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// Wrap with auth middleware if AuthStore is configured.
 	var handler http.Handler = mux
 	if s.AuthStore != nil {
-		handler = auth.AuthMiddleware(s.AuthStore, mux)
+		handler = auth.AuthMiddleware(s.AuthStore, s.OIDCValidator, mux)
 	}
 
 	s.httpServer = &http.Server{

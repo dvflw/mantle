@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
@@ -11,6 +12,10 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 )
+
+func generateTestRSAKey() (*rsa.PrivateKey, error) {
+	return rsa.GenerateKey(rand.Reader, 2048)
+}
 
 func mockOIDCServer(t *testing.T, key *rsa.PrivateKey) *httptest.Server {
 	t.Helper()

@@ -133,6 +133,23 @@ func (s *Store) SetUserRole(ctx context.Context, email string, role Role) error 
 	return nil
 }
 
+// LookupUserByEmail finds a user by their email address.
+// Returns nil, nil if no user is found.
+func (s *Store) LookupUserByEmail(ctx context.Context, email string) (*User, error) {
+	var u User
+	err := s.DB.QueryRowContext(ctx,
+		`SELECT id, email, name, team_id, role, created_at, updated_at
+		 FROM users WHERE email = $1`, email,
+	).Scan(&u.ID, &u.Email, &u.Name, &u.TeamID, &u.Role, &u.CreatedAt, &u.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
 // --- API Keys ---
 
 func (s *Store) CreateAPIKey(ctx context.Context, userID, name string) (rawKey string, key *APIKey, err error) {
