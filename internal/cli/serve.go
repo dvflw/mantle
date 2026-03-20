@@ -63,6 +63,22 @@ func newServeCommand() *cobra.Command {
 			srv := server.New(database, eng, cfg.API.Address)
 			srv.AuthStore = &auth.Store{DB: database}
 
+			// Wire up OIDC validator if configured.
+			if cfg.Auth.OIDC.IssuerURL != "" {
+				oidcValidator, err := auth.NewOIDCValidator(
+					cmd.Context(),
+					cfg.Auth.OIDC.IssuerURL,
+					cfg.Auth.OIDC.ClientID,
+					cfg.Auth.OIDC.Audience,
+					cfg.Auth.OIDC.AllowedDomains,
+				)
+				if err != nil {
+					return fmt.Errorf("configuring OIDC: %w", err)
+				}
+				srv.OIDCValidator = oidcValidator
+				fmt.Fprintf(cmd.OutOrStdout(), "OIDC authentication enabled (issuer: %s)\n", cfg.Auth.OIDC.IssuerURL)
+			}
+
 			// Handle SIGTERM and SIGINT for graceful shutdown.
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
 			defer stop()
