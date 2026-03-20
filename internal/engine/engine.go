@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dvflw/mantle/internal/audit"
+	"github.com/dvflw/mantle/internal/auth"
 	mantleCEL "github.com/dvflw/mantle/internal/cel"
 	"github.com/dvflw/mantle/internal/connector"
 	"github.com/dvflw/mantle/internal/secret"
@@ -414,10 +415,11 @@ func (e *Engine) MakeGlobalStepExecutor() StepExecutor {
 
 // loadWorkflow retrieves a workflow definition from the database.
 func (e *Engine) loadWorkflow(ctx context.Context, name string, version int) (*workflow.Workflow, error) {
+	teamID := auth.TeamIDFromContext(ctx)
 	var content []byte
 	err := e.DB.QueryRowContext(ctx,
-		`SELECT content FROM workflow_definitions WHERE name = $1 AND version = $2`,
-		name, version,
+		`SELECT content FROM workflow_definitions WHERE name = $1 AND version = $2 AND team_id = $3`,
+		name, version, teamID,
 	).Scan(&content)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("workflow %q version %d not found", name, version)
@@ -440,12 +442,14 @@ func (e *Engine) createExecution(ctx context.Context, workflowName string, versi
 		return "", fmt.Errorf("marshaling inputs: %w", err)
 	}
 
+	teamID := auth.TeamIDFromContext(ctx)
+
 	var id string
 	err = e.DB.QueryRowContext(ctx,
-		`INSERT INTO workflow_executions (workflow_name, workflow_version, status, inputs, started_at)
-		 VALUES ($1, $2, 'pending', $3, NOW())
+		`INSERT INTO workflow_executions (workflow_name, workflow_version, status, inputs, started_at, team_id)
+		 VALUES ($1, $2, 'pending', $3, NOW(), $4)
 		 RETURNING id`,
-		workflowName, version, inputsJSON,
+		workflowName, version, inputsJSON, teamID,
 	).Scan(&id)
 	if err != nil {
 		return "", err

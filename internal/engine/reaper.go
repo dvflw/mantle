@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/dvflw/mantle/internal/metrics"
@@ -16,6 +17,31 @@ type Reaper struct {
 	DB       *sql.DB
 	Interval time.Duration
 	Logger   *slog.Logger
+
+	// Liveness tracking.
+	lastRunAt atomic.Int64 // unix nanos of last reap cycle
+	degraded  atomic.Bool  // set if the Run goroutine panicked and recovered
+}
+
+// LastRunAt returns the time of the last reap cycle.
+func (r *Reaper) LastRunAt() time.Time {
+	nanos := r.lastRunAt.Load()
+	if nanos == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, nanos)
+}
+
+// IsAlive returns true if the reaper has run within the given threshold.
+func (r *Reaper) IsAlive(threshold time.Duration) bool {
+	if r.degraded.Load() {
+		return false
+	}
+	last := r.LastRunAt()
+	if last.IsZero() {
+		return true // not yet started
+	}
+	return time.Since(last) <= threshold
 }
 
 // ReapSteps marks running steps with expired leases as failed.
@@ -52,6 +78,15 @@ func (r *Reaper) ReapExecutionClaims(ctx context.Context) (int64, error) {
 // Step reaping runs on every tick. Execution claim reaping is offset
 // by half the interval to spread database load.
 func (r *Reaper) Run(ctx context.Context) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			r.degraded.Store(true)
+			if r.Logger != nil {
+				r.Logger.Error("reaper panicked, entering degraded state", "panic", rec)
+			}
+		}
+	}()
+
 	ticker := time.NewTicker(r.Interval)
 	defer ticker.Stop()
 
@@ -65,6 +100,7 @@ func (r *Reaper) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			r.lastRunAt.Store(time.Now().UnixNano())
 			n, err := r.ReapSteps(ctx)
 			if err != nil {
 				r.Logger.Error("reaper: failed to reap steps", "error", err)

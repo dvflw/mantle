@@ -27,19 +27,6 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      initContainers:
-        - name: migrate
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["mantle", "init"]
-          env:
-            - name: MANTLE_DATABASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "mantle.databaseSecretName" . }}
-                  key: {{ include "mantle.databaseSecretKey" . }}
-            - name: MANTLE_LOG_LEVEL
-              value: {{ .Values.logLevel | quote }}
       containers:
         - name: mantle
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"

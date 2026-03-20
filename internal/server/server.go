@@ -30,9 +30,30 @@ type Server struct {
 	cron       *CronScheduler
 	webhooks   *WebhookHandler
 
+	worker     *engine.Worker
+	reaper     *engine.Reaper
+
 	mu         sync.Mutex
 	running    map[string]context.CancelFunc // execution ID → cancel
 }
+
+// workerLivenessChecker adapts the Worker to the health.LivenessChecker interface.
+type workerLivenessChecker struct {
+	w         *engine.Worker
+	threshold time.Duration
+}
+
+func (c *workerLivenessChecker) IsAlive() bool { return c.w.IsAlive(c.threshold) }
+func (c *workerLivenessChecker) Name() string  { return "worker" }
+
+// reaperLivenessChecker adapts the Reaper to the health.LivenessChecker interface.
+type reaperLivenessChecker struct {
+	r         *engine.Reaper
+	threshold time.Duration
+}
+
+func (c *reaperLivenessChecker) IsAlive() bool { return c.r.IsAlive(c.threshold) }
+func (c *reaperLivenessChecker) Name() string  { return "reaper" }
 
 // New creates a Server with the given configuration.
 func New(db *sql.DB, eng *engine.Engine, address string) *Server {
@@ -54,9 +75,8 @@ func New(db *sql.DB, eng *engine.Engine, address string) *Server {
 func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 
-	// Health endpoints.
-	mux.Handle("/healthz", health.HealthzHandler())
-	mux.Handle("/readyz", health.ReadyzHandler(s.DB))
+	// Collect liveness checkers for readyz.
+	var livenessCheckers []health.LivenessChecker
 
 	// Prometheus metrics endpoint.
 	mux.Handle("/metrics", promhttp.Handler())
@@ -69,6 +89,57 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("POST /api/v1/cancel/{execution}", s.handleCancel)
 	mux.HandleFunc("GET /api/v1/executions", s.handleListExecutions)
 	mux.HandleFunc("GET /api/v1/executions/{id}", s.handleGetExecution)
+
+	// Workflow definition endpoints.
+	mux.HandleFunc("GET /api/v1/workflows", s.handleListWorkflows)
+	mux.HandleFunc("GET /api/v1/workflows/{name}", s.handleGetWorkflow)
+	mux.HandleFunc("GET /api/v1/workflows/{name}/versions", s.handleListWorkflowVersions)
+	mux.HandleFunc("GET /api/v1/workflows/{name}/versions/{version}", s.handleGetWorkflowVersion)
+
+	// Start distributed engine components (worker + reaper).
+	if cfg := config.FromContext(ctx); cfg != nil {
+		claimer := &engine.Claimer{
+			DB:            s.DB,
+			NodeID:        cfg.Engine.NodeID,
+			LeaseDuration: cfg.Engine.StepLeaseDuration,
+		}
+		s.worker = &engine.Worker{
+			Claimer:      claimer,
+			StepExecutor: s.Engine.MakeGlobalStepExecutor(),
+			PollInterval:       cfg.Engine.WorkerPollInterval,
+			MaxBackoff:         cfg.Engine.WorkerMaxBackoff,
+			LeaseRenewInterval: cfg.Engine.StepLeaseDuration / 3,
+			Logger:             s.Logger,
+		}
+		go s.worker.Run(ctx)
+		s.Logger.Info("worker started", "node_id", cfg.Engine.NodeID)
+
+		s.reaper = &engine.Reaper{
+			DB:       s.DB,
+			Interval: cfg.Engine.ReaperInterval,
+			Logger:   s.Logger,
+		}
+		go s.reaper.Run(ctx)
+		s.Logger.Info("reaper started", "interval", cfg.Engine.ReaperInterval)
+
+		// Register liveness checkers for readyz.
+		workerThreshold := 3 * cfg.Engine.WorkerPollInterval
+		if workerThreshold < time.Second {
+			workerThreshold = 3 * time.Second
+		}
+		reaperThreshold := 3 * cfg.Engine.ReaperInterval
+		livenessCheckers = append(livenessCheckers,
+			&workerLivenessChecker{w: s.worker, threshold: workerThreshold},
+			&reaperLivenessChecker{r: s.reaper, threshold: reaperThreshold},
+		)
+
+		// Periodically update queue depth metric.
+		go s.pollQueueDepth(ctx, cfg.Engine.ReaperInterval)
+	}
+
+	// Health endpoints (registered after engine components so checkers are populated).
+	mux.Handle("/healthz", health.HealthzHandler())
+	mux.Handle("/readyz", health.ReadyzHandler(s.DB, livenessCheckers...))
 
 	// Wrap with auth middleware if AuthStore is configured.
 	var handler http.Handler = mux
@@ -83,36 +154,6 @@ func (s *Server) Start(ctx context.Context) error {
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
-	}
-
-	// Start distributed engine components (worker + reaper).
-	if cfg := config.FromContext(ctx); cfg != nil {
-		claimer := &engine.Claimer{
-			DB:            s.DB,
-			NodeID:        cfg.Engine.NodeID,
-			LeaseDuration: cfg.Engine.StepLeaseDuration,
-		}
-		worker := &engine.Worker{
-			Claimer:      claimer,
-			StepExecutor: s.Engine.MakeGlobalStepExecutor(),
-			PollInterval:       cfg.Engine.WorkerPollInterval,
-			MaxBackoff:         cfg.Engine.WorkerMaxBackoff,
-			LeaseRenewInterval: cfg.Engine.StepLeaseDuration / 3,
-			Logger:             s.Logger,
-		}
-		go worker.Run(ctx)
-		s.Logger.Info("worker started", "node_id", cfg.Engine.NodeID)
-
-		reaper := &engine.Reaper{
-			DB:       s.DB,
-			Interval: cfg.Engine.ReaperInterval,
-			Logger:   s.Logger,
-		}
-		go reaper.Run(ctx)
-		s.Logger.Info("reaper started", "interval", cfg.Engine.ReaperInterval)
-
-		// Periodically update queue depth metric.
-		go s.pollQueueDepth(ctx, cfg.Engine.ReaperInterval)
 	}
 
 	// Start cron scheduler.
@@ -281,9 +322,10 @@ func (s *Server) pollQueueDepth(ctx context.Context, interval time.Duration) {
 }
 
 func getLatestVersion(ctx context.Context, db *sql.DB, name string) (int, error) {
+	teamID := auth.TeamIDFromContext(ctx)
 	var version int
 	err := db.QueryRowContext(ctx,
-		`SELECT COALESCE(MAX(version), 0) FROM workflow_definitions WHERE name = $1`, name,
+		`SELECT COALESCE(MAX(version), 0) FROM workflow_definitions WHERE name = $1 AND team_id = $2`, name, teamID,
 	).Scan(&version)
 	return version, err
 }

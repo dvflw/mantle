@@ -81,6 +81,16 @@ func RequireRole(minRole Role) func(http.Handler) http.Handler {
 	}
 }
 
+// TeamIDFromContext extracts the team ID from the authenticated user in the context.
+// Returns DefaultTeamID for single-tenant mode (no auth / no user in context).
+func TeamIDFromContext(ctx context.Context) string {
+	user := UserFromContext(ctx)
+	if user == nil || user.TeamID == "" {
+		return DefaultTeamID
+	}
+	return user.TeamID
+}
+
 // hasMinRole checks if userRole meets the minimum required role.
 func hasMinRole(userRole, minRole Role) bool {
 	levels := map[Role]int{

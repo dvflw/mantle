@@ -4,9 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/dvflw/mantle/internal/metrics"
+)
+
+const (
+	// DefaultMaxMessageBytes is the default cumulative message size limit (128KB).
+	DefaultMaxMessageBytes = 128 * 1024
+	// DefaultMaxToolResultBytes is the default per-tool-result size limit (32KB).
+	DefaultMaxToolResultBytes = 32 * 1024
 )
 
 // ToolExecutor executes a named tool with the given arguments and returns the result.
@@ -27,6 +35,14 @@ type ToolLoop struct {
 	StepName         string                                          // used for metrics labels
 	OnLLMResponse    func(response map[string]any) error           // for crash recovery caching
 	OnToolResult     func(toolName string, round int, result map[string]any) error
+
+	// MaxMessageBytes limits cumulative message size across rounds (default 128KB).
+	// When exceeded, older tool results are truncated to summaries.
+	MaxMessageBytes int
+	// MaxTokenBudget limits total_tokens across all API responses. 0 means unlimited.
+	MaxTokenBudget int
+	// MaxToolResultBytes truncates individual tool results beyond this limit (default 32KB).
+	MaxToolResultBytes int
 }
 
 // Run drives the LLM<->tool interaction loop to completion. It builds the
@@ -42,6 +58,12 @@ func (tl *ToolLoop) Run(ctx context.Context, params map[string]any) (map[string]
 	if tl.MaxCallsPerRound <= 0 {
 		tl.MaxCallsPerRound = 20
 	}
+	if tl.MaxMessageBytes <= 0 {
+		tl.MaxMessageBytes = DefaultMaxMessageBytes
+	}
+	if tl.MaxToolResultBytes <= 0 {
+		tl.MaxToolResultBytes = DefaultMaxToolResultBytes
+	}
 
 	messages := BuildInitialMessages(params)
 	baseParams := copyParams(params)
@@ -54,9 +76,24 @@ func (tl *ToolLoop) Run(ctx context.Context, params map[string]any) (map[string]
 		stepLabel = "unknown"
 	}
 
+	// Track cumulative bytes and tokens across rounds.
+	cumulativeBytes := estimateMessagesBytes(messages)
+	cumulativeTokens := 0
+
 	for round := 0; round < tl.MaxRounds; round++ {
 		roundStart := time.Now()
 		metrics.RecordToolRound(stepLabel)
+
+		// If approaching the message byte limit, truncate older tool results.
+		if cumulativeBytes > tl.MaxMessageBytes {
+			truncated := truncateOlderToolResults(messages, tl.MaxMessageBytes)
+			if truncated > 0 {
+				slog.Warn("tool loop: truncated older tool results to stay within message byte limit",
+					"step", stepLabel, "round", round+1, "truncated_messages", truncated,
+					"limit_bytes", tl.MaxMessageBytes)
+			}
+			cumulativeBytes = estimateMessagesBytes(messages)
+		}
 
 		callParams := copyParams(baseParams)
 		callParams["_messages"] = messages
@@ -64,6 +101,17 @@ func (tl *ToolLoop) Run(ctx context.Context, params map[string]any) (map[string]
 		output, err := tl.AIExecute(ctx, callParams)
 		if err != nil {
 			return nil, fmt.Errorf("tool loop round %d: AI call failed: %w", round+1, err)
+		}
+
+		// Track token usage across rounds.
+		if usage, ok := output["usage"].(map[string]any); ok {
+			if totalTokens, ok := extractInt(usage["total_tokens"]); ok {
+				cumulativeTokens += totalTokens
+			}
+		}
+		if tl.MaxTokenBudget > 0 && cumulativeTokens > tl.MaxTokenBudget {
+			return nil, fmt.Errorf("tool loop round %d: cumulative token usage (%d) exceeded budget (%d)",
+				round+1, cumulativeTokens, tl.MaxTokenBudget)
 		}
 
 		// Cache LLM response for crash recovery.
@@ -102,6 +150,7 @@ func (tl *ToolLoop) Run(ctx context.Context, params map[string]any) (map[string]
 			"tool_calls": SerializeToolCalls(calls),
 		}
 		messages = append(messages, assistantMsg)
+		cumulativeBytes += estimateMessageBytes(assistantMsg)
 
 		// Execute each tool call and append results.
 		for _, tc := range calls {
@@ -131,12 +180,21 @@ func (tl *ToolLoop) Run(ctx context.Context, params map[string]any) (map[string]
 				}
 			}
 
+			// Truncate individual tool results that exceed MaxToolResultBytes.
+			if len(resultContent) > tl.MaxToolResultBytes {
+				slog.Warn("tool loop: truncating oversized tool result",
+					"step", stepLabel, "round", round+1, "tool", tc.Function.Name,
+					"original_bytes", len(resultContent), "limit_bytes", tl.MaxToolResultBytes)
+				resultContent = resultContent[:tl.MaxToolResultBytes] + "...[truncated]"
+			}
+
 			toolMsg := map[string]any{
 				"role":         "tool",
 				"tool_call_id": tc.ID,
 				"content":      resultContent,
 			}
 			messages = append(messages, toolMsg)
+			cumulativeBytes += estimateMessageBytes(toolMsg)
 		}
 
 		metrics.RecordToolRoundDuration(stepLabel, time.Since(roundStart))
@@ -206,6 +264,90 @@ func parseToolArguments(argsJSON string) (map[string]any, error) {
 		return nil, fmt.Errorf("parsing JSON arguments: %w", err)
 	}
 	return args, nil
+}
+
+// estimateMessageBytes returns a rough byte-size estimate for a single message.
+func estimateMessageBytes(msg map[string]any) int {
+	size := 0
+	if content, ok := msg["content"].(string); ok {
+		size += len(content)
+	}
+	if role, ok := msg["role"].(string); ok {
+		size += len(role)
+	}
+	// Account for serialized tool_calls if present.
+	if tc, ok := msg["tool_calls"]; ok {
+		encoded, _ := json.Marshal(tc)
+		size += len(encoded)
+	}
+	return size
+}
+
+// estimateMessagesBytes returns the total estimated byte size of all messages.
+func estimateMessagesBytes(messages []map[string]any) int {
+	total := 0
+	for _, msg := range messages {
+		total += estimateMessageBytes(msg)
+	}
+	return total
+}
+
+// truncateOlderToolResults replaces content of older tool-role messages with a
+// summary placeholder, working from the oldest tool messages forward, until the
+// total message size is within targetBytes. Returns the number of messages truncated.
+// The most recent tool messages are kept intact.
+func truncateOlderToolResults(messages []map[string]any, targetBytes int) int {
+	const truncatedPlaceholder = `{"_truncated":true,"summary":"tool result truncated to reduce message size"}`
+	truncated := 0
+
+	// Find indices of all tool messages.
+	var toolIndices []int
+	for i, msg := range messages {
+		if msg["role"] == "tool" {
+			toolIndices = append(toolIndices, i)
+		}
+	}
+
+	// Truncate from oldest tool messages, skipping the most recent batch.
+	// Keep the last 25% of tool messages intact (at least 1).
+	keepCount := len(toolIndices) / 4
+	if keepCount < 1 {
+		keepCount = 1
+	}
+	truncatableCount := len(toolIndices) - keepCount
+
+	for i := 0; i < truncatableCount; i++ {
+		idx := toolIndices[i]
+		content, ok := messages[idx]["content"].(string)
+		if !ok || content == truncatedPlaceholder {
+			continue
+		}
+		if len(content) <= len(truncatedPlaceholder) {
+			continue // already small enough
+		}
+		messages[idx]["content"] = truncatedPlaceholder
+		truncated++
+
+		if estimateMessagesBytes(messages) <= targetBytes {
+			break
+		}
+	}
+
+	return truncated
+}
+
+// extractInt attempts to extract an int from a value that may be int or float64
+// (JSON unmarshalling often produces float64).
+func extractInt(v any) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case float64:
+		return int(n), true
+	case int64:
+		return int(n), true
+	}
+	return 0, false
 }
 
 // SerializeToolCalls converts []ToolCall into []map[string]any for the

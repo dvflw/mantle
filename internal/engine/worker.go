@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"math/rand"
+	"sync/atomic"
 	"time"
 
 	"github.com/dvflw/mantle/internal/metrics"
@@ -36,10 +37,44 @@ type Worker struct {
 	MaxBackoff         time.Duration
 	LeaseRenewInterval time.Duration
 	Logger             *slog.Logger
+
+	// Liveness tracking.
+	lastPollAt atomic.Int64 // unix nanos of last poll cycle
+	degraded   atomic.Bool  // set if the Run goroutine panicked and recovered
+}
+
+// LastPollAt returns the time of the last poll cycle.
+func (w *Worker) LastPollAt() time.Time {
+	nanos := w.lastPollAt.Load()
+	if nanos == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, nanos)
+}
+
+// IsAlive returns true if the worker has polled within the given threshold.
+func (w *Worker) IsAlive(threshold time.Duration) bool {
+	if w.degraded.Load() {
+		return false
+	}
+	last := w.LastPollAt()
+	if last.IsZero() {
+		return true // not yet started
+	}
+	return time.Since(last) <= threshold
 }
 
 // Run is a blocking loop that claims and executes steps until ctx is cancelled.
 func (w *Worker) Run(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			w.degraded.Store(true)
+			if w.Logger != nil {
+				w.Logger.Error("worker panicked, entering degraded state", "panic", r)
+			}
+		}
+	}()
+
 	backoff := w.PollInterval
 	if backoff == 0 {
 		backoff = time.Second
@@ -57,6 +92,8 @@ func (w *Worker) Run(ctx context.Context) {
 			return
 		default:
 		}
+
+		w.lastPollAt.Store(time.Now().UnixNano())
 
 		pollStart := time.Now()
 		claim, executionID, err := w.Claimer.ClaimAnyStep(ctx)

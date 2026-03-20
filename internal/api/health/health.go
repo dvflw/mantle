@@ -7,7 +7,14 @@ import (
 )
 
 type response struct {
-	Status string `json:"status"`
+	Status  string            `json:"status"`
+	Details map[string]string `json:"details,omitempty"`
+}
+
+// LivenessChecker reports whether a component is alive.
+type LivenessChecker interface {
+	IsAlive() bool
+	Name() string
 }
 
 func HealthzHandler() http.HandlerFunc {
@@ -18,7 +25,7 @@ func HealthzHandler() http.HandlerFunc {
 	}
 }
 
-func ReadyzHandler(database *sql.DB) http.HandlerFunc {
+func ReadyzHandler(database *sql.DB, checkers ...LivenessChecker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
@@ -34,7 +41,29 @@ func ReadyzHandler(database *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Check liveness of registered components.
+		details := make(map[string]string)
+		allAlive := true
+		for _, c := range checkers {
+			if c.IsAlive() {
+				details[c.Name()] = "ok"
+			} else {
+				details[c.Name()] = "degraded"
+				allAlive = false
+			}
+		}
+
+		if !allAlive {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(response{Status: "degraded", Details: details})
+			return
+		}
+
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(response{Status: "ok"})
+		if len(details) > 0 {
+			json.NewEncoder(w).Encode(response{Status: "ok", Details: details})
+		} else {
+			json.NewEncoder(w).Encode(response{Status: "ok"})
+		}
 	}
 }

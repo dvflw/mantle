@@ -1,0 +1,31 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "mantle.fullname" . }}-migrate
+  labels:
+    {{- include "mantle.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  template:
+    metadata:
+      labels:
+        {{- include "mantle.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "mantle.serviceAccountName" . }}
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["mantle", "init"]
+          env:
+            - name: MANTLE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mantle.databaseSecretName" . }}
+                  key: {{ include "mantle.databaseSecretKey" . }}
+            - name: MANTLE_LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
