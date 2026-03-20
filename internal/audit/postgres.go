@@ -15,6 +15,8 @@ type PostgresEmitter struct {
 }
 
 func (p *PostgresEmitter) Emit(ctx context.Context, event Event) error {
+	// Enrich event metadata with auth context if available.
+	event = enrichFromContext(ctx, event)
 	beforeJSON, err := marshalNullableJSON(event.Before)
 	if err != nil {
 		return fmt.Errorf("marshaling before state: %w", err)

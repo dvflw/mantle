@@ -49,6 +49,9 @@ func newServeCommand() *cobra.Command {
 			// Wire up Postgres-backed audit emitter.
 			eng.Auditor = &audit.PostgresEmitter{DB: database}
 
+			// Register auth method extractor for audit event enrichment.
+			audit.AuthMethodExtractor = auth.AuthMethodFromContext
+
 			// Wire up credential resolver if encryption key is configured.
 			if cfg.Encryption.Key != "" {
 				encryptor, err := secret.NewEncryptor(cfg.Encryption.Key)
