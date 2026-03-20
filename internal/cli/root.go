@@ -26,6 +26,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.PersistentFlags().String("database-url", "", "database connection URL")
 	cmd.PersistentFlags().String("api-address", "", "API listen address")
 	cmd.PersistentFlags().String("log-level", "", "log level (debug, info, warn, error)")
+	cmd.PersistentFlags().String("api-key", "", "API key for authentication (overrides cached credentials)")
 
 	cmd.AddCommand(newVersionCommand())
 	cmd.AddCommand(newInitCommand())
