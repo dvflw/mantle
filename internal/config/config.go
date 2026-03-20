@@ -19,6 +19,21 @@ type Config struct {
 	Log        LogConfig        `mapstructure:"log"`
 	Encryption EncryptionConfig `mapstructure:"encryption"`
 	Engine     EngineConfig     `mapstructure:"engine"`
+	Auth       AuthConfig       `mapstructure:"auth"`
+}
+
+// AuthConfig holds authentication configuration.
+type AuthConfig struct {
+	OIDC OIDCConfig `mapstructure:"oidc"`
+}
+
+// OIDCConfig holds OIDC provider settings.
+type OIDCConfig struct {
+	IssuerURL      string   `mapstructure:"issuer_url"`
+	ClientID       string   `mapstructure:"client_id"`
+	ClientSecret   string   `mapstructure:"client_secret"`
+	Audience       string   `mapstructure:"audience"`
+	AllowedDomains []string `mapstructure:"allowed_domains"`
 }
 
 // EncryptionConfig holds the master encryption key for credential storage.
@@ -127,6 +142,13 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	_ = v.BindEnv("database.max_open_conns", "MANTLE_DATABASE_MAX_OPEN_CONNS")
 	_ = v.BindEnv("database.max_idle_conns", "MANTLE_DATABASE_MAX_IDLE_CONNS")
 	_ = v.BindEnv("database.conn_max_lifetime", "MANTLE_DATABASE_CONN_MAX_LIFETIME")
+
+	// Auth/OIDC env var bindings
+	_ = v.BindEnv("auth.oidc.issuer_url", "MANTLE_AUTH_OIDC_ISSUER_URL")
+	_ = v.BindEnv("auth.oidc.client_id", "MANTLE_AUTH_OIDC_CLIENT_ID")
+	_ = v.BindEnv("auth.oidc.client_secret", "MANTLE_AUTH_OIDC_CLIENT_SECRET")
+	_ = v.BindEnv("auth.oidc.audience", "MANTLE_AUTH_OIDC_AUDIENCE")
+	_ = v.BindEnv("auth.oidc.allowed_domains", "MANTLE_AUTH_OIDC_ALLOWED_DOMAINS")
 
 	// Engine env var bindings
 	_ = v.BindEnv("engine.node_id", "MANTLE_ENGINE_NODE_ID")
