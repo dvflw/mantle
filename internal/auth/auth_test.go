@@ -371,5 +371,106 @@ func TestAuthMiddleware_APIKeyStillWorks(t *testing.T) {
 	}
 }
 
+func TestOIDCIntegration_FullFlow(t *testing.T) {
+	store := setupTestStore(t)
+	ctx := context.Background()
+
+	// 1. Pre-provision alice (OIDC user).
+	_, err := store.CreateUser(ctx, "alice@example.com", "Alice", DefaultTeamID, RoleOperator)
+	if err != nil {
+		t.Fatalf("CreateUser(alice) error: %v", err)
+	}
+
+	// 2. Pre-provision bob (API key user) and create an API key.
+	bob, err := store.CreateUser(ctx, "bob@example.com", "Bob", DefaultTeamID, RoleAdmin)
+	if err != nil {
+		t.Fatalf("CreateUser(bob) error: %v", err)
+	}
+	rawKey, _, err := store.CreateAPIKey(ctx, bob.ID, "bob-key")
+	if err != nil {
+		t.Fatalf("CreateAPIKey() error: %v", err)
+	}
+
+	// 3. Set up mock OIDC server with a test RSA key.
+	key, err := generateTestRSAKey()
+	if err != nil {
+		t.Fatalf("generating RSA key: %v", err)
+	}
+	srv := mockOIDCServer(t, key)
+
+	// 4. Create an OIDCValidator pointing at the mock server.
+	validator, err := NewOIDCValidator(ctx, srv.URL, srv.URL, srv.URL, nil)
+	if err != nil {
+		t.Fatalf("NewOIDCValidator() error: %v", err)
+	}
+
+	// 5. Create a single handler behind AuthMiddleware that captures user and auth method.
+	var capturedUser *User
+	var capturedMethod string
+	handler := AuthMiddleware(store, validator, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedUser = UserFromContext(r.Context())
+		capturedMethod = AuthMethodFromContext(r.Context())
+		w.WriteHeader(200)
+	}))
+
+	// 6. OIDC path: sign a JWT for alice and send it.
+	t.Run("oidc_path", func(t *testing.T) {
+		capturedUser = nil
+		capturedMethod = ""
+
+		token := signTestJWT(t, key, jwt.MapClaims{
+			"iss":            srv.URL,
+			"aud":            srv.URL,
+			"sub":            "alice-oidc-sub",
+			"email":          "alice@example.com",
+			"email_verified": true,
+			"exp":            time.Now().Add(time.Hour).Unix(),
+			"iat":            time.Now().Unix(),
+		})
+
+		req := httptest.NewRequest("GET", "/api/workflows", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != 200 {
+			t.Fatalf("OIDC path: status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+		}
+		if capturedUser == nil {
+			t.Fatal("OIDC path: user should be set in context")
+		}
+		if capturedUser.Email != "alice@example.com" {
+			t.Errorf("OIDC path: email = %q, want %q", capturedUser.Email, "alice@example.com")
+		}
+		if capturedMethod != "oidc" {
+			t.Errorf("OIDC path: auth method = %q, want %q", capturedMethod, "oidc")
+		}
+	})
+
+	// 7. API key path: send bob's API key through the same middleware.
+	t.Run("api_key_path", func(t *testing.T) {
+		capturedUser = nil
+		capturedMethod = ""
+
+		req := httptest.NewRequest("GET", "/api/workflows", nil)
+		req.Header.Set("Authorization", "Bearer "+rawKey)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != 200 {
+			t.Fatalf("API key path: status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+		}
+		if capturedUser == nil {
+			t.Fatal("API key path: user should be set in context")
+		}
+		if capturedUser.Email != "bob@example.com" {
+			t.Errorf("API key path: email = %q, want %q", capturedUser.Email, "bob@example.com")
+		}
+		if capturedMethod != "api_key" {
+			t.Errorf("API key path: auth method = %q, want %q", capturedMethod, "api_key")
+		}
+	})
+}
+
 // compile check
 var _ *sql.DB
