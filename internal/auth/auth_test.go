@@ -109,12 +109,12 @@ func TestUserCRUD(t *testing.T) {
 		t.Fatalf("ListUsers() returned %d, want 1", len(users))
 	}
 
-	err = store.SetUserRole(ctx, "alice@example.com", RoleTeamOwner)
+	err = store.SetUserRole(ctx, "alice@example.com", DefaultTeamID, RoleTeamOwner)
 	if err != nil {
 		t.Fatalf("SetUserRole() error: %v", err)
 	}
 
-	err = store.DeleteUser(ctx, "alice@example.com")
+	err = store.DeleteUser(ctx, "alice@example.com", DefaultTeamID)
 	if err != nil {
 		t.Fatalf("DeleteUser() error: %v", err)
 	}

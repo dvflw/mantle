@@ -106,29 +106,29 @@ func (s *Store) ListUsers(ctx context.Context, teamID string) ([]User, error) {
 	return users, rows.Err()
 }
 
-func (s *Store) DeleteUser(ctx context.Context, email string) error {
-	result, err := s.DB.ExecContext(ctx, `DELETE FROM users WHERE email = $1`, email)
+func (s *Store) DeleteUser(ctx context.Context, email, teamID string) error {
+	result, err := s.DB.ExecContext(ctx, `DELETE FROM users WHERE email = $1 AND team_id = $2`, email, teamID)
 	if err != nil {
 		return fmt.Errorf("deleting user: %w", err)
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return fmt.Errorf("user %q not found", email)
+		return fmt.Errorf("user %q not found in team", email)
 	}
 	return nil
 }
 
-func (s *Store) SetUserRole(ctx context.Context, email string, role Role) error {
+func (s *Store) SetUserRole(ctx context.Context, email, teamID string, role Role) error {
 	result, err := s.DB.ExecContext(ctx,
-		`UPDATE users SET role = $1, updated_at = NOW() WHERE email = $2`,
-		string(role), email,
+		`UPDATE users SET role = $1, updated_at = NOW() WHERE email = $2 AND team_id = $3`,
+		string(role), email, teamID,
 	)
 	if err != nil {
 		return fmt.Errorf("updating role: %w", err)
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return fmt.Errorf("user %q not found", email)
+		return fmt.Errorf("user %q not found in team", email)
 	}
 	return nil
 }

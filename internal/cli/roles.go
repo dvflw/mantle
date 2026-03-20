@@ -19,7 +19,7 @@ func newRolesCommand() *cobra.Command {
 }
 
 func newRolesAssignCommand() *cobra.Command {
-	var email, role string
+	var email, role, team string
 
 	cmd := &cobra.Command{
 		Use:   "assign",
@@ -36,7 +36,12 @@ func newRolesAssignCommand() *cobra.Command {
 				return err
 			}
 
-			if err := store.SetUserRole(cmd.Context(), email, r); err != nil {
+			t, err := store.GetTeamByName(cmd.Context(), team)
+			if err != nil {
+				return err
+			}
+
+			if err := store.SetUserRole(cmd.Context(), email, t.ID, r); err != nil {
 				return err
 			}
 
@@ -47,6 +52,7 @@ func newRolesAssignCommand() *cobra.Command {
 
 	cmd.Flags().StringVar(&email, "email", "", "user email (required)")
 	cmd.Flags().StringVar(&role, "role", "", "role: admin, team_owner, operator (required)")
+	cmd.Flags().StringVar(&team, "team", "default", "team name")
 	_ = cmd.MarkFlagRequired("email")
 	_ = cmd.MarkFlagRequired("role")
 

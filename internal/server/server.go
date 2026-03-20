@@ -199,8 +199,14 @@ func (s *Server) Start(ctx context.Context) error {
 }
 
 // executeWorkflow runs a workflow in the background, tracking it for graceful shutdown.
-func (s *Server) executeWorkflow(workflowName string, version int, inputs map[string]any) (string, error) {
-	ctx, cancel := context.WithCancel(context.Background())
+// The parent context is used to propagate authentication (team/user) information.
+func (s *Server) executeWorkflow(parent context.Context, workflowName string, version int, inputs map[string]any) (string, error) {
+	// Propagate auth context from the original request so team scoping is preserved.
+	bgCtx := context.Background()
+	if u := auth.UserFromContext(parent); u != nil {
+		bgCtx = auth.WithUser(bgCtx, u)
+	}
+	ctx, cancel := context.WithCancel(bgCtx)
 
 	// Create execution record first to get the ID.
 	result, err := s.Engine.Execute(ctx, workflowName, version, inputs)
@@ -268,7 +274,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	execID, err := s.executeWorkflow(workflowName, version, nil)
+	execID, err := s.executeWorkflow(r.Context(), workflowName, version, nil)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
 		return
@@ -291,9 +297,10 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Also update DB status.
+	teamID := auth.TeamIDFromContext(r.Context())
 	s.DB.ExecContext(r.Context(),
 		`UPDATE workflow_executions SET status = 'cancelled', completed_at = NOW(), updated_at = NOW()
-		 WHERE id = $1 AND status IN ('pending', 'running')`, execID)
+		 WHERE id = $1 AND status IN ('pending', 'running') AND team_id = $2`, execID, teamID)
 
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"execution_id":"%s","status":"cancelled"}`, execID)

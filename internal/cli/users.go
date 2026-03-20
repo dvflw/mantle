@@ -110,7 +110,7 @@ func newUsersListCommand() *cobra.Command {
 }
 
 func newUsersDeleteCommand() *cobra.Command {
-	var email string
+	var email, team string
 
 	cmd := &cobra.Command{
 		Use:   "delete",
@@ -122,7 +122,12 @@ func newUsersDeleteCommand() *cobra.Command {
 			}
 			defer cleanup()
 
-			if err := store.DeleteUser(cmd.Context(), email); err != nil {
+			t, err := store.GetTeamByName(cmd.Context(), team)
+			if err != nil {
+				return err
+			}
+
+			if err := store.DeleteUser(cmd.Context(), email, t.ID); err != nil {
 				return err
 			}
 
@@ -132,6 +137,7 @@ func newUsersDeleteCommand() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&email, "email", "", "user email to delete (required)")
+	cmd.Flags().StringVar(&team, "team", "default", "team name")
 	_ = cmd.MarkFlagRequired("email")
 
 	return cmd

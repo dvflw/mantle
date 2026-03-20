@@ -74,7 +74,7 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"workflow", trigger.WorkflowName,
 		"version", trigger.WorkflowVersion)
 
-	execID, err := h.server.executeWorkflow(trigger.WorkflowName, trigger.WorkflowVersion, inputs)
+	execID, err := h.server.executeWorkflow(r.Context(), trigger.WorkflowName, trigger.WorkflowVersion, inputs)
 	if err != nil {
 		h.server.Logger.Error("webhook: execution failed",
 			"workflow", trigger.WorkflowName,

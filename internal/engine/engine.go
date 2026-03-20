@@ -354,11 +354,12 @@ func (e *Engine) MakeGlobalStepExecutor() StepExecutor {
 		}
 
 		// Look up workflow name and version for this execution.
+		teamID := auth.TeamIDFromContext(ctx)
 		var workflowName string
 		var workflowVersion int
 		err := e.DB.QueryRowContext(ctx,
-			`SELECT workflow_name, workflow_version FROM workflow_executions WHERE id = $1`,
-			execID,
+			`SELECT workflow_name, workflow_version FROM workflow_executions WHERE id = $1 AND team_id = $2`,
+			execID, teamID,
 		).Scan(&workflowName, &workflowVersion)
 		if err != nil {
 			return nil, fmt.Errorf("loading execution metadata for %s: %w", execID, err)
@@ -384,7 +385,7 @@ func (e *Engine) MakeGlobalStepExecutor() StepExecutor {
 		var inputs map[string]any
 		var inputsJSON []byte
 		if scanErr := e.DB.QueryRowContext(ctx,
-			`SELECT inputs FROM workflow_executions WHERE id = $1`, execID,
+			`SELECT inputs FROM workflow_executions WHERE id = $1 AND team_id = $2`, execID, teamID,
 		).Scan(&inputsJSON); scanErr == nil && len(inputsJSON) > 0 {
 			json.Unmarshal(inputsJSON, &inputs) //nolint:errcheck // best-effort
 		}
@@ -464,9 +465,10 @@ func (e *Engine) updateExecutionStatus(ctx context.Context, execID, status, errM
 		completedAt = time.Now()
 	}
 
+	teamID := auth.TeamIDFromContext(ctx)
 	_, err := e.DB.ExecContext(ctx,
-		`UPDATE workflow_executions SET status = $1, completed_at = $2, updated_at = NOW() WHERE id = $3`,
-		status, completedAt, execID,
+		`UPDATE workflow_executions SET status = $1, completed_at = $2, updated_at = NOW() WHERE id = $3 AND team_id = $4`,
+		status, completedAt, execID, teamID,
 	)
 	if err != nil {
 		return fmt.Errorf("updating execution %s status to %s: %w", execID, status, err)

@@ -130,8 +130,10 @@ func (s *Store) ReEncryptAll(ctx context.Context, newEncryptor *Encryptor) (int,
 	}
 	defer tx.Rollback()
 
+	teamID := auth.TeamIDFromContext(ctx)
 	rows, err := tx.QueryContext(ctx,
-		`SELECT id, encrypted_data, nonce FROM credentials FOR UPDATE`,
+		`SELECT id, encrypted_data, nonce FROM credentials WHERE team_id = $1 FOR UPDATE`,
+		teamID,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("querying credentials: %w", err)
