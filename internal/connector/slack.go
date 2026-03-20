@@ -70,7 +70,7 @@ func (c *SlackSendConnector) Execute(ctx context.Context, params map[string]any)
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, DefaultMaxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("slack/send: reading response: %w", err)
 	}
@@ -147,7 +147,7 @@ func (c *SlackHistoryConnector) Execute(ctx context.Context, params map[string]a
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, DefaultMaxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("slack/history: reading response: %w", err)
 	}

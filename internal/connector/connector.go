@@ -5,6 +5,11 @@ import (
 	"fmt"
 )
 
+// DefaultMaxResponseBytes is the maximum number of bytes read from any HTTP
+// response body across all connectors. This prevents OOM from large or
+// malicious responses. 10 MB.
+const DefaultMaxResponseBytes = 10 * 1024 * 1024
+
 // Connector executes an action with the given parameters and returns output data.
 type Connector interface {
 	Execute(ctx context.Context, params map[string]any) (map[string]any, error)

@@ -2,6 +2,8 @@ package config
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"time"
@@ -155,10 +157,14 @@ func Load(cmd *cobra.Command) (*Config, error) {
 		return nil, err
 	}
 
-	// Generate default NodeID if not set
+	// Generate default NodeID if not set.
+	// Format: hostname:pid:random8chars — the random suffix ensures uniqueness
+	// across Kubernetes container restarts where PID 1 is common.
 	if cfg.Engine.NodeID == "" {
 		hostname, _ := os.Hostname()
-		cfg.Engine.NodeID = fmt.Sprintf("%s:%d", hostname, os.Getpid())
+		var suffix [4]byte
+		_, _ = rand.Read(suffix[:])
+		cfg.Engine.NodeID = fmt.Sprintf("%s:%d:%s", hostname, os.Getpid(), hex.EncodeToString(suffix[:]))
 	}
 
 	return &cfg, nil

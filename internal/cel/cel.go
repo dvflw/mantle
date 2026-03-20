@@ -5,6 +5,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
@@ -19,8 +20,9 @@ type Context struct {
 
 // Evaluator evaluates CEL expressions against a runtime context.
 type Evaluator struct {
-	env      *cel.Env
-	envCache map[string]string // cached, filtered environment variables
+	env          *cel.Env
+	envCache     map[string]string // cached, filtered environment variables
+	programCache sync.Map          // expression string -> compiled cel.Program
 }
 
 // NewEvaluator creates a CEL evaluator with the standard Mantle expression environment.
@@ -37,15 +39,11 @@ func NewEvaluator() (*Evaluator, error) {
 }
 
 // Eval evaluates a CEL expression and returns the result as a Go value.
+// Compiled programs are cached by expression string to avoid redundant compilation.
 func (e *Evaluator) Eval(expression string, ctx *Context) (any, error) {
-	ast, issues := e.env.Compile(expression)
-	if issues != nil && issues.Err() != nil {
-		return nil, fmt.Errorf("compiling expression %q: %w", expression, issues.Err())
-	}
-
-	prog, err := e.env.Program(ast)
+	prog, err := e.getOrCompile(expression)
 	if err != nil {
-		return nil, fmt.Errorf("creating program for %q: %w", expression, err)
+		return nil, err
 	}
 
 	vars := map[string]any{
@@ -60,6 +58,26 @@ func (e *Evaluator) Eval(expression string, ctx *Context) (any, error) {
 	}
 
 	return refToNative(out), nil
+}
+
+// getOrCompile returns a cached compiled program or compiles and caches a new one.
+func (e *Evaluator) getOrCompile(expression string) (cel.Program, error) {
+	if cached, ok := e.programCache.Load(expression); ok {
+		return cached.(cel.Program), nil
+	}
+
+	ast, issues := e.env.Compile(expression)
+	if issues != nil && issues.Err() != nil {
+		return nil, fmt.Errorf("compiling expression %q: %w", expression, issues.Err())
+	}
+
+	prog, err := e.env.Program(ast)
+	if err != nil {
+		return nil, fmt.Errorf("creating program for %q: %w", expression, err)
+	}
+
+	e.programCache.Store(expression, prog)
+	return prog, nil
 }
 
 // EvalBool evaluates a CEL expression that should return a boolean.

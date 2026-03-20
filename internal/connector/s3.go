@@ -133,7 +133,7 @@ func (c *S3GetConnector) Execute(ctx context.Context, params map[string]any) (ma
 	}
 	defer result.Body.Close()
 
-	data, err := io.ReadAll(result.Body)
+	data, err := io.ReadAll(io.LimitReader(result.Body, DefaultMaxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("s3/get: reading object body: %w", err)
 	}
