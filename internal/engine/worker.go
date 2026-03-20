@@ -65,16 +65,37 @@ func (w *Worker) IsAlive(threshold time.Duration) bool {
 }
 
 // Run is a blocking loop that claims and executes steps until ctx is cancelled.
+// If the loop panics, it restarts up to maxRestarts times before entering
+// a permanently degraded state.
 func (w *Worker) Run(ctx context.Context) {
-	defer func() {
-		if r := recover(); r != nil {
-			w.degraded.Store(true)
-			if w.Logger != nil {
-				w.Logger.Error("worker panicked, entering degraded state", "panic", r)
-			}
-		}
-	}()
+	const maxRestarts = 3
+	for restarts := 0; restarts < maxRestarts; restarts++ {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("worker panic recovered", "panic", r, "restart", restarts+1)
+				}
+			}()
+			w.runLoop(ctx)
+		}()
 
+		// If context is cancelled, don't restart.
+		if ctx.Err() != nil {
+			return
+		}
+
+		// Brief pause before restart.
+		time.Sleep(time.Second)
+		slog.Info("worker restarting after panic", "attempt", restarts+2)
+	}
+
+	// Exhausted restarts.
+	slog.Error("worker permanently degraded after max restarts", "max", maxRestarts)
+	w.degraded.Store(true)
+}
+
+// runLoop is the inner polling loop extracted from Run for restart support.
+func (w *Worker) runLoop(ctx context.Context) {
 	backoff := w.PollInterval
 	if backoff == 0 {
 		backoff = time.Second

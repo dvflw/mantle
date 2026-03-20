@@ -46,11 +46,11 @@ func newServeCommand() *cobra.Command {
 				return fmt.Errorf("creating engine: %w", err)
 			}
 
-			// Wire up Postgres-backed audit emitter.
-			eng.Auditor = &audit.PostgresEmitter{DB: database}
-
-			// Register auth method extractor for audit event enrichment.
-			audit.AuthMethodExtractor = auth.AuthMethodFromContext
+			// Wire up Postgres-backed audit emitter with auth context enrichment.
+			eng.Auditor = &audit.PostgresEmitter{
+				DB:                  database,
+				AuthMethodExtractor: auth.AuthMethodFromContext,
+			}
 
 			// Wire up credential resolver if encryption key is configured.
 			if cfg.Encryption.Key != "" {

@@ -75,18 +75,39 @@ func (r *Reaper) ReapExecutionClaims(ctx context.Context) (int64, error) {
 }
 
 // Run starts the reaper loop. It blocks until ctx is cancelled.
+// If the loop panics, it restarts up to maxRestarts times before entering
+// a permanently degraded state.
+func (r *Reaper) Run(ctx context.Context) {
+	const maxRestarts = 3
+	for restarts := 0; restarts < maxRestarts; restarts++ {
+		func() {
+			defer func() {
+				if rec := recover(); rec != nil {
+					slog.Error("reaper panic recovered", "panic", rec, "restart", restarts+1)
+				}
+			}()
+			r.runLoop(ctx)
+		}()
+
+		// If context is cancelled, don't restart.
+		if ctx.Err() != nil {
+			return
+		}
+
+		// Brief pause before restart.
+		time.Sleep(time.Second)
+		slog.Info("reaper restarting after panic", "attempt", restarts+2)
+	}
+
+	// Exhausted restarts.
+	slog.Error("reaper permanently degraded after max restarts", "max", maxRestarts)
+	r.degraded.Store(true)
+}
+
+// runLoop is the inner reaper loop extracted from Run for restart support.
 // Step reaping runs on every tick. Execution claim reaping is offset
 // by half the interval to spread database load.
-func (r *Reaper) Run(ctx context.Context) {
-	defer func() {
-		if rec := recover(); rec != nil {
-			r.degraded.Store(true)
-			if r.Logger != nil {
-				r.Logger.Error("reaper panicked, entering degraded state", "panic", rec)
-			}
-		}
-	}()
-
+func (r *Reaper) runLoop(ctx context.Context) {
 	ticker := time.NewTicker(r.Interval)
 	defer ticker.Stop()
 
