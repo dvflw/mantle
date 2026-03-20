@@ -7,6 +7,11 @@ import (
 	"strings"
 )
 
+// TokenValidator validates bearer tokens and returns the claims.
+type TokenValidator interface {
+	ValidateToken(ctx context.Context, rawToken string) (*OIDCClaims, error)
+}
+
 type contextKeyType string
 
 const userContextKey contextKeyType = "auth.user"
@@ -37,7 +42,7 @@ func AuthMethodFromContext(ctx context.Context) string {
 // sniffs the format (API key vs OIDC JWT), authenticates the user,
 // and stores it in the request context.
 // Health check endpoints are excluded from authentication.
-func AuthMiddleware(store *Store, oidcValidator *OIDCValidator, next http.Handler) http.Handler {
+func AuthMiddleware(store *Store, oidcValidator TokenValidator, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Skip auth for health checks and metrics.
 		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" || r.URL.Path == "/metrics" {
@@ -75,8 +80,8 @@ func AuthMiddleware(store *Store, oidcValidator *OIDCValidator, next http.Handle
 				return
 			}
 
-		case strings.Contains(rawToken, ".") && oidcValidator != nil:
-			// OIDC JWT path.
+		case strings.Count(rawToken, ".") == 2 && oidcValidator != nil:
+			// OIDC JWT path (three-part structure: header.payload.signature).
 			authMethod = "oidc"
 			claims, vErr := oidcValidator.ValidateToken(r.Context(), rawToken)
 			if vErr != nil {
@@ -95,7 +100,9 @@ func AuthMiddleware(store *Store, oidcValidator *OIDCValidator, next http.Handle
 			}
 
 		default:
-			http.Error(w, `{"error":"unrecognized credential format"}`, http.StatusUnauthorized)
+			// Return a generic message regardless of why the token wasn't recognized
+			// to avoid leaking whether OIDC is configured.
+			http.Error(w, `{"error":"invalid credentials"}`, http.StatusUnauthorized)
 			return
 		}
 

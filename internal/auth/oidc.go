@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -48,8 +49,8 @@ func (v *OIDCValidator) ValidateToken(ctx context.Context, rawToken string) (*OI
 	}
 
 	var claims struct {
-		Email         string `json:"email"`
-		EmailVerified bool   `json:"email_verified"`
+		Email            string          `json:"email"`
+		EmailVerifiedRaw json.RawMessage `json:"email_verified"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		return nil, fmt.Errorf("extracting claims: %w", err)
@@ -58,7 +59,20 @@ func (v *OIDCValidator) ValidateToken(ctx context.Context, rawToken string) (*OI
 	if claims.Email == "" {
 		return nil, fmt.Errorf("token missing email claim")
 	}
-	if !claims.EmailVerified {
+
+	// Handle email_verified as bool or string — some providers (Google, Azure AD)
+	// return the string "true" instead of the boolean true.
+	emailVerified := false
+	if len(claims.EmailVerifiedRaw) > 0 {
+		if err := json.Unmarshal(claims.EmailVerifiedRaw, &emailVerified); err != nil {
+			var s string
+			if err := json.Unmarshal(claims.EmailVerifiedRaw, &s); err == nil {
+				emailVerified = (s == "true")
+			}
+		}
+	}
+
+	if !emailVerified {
 		return nil, fmt.Errorf("email %q is not verified", claims.Email)
 	}
 
@@ -69,7 +83,7 @@ func (v *OIDCValidator) ValidateToken(ctx context.Context, rawToken string) (*OI
 	return &OIDCClaims{
 		Subject:       idToken.Subject,
 		Email:         claims.Email,
-		EmailVerified: claims.EmailVerified,
+		EmailVerified: emailVerified,
 	}, nil
 }
 

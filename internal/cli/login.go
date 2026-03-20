@@ -170,9 +170,15 @@ func loginAuthCodePKCE(cmd *cobra.Command, cfg *config.Config) error {
 		return fmt.Errorf("exchanging code for token: %w", err)
 	}
 
+	// Extract the ID token — the OIDC middleware validates ID tokens, not OAuth2 access tokens.
+	idToken, ok := token.Extra("id_token").(string)
+	if !ok || idToken == "" {
+		return fmt.Errorf("no id_token in token response — ensure 'openid' scope is requested")
+	}
+
 	cred := &Credentials{
 		Type:         CredTypeOIDC,
-		AccessToken:  token.AccessToken,
+		AccessToken:  idToken,
 		RefreshToken: token.RefreshToken,
 		ExpiresAt:    token.Expiry,
 	}
@@ -233,9 +239,15 @@ func loginDeviceFlow(cmd *cobra.Command, cfg *config.Config) error {
 		return fmt.Errorf("polling for device token: %w", err)
 	}
 
+	// Extract the ID token — the OIDC middleware validates ID tokens, not OAuth2 access tokens.
+	idToken, ok := token.Extra("id_token").(string)
+	if !ok || idToken == "" {
+		return fmt.Errorf("no id_token in token response — ensure 'openid' scope is requested")
+	}
+
 	cred := &Credentials{
 		Type:         CredTypeOIDC,
-		AccessToken:  token.AccessToken,
+		AccessToken:  idToken,
 		RefreshToken: token.RefreshToken,
 		ExpiresAt:    token.Expiry,
 	}
