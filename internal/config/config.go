@@ -20,6 +20,24 @@ type Config struct {
 	Encryption EncryptionConfig `mapstructure:"encryption"`
 	Engine     EngineConfig     `mapstructure:"engine"`
 	Auth       AuthConfig       `mapstructure:"auth"`
+	AWS        AWSConfig        `mapstructure:"aws"`
+	GCP        GCPConfig        `mapstructure:"gcp"`
+	Azure      AzureConfig      `mapstructure:"azure"`
+}
+
+// AWSConfig holds AWS provider settings.
+type AWSConfig struct {
+	Region string `mapstructure:"region"`
+}
+
+// GCPConfig holds GCP provider settings.
+type GCPConfig struct {
+	Region string `mapstructure:"region"`
+}
+
+// AzureConfig holds Azure provider settings.
+type AzureConfig struct {
+	Region string `mapstructure:"region"`
 }
 
 // AuthConfig holds authentication configuration.
@@ -149,6 +167,11 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	_ = v.BindEnv("auth.oidc.client_secret", "MANTLE_AUTH_OIDC_CLIENT_SECRET")
 	_ = v.BindEnv("auth.oidc.audience", "MANTLE_AUTH_OIDC_AUDIENCE")
 	_ = v.BindEnv("auth.oidc.allowed_domains", "MANTLE_AUTH_OIDC_ALLOWED_DOMAINS")
+
+	// Cloud provider env var bindings
+	_ = v.BindEnv("aws.region", "MANTLE_AWS_REGION")
+	_ = v.BindEnv("gcp.region", "MANTLE_GCP_REGION")
+	_ = v.BindEnv("azure.region", "MANTLE_AZURE_REGION")
 
 	// Engine env var bindings
 	_ = v.BindEnv("engine.node_id", "MANTLE_ENGINE_NODE_ID")

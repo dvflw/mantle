@@ -64,13 +64,22 @@ var builtinTypes = map[string]*CredentialType{
 			{Name: "password", Required: true},
 		},
 	},
+	"aws": {
+		Name: "aws",
+		Fields: []FieldDef{
+			{Name: "access_key_id", Required: true},
+			{Name: "secret_access_key", Required: true},
+			{Name: "region", Required: false},
+			{Name: "session_token", Required: false},
+		},
+	},
 }
 
 // GetType returns the credential type definition, or an error if unknown.
 func GetType(name string) (*CredentialType, error) {
 	ct, ok := builtinTypes[name]
 	if !ok {
-		return nil, fmt.Errorf("unknown credential type %q (available: generic, bearer, openai, basic)", name)
+		return nil, fmt.Errorf("unknown credential type %q (available: generic, bearer, openai, basic, aws)", name)
 	}
 	return ct, nil
 }
