@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 )
 
 // AIConnector dispatches chat completion requests to the appropriate LLMProvider.
@@ -52,8 +53,25 @@ func (c *AIConnector) getProvider(name string, params map[string]any) (LLMProvid
 			Client:  c.Client,
 			BaseURL: baseURL,
 		}, nil
+	case "bedrock":
+		cred, _ := params["_credential"].(map[string]string)
+		region, _ := params["region"].(string)
+		defaultRegion := c.DefaultRegion
+		if region != "" {
+			defaultRegion = region
+		}
+		configFunc := c.AWSConfigFunc
+		if configFunc == nil {
+			configFunc = NewAWSConfig
+		}
+		awsCfg, err := configFunc(context.Background(), cred, defaultRegion)
+		if err != nil {
+			return nil, fmt.Errorf("ai/completion [bedrock]: %w", err)
+		}
+		client := bedrockruntime.NewFromConfig(awsCfg)
+		return &BedrockProvider{Client: client}, nil
 	default:
-		return nil, fmt.Errorf("unknown provider %q (available: openai)", name)
+		return nil, fmt.Errorf("unknown provider %q (available: openai, bedrock)", name)
 	}
 }
 

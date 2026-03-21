@@ -592,7 +592,7 @@ func TestAIConnector_UnknownProvider(t *testing.T) {
 	if err == nil {
 		t.Fatal("Execute() expected error for unknown provider, got nil")
 	}
-	expected := `ai/completion: unknown provider "anthropic" (available: openai)`
+	expected := `ai/completion: unknown provider "anthropic" (available: openai, bedrock)`
 	if err.Error() != expected {
 		t.Errorf("error = %q, want %q", err.Error(), expected)
 	}
