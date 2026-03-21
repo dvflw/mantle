@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	namePattern  = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
-	inputPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+	namePattern    = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+	inputPattern   = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+	stepRefPattern = regexp.MustCompile(`steps\.(\w+)`)
 
 	validInputTypes   = map[string]bool{"string": true, "number": true, "boolean": true}
 	validBackoffTypes = map[string]bool{"fixed": true, "exponential": true}
@@ -137,9 +138,174 @@ func Validate(result *ParseResult) []ValidationError {
 				})
 			}
 		}
+
+		// Validate tools for ai/completion steps.
+		if step.Action == "ai/completion" && step.Params != nil {
+			tools, err := ParseTools(step.Params)
+			if err != nil {
+				errs = append(errs, ValidationError{
+					Field:   prefix + ".params.tools",
+					Message: fmt.Sprintf("invalid tools: %v", err),
+				})
+			} else if len(tools) > 0 {
+				toolNames := make(map[string]bool)
+				for j, tool := range tools {
+					toolPrefix := fmt.Sprintf("%s.params.tools[%d]", prefix, j)
+
+					if tool.Name == "" {
+						errs = append(errs, ValidationError{
+							Field:   toolPrefix + ".name",
+							Message: "tool name is required",
+						})
+					} else {
+						if toolNames[tool.Name] {
+							errs = append(errs, ValidationError{
+								Field:   toolPrefix + ".name",
+								Message: fmt.Sprintf("duplicate tool name %q", tool.Name),
+							})
+						}
+						toolNames[tool.Name] = true
+					}
+
+					if tool.Description == "" {
+						errs = append(errs, ValidationError{
+							Field:   toolPrefix + ".description",
+							Message: "tool description is required for LLM function calling",
+						})
+					}
+
+					if tool.InputSchema == nil {
+						errs = append(errs, ValidationError{
+							Field:   toolPrefix + ".input_schema",
+							Message: "tool input_schema is required",
+						})
+					}
+
+					if tool.Action == "" {
+						errs = append(errs, ValidationError{
+							Field:   toolPrefix + ".action",
+							Message: "tool action is required",
+						})
+					}
+				}
+			}
+
+			// Validate max_tool_rounds.
+			if v, ok := step.Params["max_tool_rounds"]; ok {
+				if rounds, ok := toInt(v); ok {
+					if rounds > 50 {
+						errs = append(errs, ValidationError{
+							Field:   prefix + ".params.max_tool_rounds",
+							Message: "max_tool_rounds must not exceed 50",
+						})
+					}
+				}
+			}
+
+			// Validate max_tool_calls_per_round.
+			if v, ok := step.Params["max_tool_calls_per_round"]; ok {
+				if calls, ok := toInt(v); ok {
+					if calls > 25 {
+						errs = append(errs, ValidationError{
+							Field:   prefix + ".params.max_tool_calls_per_round",
+							Message: "max_tool_calls_per_round must not exceed 25",
+						})
+					}
+				}
+			}
+		}
+	}
+
+	// Validate dependency references (explicit + implicit from CEL expressions).
+	for i, step := range w.Steps {
+		prefix := fmt.Sprintf("steps[%d]", i)
+		allDeps := mergeUnique(step.DependsOn, ExtractImplicitDeps(step))
+		for _, dep := range allDeps {
+			if !seen[dep] {
+				errs = append(errs, ValidationError{
+					Field:   prefix + ".depends_on",
+					Message: fmt.Sprintf("references undefined step %q", dep),
+				})
+			}
+		}
 	}
 
 	return errs
+}
+
+// ExtractImplicitDeps extracts step names referenced in CEL expressions within
+// a step's If condition and Params values. It uses regex matching to find
+// static references of the form steps.<name>. Results are deduplicated.
+func ExtractImplicitDeps(step Step) []string {
+	seen := make(map[string]bool)
+	var refs []string
+
+	// Scan the If condition.
+	if step.If != "" {
+		for _, match := range stepRefPattern.FindAllStringSubmatch(step.If, -1) {
+			name := match[1]
+			if !seen[name] {
+				seen[name] = true
+				refs = append(refs, name)
+			}
+		}
+	}
+
+	// Scan params recursively.
+	scanParamsForRefs(step.Params, seen, &refs)
+
+	return refs
+}
+
+// scanParamsForRefs walks a params map recursively, extracting step references
+// from string values using the stepRefPattern regex.
+func scanParamsForRefs(params map[string]any, seen map[string]bool, refs *[]string) {
+	for _, v := range params {
+		switch val := v.(type) {
+		case string:
+			for _, match := range stepRefPattern.FindAllStringSubmatch(val, -1) {
+				name := match[1]
+				if !seen[name] {
+					seen[name] = true
+					*refs = append(*refs, name)
+				}
+			}
+		case map[string]any:
+			scanParamsForRefs(val, seen, refs)
+		}
+	}
+}
+
+// mergeUnique combines two string slices, returning a new slice with no duplicates.
+// Order is preserved: elements from a appear first, then new elements from b.
+func mergeUnique(a, b []string) []string {
+	seen := make(map[string]bool, len(a)+len(b))
+	var result []string
+	for _, s := range a {
+		if !seen[s] {
+			seen[s] = true
+			result = append(result, s)
+		}
+	}
+	for _, s := range b {
+		if !seen[s] {
+			seen[s] = true
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
+// toInt attempts to convert a value from YAML parsing to an integer.
+// YAML numbers may be decoded as int or float64 depending on format.
+func toInt(v any) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case float64:
+		return int(n), true
+	}
+	return 0, false
 }
 
 // findFieldPosition searches the root mapping node for a top-level key and

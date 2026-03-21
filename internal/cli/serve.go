@@ -30,7 +30,7 @@ func newServeCommand() *cobra.Command {
 			// Configure structured JSON logging before any other work.
 			logging.Setup(cfg.Log.Level)
 
-			database, err := db.Open(cfg.Database.URL)
+			database, err := db.Open(cfg.Database)
 			if err != nil {
 				return fmt.Errorf("failed to connect to database: %w", err)
 			}
@@ -46,8 +46,11 @@ func newServeCommand() *cobra.Command {
 				return fmt.Errorf("creating engine: %w", err)
 			}
 
-			// Wire up Postgres-backed audit emitter.
-			eng.Auditor = &audit.PostgresEmitter{DB: database}
+			// Wire up Postgres-backed audit emitter with auth context enrichment.
+			eng.Auditor = &audit.PostgresEmitter{
+				DB:                  database,
+				AuthMethodExtractor: auth.AuthMethodFromContext,
+			}
 
 			// Wire up credential resolver if encryption key is configured.
 			if cfg.Encryption.Key != "" {
@@ -62,6 +65,22 @@ func newServeCommand() *cobra.Command {
 
 			srv := server.New(database, eng, cfg.API.Address)
 			srv.AuthStore = &auth.Store{DB: database}
+
+			// Wire up OIDC validator if configured.
+			if cfg.Auth.OIDC.IssuerURL != "" {
+				oidcValidator, err := auth.NewOIDCValidator(
+					cmd.Context(),
+					cfg.Auth.OIDC.IssuerURL,
+					cfg.Auth.OIDC.ClientID,
+					cfg.Auth.OIDC.Audience,
+					cfg.Auth.OIDC.AllowedDomains,
+				)
+				if err != nil {
+					return fmt.Errorf("configuring OIDC: %w", err)
+				}
+				srv.OIDCValidator = oidcValidator
+				fmt.Fprintf(cmd.OutOrStdout(), "OIDC authentication enabled (issuer: %s)\n", cfg.Auth.OIDC.IssuerURL)
+			}
 
 			// Handle SIGTERM and SIGINT for graceful shutdown.
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)

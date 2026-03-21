@@ -7,6 +7,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dvflw/mantle/internal/auth"
+	"github.com/dvflw/mantle/internal/workflow"
 )
 
 // executionSummary is the JSON representation of an execution in list responses.
@@ -70,10 +73,11 @@ func (s *Server) handleListExecutions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build parameterized query.
+	teamID := auth.TeamIDFromContext(r.Context())
 	query := `SELECT id, workflow_name, workflow_version, status, started_at, completed_at
-		 FROM workflow_executions WHERE 1=1`
-	params := []any{}
-	paramIdx := 1
+		 FROM workflow_executions WHERE team_id = $1`
+	params := []any{teamID}
+	paramIdx := 2
 
 	if workflow != "" {
 		query += " AND workflow_name = $" + strconv.Itoa(paramIdx)
@@ -157,12 +161,13 @@ func (s *Server) handleGetExecution(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch execution.
+	teamID := auth.TeamIDFromContext(r.Context())
 	var workflowName, status string
 	var version int
 	var startedAt, completedAt *time.Time
 	err := s.DB.QueryRowContext(r.Context(),
 		`SELECT workflow_name, workflow_version, status, started_at, completed_at
-		 FROM workflow_executions WHERE id = $1`, execID,
+		 FROM workflow_executions WHERE id = $1 AND team_id = $2`, execID, teamID,
 	).Scan(&workflowName, &version, &status, &startedAt, &completedAt)
 	if err != nil {
 		writeJSONError(w, fmt.Sprintf("execution %q not found", execID), http.StatusNotFound)
@@ -268,4 +273,94 @@ func writeJSONError(w http.ResponseWriter, message string, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+// handleListWorkflows handles GET /api/v1/workflows.
+func (s *Server) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
+	workflows, err := workflow.ListWorkflows(r.Context(), s.DB)
+	if err != nil {
+		s.Logger.Error("listing workflows", "error", err)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if workflows == nil {
+		workflows = []workflow.WorkflowSummary{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"workflows": workflows})
+}
+
+// handleGetWorkflow handles GET /api/v1/workflows/{name} — returns latest version.
+func (s *Server) handleGetWorkflow(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeJSONError(w, "workflow name required", http.StatusBadRequest)
+		return
+	}
+
+	content, version, err := workflow.GetLatestContent(r.Context(), s.DB, name)
+	if err != nil {
+		s.Logger.Error("getting workflow", "error", err)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if content == nil {
+		writeJSONError(w, fmt.Sprintf("workflow %q not found", name), http.StatusNotFound)
+		return
+	}
+
+	var def json.RawMessage = content
+	writeJSON(w, http.StatusOK, map[string]any{
+		"name":    name,
+		"version": version,
+		"definition": def,
+	})
+}
+
+// handleListWorkflowVersions handles GET /api/v1/workflows/{name}/versions.
+func (s *Server) handleListWorkflowVersions(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeJSONError(w, "workflow name required", http.StatusBadRequest)
+		return
+	}
+
+	versions, err := workflow.GetVersions(r.Context(), s.DB, name)
+	if err != nil {
+		s.Logger.Error("listing workflow versions", "error", err)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if versions == nil {
+		versions = []workflow.VersionSummary{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"name": name, "versions": versions})
+}
+
+// handleGetWorkflowVersion handles GET /api/v1/workflows/{name}/versions/{version}.
+func (s *Server) handleGetWorkflowVersion(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeJSONError(w, "workflow name required", http.StatusBadRequest)
+		return
+	}
+
+	versionStr := r.PathValue("version")
+	version, err := strconv.Atoi(versionStr)
+	if err != nil || version <= 0 {
+		writeJSONError(w, "invalid version number", http.StatusBadRequest)
+		return
+	}
+
+	content, err := workflow.GetVersion(r.Context(), s.DB, name, version)
+	if err != nil {
+		writeJSONError(w, fmt.Sprintf("workflow %q version %d not found", name, version), http.StatusNotFound)
+		return
+	}
+
+	var def json.RawMessage = content
+	writeJSON(w, http.StatusOK, map[string]any{
+		"name":       name,
+		"version":    version,
+		"definition": def,
+	})
 }

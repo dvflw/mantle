@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/dvflw/mantle/internal/auth"
 )
 
 // Store handles CRUD operations for encrypted credentials in Postgres.
@@ -34,12 +36,14 @@ func (s *Store) Create(ctx context.Context, name, typeName string, data map[stri
 		return nil, fmt.Errorf("encrypting credential: %w", err)
 	}
 
+	teamID := auth.TeamIDFromContext(ctx)
+
 	var cred Credential
 	err = s.DB.QueryRowContext(ctx,
-		`INSERT INTO credentials (name, type, encrypted_data, nonce)
-		 VALUES ($1, $2, $3, $4)
+		`INSERT INTO credentials (name, type, encrypted_data, nonce, team_id)
+		 VALUES ($1, $2, $3, $4, $5)
 		 RETURNING id, name, type, created_at, updated_at`,
-		name, typeName, ciphertext, nonce,
+		name, typeName, ciphertext, nonce, teamID,
 	).Scan(&cred.ID, &cred.Name, &cred.Type, &cred.CreatedAt, &cred.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("storing credential: %w", err)
@@ -50,9 +54,10 @@ func (s *Store) Create(ctx context.Context, name, typeName string, data map[stri
 
 // Get retrieves and decrypts a credential's field data by name.
 func (s *Store) Get(ctx context.Context, name string) (map[string]string, error) {
+	teamID := auth.TeamIDFromContext(ctx)
 	var encryptedData, nonce []byte
 	err := s.DB.QueryRowContext(ctx,
-		`SELECT encrypted_data, nonce FROM credentials WHERE name = $1`, name,
+		`SELECT encrypted_data, nonce FROM credentials WHERE name = $1 AND team_id = $2`, name, teamID,
 	).Scan(&encryptedData, &nonce)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("credential %q not found", name)
@@ -76,8 +81,10 @@ func (s *Store) Get(ctx context.Context, name string) (map[string]string, error)
 
 // List returns all credentials (metadata only — never decrypted values).
 func (s *Store) List(ctx context.Context) ([]Credential, error) {
+	teamID := auth.TeamIDFromContext(ctx)
 	rows, err := s.DB.QueryContext(ctx,
-		`SELECT id, name, type, created_at, updated_at FROM credentials ORDER BY name`,
+		`SELECT id, name, type, created_at, updated_at FROM credentials WHERE team_id = $1 ORDER BY name`,
+		teamID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("listing credentials: %w", err)
@@ -97,8 +104,9 @@ func (s *Store) List(ctx context.Context) ([]Credential, error) {
 
 // Delete removes a credential by name.
 func (s *Store) Delete(ctx context.Context, name string) error {
+	teamID := auth.TeamIDFromContext(ctx)
 	result, err := s.DB.ExecContext(ctx,
-		`DELETE FROM credentials WHERE name = $1`, name,
+		`DELETE FROM credentials WHERE name = $1 AND team_id = $2`, name, teamID,
 	)
 	if err != nil {
 		return fmt.Errorf("deleting credential: %w", err)
@@ -122,8 +130,10 @@ func (s *Store) ReEncryptAll(ctx context.Context, newEncryptor *Encryptor) (int,
 	}
 	defer tx.Rollback()
 
+	teamID := auth.TeamIDFromContext(ctx)
 	rows, err := tx.QueryContext(ctx,
-		`SELECT id, encrypted_data, nonce FROM credentials FOR UPDATE`,
+		`SELECT id, encrypted_data, nonce FROM credentials WHERE team_id = $1 FOR UPDATE`,
+		teamID,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("querying credentials: %w", err)

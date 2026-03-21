@@ -28,7 +28,7 @@ func newRunCommand() *cobra.Command {
 				return fmt.Errorf("config not loaded")
 			}
 
-			database, err := db.Open(cfg.Database.URL)
+			database, err := db.Open(cfg.Database)
 			if err != nil {
 				return fmt.Errorf("failed to connect to database: %w", err)
 			}

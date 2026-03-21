@@ -2,13 +2,20 @@ package auth
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 )
 
+// TokenValidator validates bearer tokens and returns the claims.
+type TokenValidator interface {
+	ValidateToken(ctx context.Context, rawToken string) (*OIDCClaims, error)
+}
+
 type contextKeyType string
 
 const userContextKey contextKeyType = "auth.user"
+const authMethodKey contextKeyType = "auth.method"
 
 // WithUser stores the authenticated user in the context.
 func WithUser(ctx context.Context, user *User) context.Context {
@@ -21,10 +28,21 @@ func UserFromContext(ctx context.Context) *User {
 	return u
 }
 
-// AuthMiddleware extracts the API key from the Authorization header,
-// looks up the user, and stores it in the request context.
+func withAuthMethod(ctx context.Context, method string) context.Context {
+	return context.WithValue(ctx, authMethodKey, method)
+}
+
+// AuthMethodFromContext retrieves the authentication method ("api_key" or "oidc") from the context.
+func AuthMethodFromContext(ctx context.Context) string {
+	m, _ := ctx.Value(authMethodKey).(string)
+	return m
+}
+
+// AuthMiddleware extracts the credential from the Authorization header,
+// sniffs the format (API key vs OIDC JWT), authenticates the user,
+// and stores it in the request context.
 // Health check endpoints are excluded from authentication.
-func AuthMiddleware(store *Store, next http.Handler) http.Handler {
+func AuthMiddleware(store *Store, oidcValidator TokenValidator, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Skip auth for health checks and metrics.
 		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" || r.URL.Path == "/metrics" {
@@ -38,23 +56,58 @@ func AuthMiddleware(store *Store, next http.Handler) http.Handler {
 			return
 		}
 
-		rawKey := strings.TrimPrefix(authHeader, "Bearer ")
-		if rawKey == authHeader {
+		rawToken := strings.TrimPrefix(authHeader, "Bearer ")
+		if rawToken == authHeader {
 			http.Error(w, `{"error":"Authorization header must use Bearer scheme"}`, http.StatusUnauthorized)
 			return
 		}
 
-		user, err := store.LookupAPIKey(r.Context(), rawKey)
-		if err != nil {
-			http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
-			return
-		}
-		if user == nil {
-			http.Error(w, `{"error":"invalid API key"}`, http.StatusUnauthorized)
+		var user *User
+		var authMethod string
+		var err error
+
+		switch {
+		case strings.HasPrefix(rawToken, "mk_"):
+			// API key path.
+			authMethod = "api_key"
+			user, err = store.LookupAPIKey(r.Context(), rawToken)
+			if err != nil {
+				http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+				return
+			}
+			if user == nil {
+				http.Error(w, `{"error":"invalid API key"}`, http.StatusUnauthorized)
+				return
+			}
+
+		case strings.Count(rawToken, ".") == 2 && oidcValidator != nil:
+			// OIDC JWT path (three-part structure: header.payload.signature).
+			authMethod = "oidc"
+			claims, vErr := oidcValidator.ValidateToken(r.Context(), rawToken)
+			if vErr != nil {
+				slog.Warn("OIDC token validation failed", "error", vErr)
+				http.Error(w, `{"error":"invalid or expired token"}`, http.StatusUnauthorized)
+				return
+			}
+			user, err = store.LookupUserByEmail(r.Context(), claims.Email)
+			if err != nil {
+				http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+				return
+			}
+			if user == nil {
+				http.Error(w, `{"error":"no user account for this email"}`, http.StatusUnauthorized)
+				return
+			}
+
+		default:
+			// Return a generic message regardless of why the token wasn't recognized
+			// to avoid leaking whether OIDC is configured.
+			http.Error(w, `{"error":"invalid credentials"}`, http.StatusUnauthorized)
 			return
 		}
 
 		ctx := WithUser(r.Context(), user)
+		ctx = withAuthMethod(ctx, authMethod)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -79,6 +132,16 @@ func RequireRole(minRole Role) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// TeamIDFromContext extracts the team ID from the authenticated user in the context.
+// Returns DefaultTeamID for single-tenant mode (no auth / no user in context).
+func TeamIDFromContext(ctx context.Context) string {
+	user := UserFromContext(ctx)
+	if user == nil || user.TeamID == "" {
+		return DefaultTeamID
+	}
+	return user.TeamID
 }
 
 // hasMinRole checks if userRole meets the minimum required role.

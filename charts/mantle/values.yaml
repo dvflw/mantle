@@ -35,6 +35,20 @@ resources:
     cpu: 100m
     memory: 128Mi
 
+podSecurityContext:
+  runAsNonRoot: true
+
+securityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+
+startupProbe:
+  httpGet:
+    path: /readyz
+    port: http
+  failureThreshold: 30
+  periodSeconds: 2
+
 serviceAccount:
   create: true
   # If not set, the fullname template is used
@@ -45,3 +59,7 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+pdb:
+  enabled: true
+  minAvailable: 1

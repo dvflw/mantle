@@ -41,3 +41,4 @@ type Event struct {
 type Emitter interface {
 	Emit(ctx context.Context, event Event) error
 }
+

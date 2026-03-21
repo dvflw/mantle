@@ -11,10 +11,28 @@ import (
 // PostgresEmitter persists audit events to an append-only Postgres table.
 // No UPDATE or DELETE operations are provided to preserve immutability.
 type PostgresEmitter struct {
-	DB *sql.DB
+	DB                  *sql.DB
+	AuthMethodExtractor func(ctx context.Context) string
+}
+
+// enrichFromContext adds contextual metadata to an event.
+// Extracts auth_method from context via the configured extractor.
+func (p *PostgresEmitter) enrichFromContext(ctx context.Context, event Event) Event {
+	if p.AuthMethodExtractor == nil {
+		return event
+	}
+	if method := p.AuthMethodExtractor(ctx); method != "" {
+		if event.Metadata == nil {
+			event.Metadata = make(map[string]string)
+		}
+		event.Metadata["auth_method"] = method
+	}
+	return event
 }
 
 func (p *PostgresEmitter) Emit(ctx context.Context, event Event) error {
+	// Enrich event metadata with auth context if available.
+	event = p.enrichFromContext(ctx, event)
 	beforeJSON, err := marshalNullableJSON(event.Before)
 	if err != nil {
 		return fmt.Errorf("marshaling before state: %w", err)

@@ -72,7 +72,7 @@ func (c *CronScheduler) tick(ctx context.Context) {
 				"version", t.WorkflowVersion,
 				"schedule", t.Schedule)
 
-			execID, err := c.server.executeWorkflow(t.WorkflowName, t.WorkflowVersion, nil)
+			execID, err := c.server.executeWorkflow(ctx, t.WorkflowName, t.WorkflowVersion, nil)
 			if err != nil {
 				c.server.Logger.Error("cron: execution failed",
 					"workflow", t.WorkflowName,

@@ -1,6 +1,7 @@
 package cel
 
 import (
+	"os"
 	"testing"
 )
 
@@ -240,5 +241,79 @@ func TestResolveParams(t *testing.T) {
 	}
 	if nested["body"] != "hello world" {
 		t.Errorf("nested.body = %v, want %q", nested["body"], "hello world")
+	}
+}
+
+func TestEval_EnvVarFiltering(t *testing.T) {
+	// Set a safe MANTLE_ENV_ variable that should be accessible.
+	t.Setenv("MANTLE_ENV_APP_MODE", "production")
+
+	// Set variables that must NOT be accessible via CEL.
+	t.Setenv("MANTLE_ENCRYPTION_KEY", "super-secret-key")
+	t.Setenv("MANTLE_DATABASE_URL", "postgres://localhost/mantle")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "aws-secret")
+
+	// Evaluator must be created after Setenv so the cache picks them up.
+	eval, err := NewEvaluator()
+	if err != nil {
+		t.Fatalf("NewEvaluator() error: %v", err)
+	}
+
+	ctx := newTestContext()
+
+	// MANTLE_ENV_APP_MODE should be accessible as env.APP_MODE (prefix stripped).
+	result, err := eval.Eval(`env.APP_MODE`, ctx)
+	if err != nil {
+		t.Fatalf("Eval(env.APP_MODE) error: %v", err)
+	}
+	if result != "production" {
+		t.Errorf("env.APP_MODE = %v, want %q", result, "production")
+	}
+}
+
+func TestEval_EnvVarBlocksSensitive(t *testing.T) {
+	t.Setenv("MANTLE_ENCRYPTION_KEY", "super-secret-key")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "aws-secret")
+
+	eval, err := NewEvaluator()
+	if err != nil {
+		t.Fatalf("NewEvaluator() error: %v", err)
+	}
+
+	ctx := newTestContext()
+
+	// These must not be accessible — they lack the MANTLE_ENV_ prefix.
+	// Accessing a missing key in a CEL map produces an evaluation error.
+	_, err = eval.Eval(`env.MANTLE_ENCRYPTION_KEY`, ctx)
+	if err == nil {
+		t.Error("expected error accessing env.MANTLE_ENCRYPTION_KEY, got nil")
+	}
+
+	_, err = eval.Eval(`env.AWS_SECRET_ACCESS_KEY`, ctx)
+	if err == nil {
+		t.Error("expected error accessing env.AWS_SECRET_ACCESS_KEY, got nil")
+	}
+}
+
+func TestEnvVars_PrefixStripping(t *testing.T) {
+	// Directly test the envVars function.
+	os.Setenv("MANTLE_ENV_TEST_KEY", "test-value")
+	defer os.Unsetenv("MANTLE_ENV_TEST_KEY")
+
+	os.Setenv("MANTLE_DATABASE_URL", "should-not-appear")
+	defer os.Unsetenv("MANTLE_DATABASE_URL")
+
+	result := envVars()
+
+	if v, ok := result["TEST_KEY"]; !ok || v != "test-value" {
+		t.Errorf("envVars()[TEST_KEY] = %q, %v; want %q, true", v, ok, "test-value")
+	}
+
+	if _, ok := result["MANTLE_DATABASE_URL"]; ok {
+		t.Error("envVars() should not contain MANTLE_DATABASE_URL")
+	}
+
+	if _, ok := result["DATABASE_URL"]; ok {
+		t.Error("envVars() should not contain DATABASE_URL (MANTLE_ prefix without ENV_)")
 	}
 }

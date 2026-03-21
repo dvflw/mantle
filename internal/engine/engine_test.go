@@ -4,53 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/dvflw/mantle/internal/db"
 	"github.com/dvflw/mantle/internal/workflow"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
-
-func setupTestDB(t *testing.T) *sql.DB {
-	t.Helper()
-	ctx := context.Background()
-	pgContainer, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("mantle_test"),
-		postgres.WithUsername("mantle"),
-		postgres.WithPassword("mantle"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(30*time.Second),
-		),
-	)
-	if err != nil {
-		t.Skipf("Could not start Postgres container: %v", err)
-	}
-	t.Cleanup(func() { pgContainer.Terminate(ctx) })
-
-	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("Failed to get connection string: %v", err)
-	}
-
-	database, err := db.Open(connStr)
-	if err != nil {
-		t.Fatalf("Failed to open database: %v", err)
-	}
-	t.Cleanup(func() { database.Close() })
-
-	if err := db.Migrate(ctx, database); err != nil {
-		t.Fatalf("Failed to run migrations: %v", err)
-	}
-	return database
-}
 
 // applyWorkflow stores a workflow definition and returns the version number.
 func applyWorkflow(t *testing.T, database *sql.DB, yamlContent []byte) int {
@@ -454,5 +416,64 @@ steps:
 	}
 	if result.Steps["slow-step"].Status != "failed" {
 		t.Errorf("slow-step status = %q, want %q", result.Steps["slow-step"].Status, "failed")
+	}
+}
+
+func TestCheckOutputSize_UnderLimit(t *testing.T) {
+	output := map[string]any{
+		"status": 200,
+		"body":   "small payload",
+	}
+	err := checkOutputSize(output, 1024)
+	if err != nil {
+		t.Errorf("checkOutputSize() unexpected error for small output: %v", err)
+	}
+}
+
+func TestCheckOutputSize_ExactlyAtLimit(t *testing.T) {
+	// Build output whose JSON serialisation is exactly at the limit.
+	output := map[string]any{"k": "v"}
+	data, _ := json.Marshal(output)
+	limit := len(data)
+
+	err := checkOutputSize(output, limit)
+	if err != nil {
+		t.Errorf("checkOutputSize() unexpected error when output equals limit: %v", err)
+	}
+}
+
+func TestCheckOutputSize_OverLimit(t *testing.T) {
+	// Create output that exceeds a small limit.
+	output := map[string]any{
+		"large": strings.Repeat("x", 2048),
+	}
+	limit := 64
+
+	err := checkOutputSize(output, limit)
+	if err == nil {
+		t.Fatal("checkOutputSize() expected error for oversized output, got nil")
+	}
+
+	// Verify the error message contains the helpful guidance.
+	if !strings.Contains(err.Error(), "S3 connector") {
+		t.Errorf("error message should mention S3 connector, got: %s", err.Error())
+	}
+	if !strings.Contains(err.Error(), fmt.Sprintf("%d byte limit", limit)) {
+		t.Errorf("error message should mention the byte limit, got: %s", err.Error())
+	}
+}
+
+func TestCheckOutputSize_NilOutput(t *testing.T) {
+	// nil output marshals to "null" (4 bytes), should pass any reasonable limit.
+	err := checkOutputSize(nil, 1024)
+	if err != nil {
+		t.Errorf("checkOutputSize() unexpected error for nil output: %v", err)
+	}
+}
+
+func TestCheckOutputSize_EmptyMap(t *testing.T) {
+	err := checkOutputSize(map[string]any{}, 1024)
+	if err != nil {
+		t.Errorf("checkOutputSize() unexpected error for empty map: %v", err)
 	}
 }

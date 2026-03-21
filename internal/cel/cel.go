@@ -5,6 +5,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
@@ -19,7 +20,9 @@ type Context struct {
 
 // Evaluator evaluates CEL expressions against a runtime context.
 type Evaluator struct {
-	env *cel.Env
+	env          *cel.Env
+	envCache     map[string]string // cached, filtered environment variables
+	programCache sync.Map          // expression string -> compiled cel.Program
 }
 
 // NewEvaluator creates a CEL evaluator with the standard Mantle expression environment.
@@ -32,11 +35,37 @@ func NewEvaluator() (*Evaluator, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating CEL environment: %w", err)
 	}
-	return &Evaluator{env: env}, nil
+	return &Evaluator{env: env, envCache: envVars()}, nil
 }
 
 // Eval evaluates a CEL expression and returns the result as a Go value.
+// Compiled programs are cached by expression string to avoid redundant compilation.
 func (e *Evaluator) Eval(expression string, ctx *Context) (any, error) {
+	prog, err := e.getOrCompile(expression)
+	if err != nil {
+		return nil, err
+	}
+
+	vars := map[string]any{
+		"steps":  ctx.Steps,
+		"inputs": ctx.Inputs,
+		"env":    e.envCache,
+	}
+
+	out, _, err := prog.Eval(vars)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating %q: %w", expression, err)
+	}
+
+	return refToNative(out), nil
+}
+
+// getOrCompile returns a cached compiled program or compiles and caches a new one.
+func (e *Evaluator) getOrCompile(expression string) (cel.Program, error) {
+	if cached, ok := e.programCache.Load(expression); ok {
+		return cached.(cel.Program), nil
+	}
+
 	ast, issues := e.env.Compile(expression)
 	if issues != nil && issues.Err() != nil {
 		return nil, fmt.Errorf("compiling expression %q: %w", expression, issues.Err())
@@ -47,18 +76,8 @@ func (e *Evaluator) Eval(expression string, ctx *Context) (any, error) {
 		return nil, fmt.Errorf("creating program for %q: %w", expression, err)
 	}
 
-	vars := map[string]any{
-		"steps":  ctx.Steps,
-		"inputs": ctx.Inputs,
-		"env":    envVars(),
-	}
-
-	out, _, err := prog.Eval(vars)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating %q: %w", expression, err)
-	}
-
-	return refToNative(out), nil
+	e.programCache.Store(expression, prog)
+	return prog, nil
 }
 
 // EvalBool evaluates a CEL expression that should return a boolean.
@@ -148,14 +167,21 @@ func (e *Evaluator) resolveValue(v any, ctx *Context) (any, error) {
 	}
 }
 
+// envVars returns only environment variables with the MANTLE_ENV_ prefix,
+// stripping the prefix for cleaner access (e.g., MANTLE_ENV_FOO -> env.FOO).
+// This prevents CEL expressions from reading sensitive variables like
+// MANTLE_ENCRYPTION_KEY, MANTLE_DATABASE_URL, or AWS_SECRET_ACCESS_KEY.
 func envVars() map[string]string {
-	result := make(map[string]string)
+	env := make(map[string]string)
+	const prefix = "MANTLE_ENV_"
 	for _, e := range os.Environ() {
-		if k, v, ok := strings.Cut(e, "="); ok {
-			result[k] = v
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 && strings.HasPrefix(parts[0], prefix) {
+			key := strings.TrimPrefix(parts[0], prefix)
+			env[key] = parts[1]
 		}
 	}
-	return result
+	return env
 }
 
 // refToNative converts a CEL ref.Val to a native Go value.

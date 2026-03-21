@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 )
 
 // Store handles CRUD for teams, users, and API keys.
@@ -106,31 +107,48 @@ func (s *Store) ListUsers(ctx context.Context, teamID string) ([]User, error) {
 	return users, rows.Err()
 }
 
-func (s *Store) DeleteUser(ctx context.Context, email string) error {
-	result, err := s.DB.ExecContext(ctx, `DELETE FROM users WHERE email = $1`, email)
+func (s *Store) DeleteUser(ctx context.Context, email, teamID string) error {
+	result, err := s.DB.ExecContext(ctx, `DELETE FROM users WHERE email = $1 AND team_id = $2`, email, teamID)
 	if err != nil {
 		return fmt.Errorf("deleting user: %w", err)
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return fmt.Errorf("user %q not found", email)
+		return fmt.Errorf("user %q not found in team", email)
 	}
 	return nil
 }
 
-func (s *Store) SetUserRole(ctx context.Context, email string, role Role) error {
+func (s *Store) SetUserRole(ctx context.Context, email, teamID string, role Role) error {
 	result, err := s.DB.ExecContext(ctx,
-		`UPDATE users SET role = $1, updated_at = NOW() WHERE email = $2`,
-		string(role), email,
+		`UPDATE users SET role = $1, updated_at = NOW() WHERE email = $2 AND team_id = $3`,
+		string(role), email, teamID,
 	)
 	if err != nil {
 		return fmt.Errorf("updating role: %w", err)
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return fmt.Errorf("user %q not found", email)
+		return fmt.Errorf("user %q not found in team", email)
 	}
 	return nil
+}
+
+// LookupUserByEmail finds a user by their email address.
+// Returns nil, nil if no user is found.
+func (s *Store) LookupUserByEmail(ctx context.Context, email string) (*User, error) {
+	var u User
+	err := s.DB.QueryRowContext(ctx,
+		`SELECT id, email, name, team_id, role, created_at, updated_at
+		 FROM users WHERE email = $1`, email,
+	).Scan(&u.ID, &u.Email, &u.Name, &u.TeamID, &u.Role, &u.CreatedAt, &u.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
 }
 
 // --- API Keys ---
@@ -172,7 +190,9 @@ func (s *Store) LookupAPIKey(ctx context.Context, rawKey string) (*User, error) 
 	}
 
 	// Update last_used_at.
-	s.DB.ExecContext(ctx, `UPDATE api_keys SET last_used_at = NOW() WHERE key_hash = $1`, hash)
+	if _, err := s.DB.ExecContext(ctx, `UPDATE api_keys SET last_used_at = NOW() WHERE key_hash = $1`, hash); err != nil {
+		slog.Warn("failed to update api key last_used_at", "error", err)
+	}
 
 	return &u, nil
 }

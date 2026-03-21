@@ -6,7 +6,6 @@ import (
 
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
-	"github.com/dvflw/mantle/internal/server"
 	"github.com/dvflw/mantle/internal/workflow"
 	"github.com/spf13/cobra"
 )
@@ -25,7 +24,7 @@ func newApplyCommand() *cobra.Command {
 				return fmt.Errorf("config not loaded")
 			}
 
-			database, err := db.Open(cfg.Database.URL)
+			database, err := db.Open(cfg.Database)
 			if err != nil {
 				return fmt.Errorf("failed to connect to database: %w", err)
 			}
@@ -53,28 +52,6 @@ func newApplyCommand() *cobra.Command {
 			} else {
 				fmt.Fprintf(cmd.OutOrStdout(), "Applied %s version %d\n",
 					result.Workflow.Name, version)
-			}
-
-			// Sync trigger registrations.
-			effectiveVersion := version
-			if effectiveVersion == 0 {
-				effectiveVersion, _ = workflow.GetLatestVersion(cmd.Context(), database, result.Workflow.Name)
-			}
-			if len(result.Workflow.Triggers) > 0 || version > 0 {
-				var triggers []server.TriggerInput
-				for _, t := range result.Workflow.Triggers {
-					triggers = append(triggers, server.TriggerInput{
-						Type:     t.Type,
-						Schedule: t.Schedule,
-						Path:     t.Path,
-					})
-				}
-				if err := server.SyncTriggers(cmd.Context(), database, result.Workflow.Name, effectiveVersion, triggers); err != nil {
-					return fmt.Errorf("syncing triggers: %w", err)
-				}
-				if len(triggers) > 0 {
-					fmt.Fprintf(cmd.OutOrStdout(), "Registered %d trigger(s)\n", len(triggers))
-				}
 			}
 
 			return nil

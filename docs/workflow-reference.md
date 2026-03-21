@@ -108,7 +108,7 @@ Invalid: `URL`, `max-retries`, `apiKey`, `123abc`
 
 ## Steps
 
-Steps are executed in order. Each step invokes a connector action and can optionally include conditional logic, retry policies, and timeouts.
+Steps are the building blocks of a workflow. Each step invokes a connector action and can optionally include conditional logic, retry policies, timeouts, and explicit dependencies. Steps without dependencies run concurrently; use `depends_on` to declare explicit ordering. See [Parallel Execution](#parallel-execution).
 
 ```yaml
 steps:
@@ -135,6 +135,7 @@ steps:
 | `retry` | object | No | Retry policy for this step. See [Retry Policy](#retry-policy). |
 | `timeout` | string | No | Maximum duration for the step. Uses Go duration format (e.g., `30s`, `5m`, `1h`). |
 | `credential` | string | No | Name of a stored credential to inject into this step. See [Secrets Guide](secrets-guide.md). |
+| `depends_on` | list of strings | No | Declares explicit dependencies on other steps for parallel execution. See [Parallel Execution](#parallel-execution). |
 
 ### Step Name Rules
 
@@ -143,6 +144,51 @@ Step names follow the same rules as the workflow name: kebab-case, starting with
 Step names matter because you reference step outputs in CEL expressions using `steps.STEP_NAME.output`.
 
 **Note on hyphenated step names in CEL:** When a step name contains hyphens (e.g., `fetch-data`), you can use dot notation in template strings (`{{ steps.fetch-data.output.body }}`), but in `if` expressions you must use bracket notation: `steps['fetch-data'].output.body`. This is because CEL interprets hyphens as subtraction in expression context.
+
+### Parallel Execution
+
+By default, Mantle builds a directed acyclic graph (DAG) from your steps and runs steps concurrently when their dependencies allow it. You control ordering with `depends_on` and through implicit dependencies detected from CEL expressions.
+
+**How dependencies are resolved:**
+
+- **Explicit dependencies** -- list step names in `depends_on` to declare that a step must wait for those steps to complete before it can start.
+- **Implicit dependencies** -- Mantle analyzes CEL expressions in `params` and `if` fields. If a step references `steps.fetch-data.output`, the engine automatically adds `fetch-data` as a dependency. You do not need to list implicit dependencies in `depends_on`.
+- **Skipped steps count as resolved** -- if a step is skipped (its `if` condition evaluated to `false`), downstream steps that depend on it are unblocked and can proceed.
+
+**Fan-out/fan-in example:**
+
+```yaml
+name: fan-out-fan-in
+description: Run two API calls in parallel, then merge results
+
+steps:
+  - name: fetch-users
+    action: http/request
+    params:
+      method: GET
+      url: https://api.example.com/users
+
+  - name: fetch-orders
+    action: http/request
+    params:
+      method: GET
+      url: https://api.example.com/orders
+
+  - name: merge-results
+    action: ai/completion
+    credential: openai
+    depends_on:
+      - fetch-users
+      - fetch-orders
+    params:
+      model: gpt-4o
+      prompt: >
+        Correlate these users and orders:
+        Users: {{ steps['fetch-users'].output.body }}
+        Orders: {{ steps['fetch-orders'].output.body }}
+```
+
+In this workflow, `fetch-users` and `fetch-orders` have no dependencies on each other, so they run concurrently. The `merge-results` step declares both as explicit dependencies via `depends_on` and waits for both to complete before it starts.
 
 ## Retry Policy
 
@@ -282,6 +328,9 @@ Sends a prompt to an OpenAI-compatible chat completion API and returns the resul
 | `system_prompt` | string | No | System message prepended to the conversation. |
 | `output_schema` | object | No | JSON Schema for structured output. When set, the model returns JSON conforming to this schema. |
 | `base_url` | string | No | Override the API base URL. Defaults to `https://api.openai.com/v1`. Use this for OpenAI-compatible providers like Azure, Ollama, or local models. |
+| `tools` | list | No | Tool declarations for function calling. See [Tool Declarations](#tool-declarations). |
+| `max_tool_rounds` | integer | No | Maximum number of LLM-tool interaction rounds. Default: `10` (from `engine.default_max_tool_rounds`). |
+| `max_tool_calls_per_round` | integer | No | Maximum number of tool calls the LLM can make in a single round. Default: `10` (from `engine.default_max_tool_calls_per_round`). |
 
 **Output:**
 
@@ -289,6 +338,8 @@ Sends a prompt to an OpenAI-compatible chat completion API and returns the resul
 |---|---|---|
 | `text` | string | The raw completion text returned by the model. |
 | `json` | any | If the response is valid JSON (e.g., from structured output), the parsed object. Only present when the response parses as JSON. |
+| `tool_calls` | list | Tool invocations requested by the model. Each item has `id`, `type`, and `function` (with `name` and `arguments`). Only present when the model requests tool calls in the final response. |
+| `finish_reason` | string | Why the model stopped generating. `stop` for normal text completion, `tool_calls` when the model requested tool invocations. |
 | `model` | string | The model name as reported by the API. |
 | `usage.prompt_tokens` | number | Number of tokens in the prompt. |
 | `usage.completion_tokens` | number | Number of tokens in the completion. |
@@ -347,6 +398,51 @@ The structured output is available as `steps.extract-entities.output.json.people
 ```
 
 **Authentication:** The AI connector reads the credential's `api_key` field (or `token` or `key` as fallbacks) and sends it as a Bearer token. If the credential includes an `org_id` field, it is sent as the `OpenAI-Organization` header. See the [Secrets Guide](secrets-guide.md) for how to create an `openai`-type credential.
+
+#### Tool Declarations
+
+Tools let the LLM call back into Mantle connectors during a completion. When you declare `tools` on an `ai/completion` step, the engine runs a multi-turn loop: it sends the prompt to the LLM, the LLM may request tool calls, the engine executes those calls using connector actions, feeds the results back to the LLM, and repeats until the LLM produces a final text response or the configured limits are reached.
+
+Each tool in the `tools` list has the following schema:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | Yes | Tool name exposed to the LLM. |
+| `description` | string | No | Human-readable description of what the tool does. Helps the LLM decide when to use it. |
+| `input_schema` | object | No | JSON Schema describing the tool's input parameters. |
+| `action` | string | Yes | Connector action to invoke when the LLM calls this tool (e.g., `http/request`, `postgres/query`). |
+| `params` | map | No | Static parameters merged with the LLM-provided arguments when the tool is invoked. |
+
+**Example -- tool use with web search:**
+
+```yaml
+- name: research-assistant
+  action: ai/completion
+  credential: openai
+  params:
+    model: gpt-4o
+    prompt: "Find the current population of Seattle and summarize the top 3 industries."
+    max_tool_rounds: 5
+    tools:
+      - name: web_search
+        description: "Search the web for current information"
+        input_schema:
+          type: object
+          properties:
+            query:
+              type: string
+              description: "Search query"
+          required:
+            - query
+        action: http/request
+        params:
+          method: GET
+          url: "https://api.search.example.com/search"
+```
+
+The LLM sees `web_search` as an available function. When it decides to call `web_search(query="Seattle population 2026")`, the engine executes the `http/request` action with the merged parameters and returns the result to the LLM. This continues for up to `max_tool_rounds` rounds.
+
+If the LLM exhausts all rounds without producing a final text response, the engine makes one last call asking the LLM to summarize with the information gathered so far.
 
 ### slack/send
 
@@ -798,6 +894,8 @@ Mantle validates the following rules when you run `mantle validate` or `mantle a
 | Retry backoff must be valid | `backoff must be one of: fixed, exponential` |
 | Timeout must be a valid duration | `invalid duration: ...` |
 | Timeout must be positive | `timeout must be a positive duration` |
+| Dependency cycle detected | `cycle detected in step dependencies` |
+| `depends_on` references undefined step | `references undefined step "NAME"` |
 
 Validation errors include line and column numbers when available, formatted as:
 

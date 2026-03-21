@@ -1,4 +1,3 @@
-// Package metrics provides Prometheus metrics for the Mantle platform.
 package metrics
 
 import (
@@ -8,75 +7,76 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+// Queue and distribution metrics.
 var (
-	// WorkflowExecutionsTotal counts completed workflow executions by workflow name and status.
-	WorkflowExecutionsTotal = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "mantle_workflow_executions_total",
-			Help: "Total number of workflow executions by workflow and status.",
-		},
-		[]string{"workflow", "status"},
-	)
-
-	// StepDurationSeconds tracks the duration of individual step executions.
-	StepDurationSeconds = promauto.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "mantle_step_duration_seconds",
-			Help:    "Duration of step executions in seconds.",
-			Buckets: prometheus.DefBuckets,
-		},
-		[]string{"workflow", "step", "action"},
-	)
-
-	// StepExecutionsTotal counts completed step executions by workflow, step, and status.
-	StepExecutionsTotal = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "mantle_step_executions_total",
-			Help: "Total number of step executions by workflow, step, and status.",
-		},
-		[]string{"workflow", "step", "status"},
-	)
-
-	// ConnectorDurationSeconds tracks the duration of connector invocations.
-	ConnectorDurationSeconds = promauto.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "mantle_connector_duration_seconds",
-			Help:    "Duration of connector invocations in seconds.",
-			Buckets: prometheus.DefBuckets,
-		},
-		[]string{"action"},
-	)
-
-	// ActiveExecutions tracks the number of currently running executions.
-	ActiveExecutions = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "mantle_active_executions",
-			Help: "Number of currently running workflow executions.",
-		},
-	)
+	QueueDepth = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "mantle_queue_depth",
+		Help: "Number of pending steps in the work queue",
+	})
+	ClaimDurationSeconds = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "mantle_claim_duration_seconds",
+		Help:    "Time from step pending to claimed",
+		Buckets: prometheus.DefBuckets,
+	})
+	LeaseRenewalsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "mantle_lease_renewals_total",
+		Help: "Total number of lease renewals",
+	})
+	LeaseExpirationsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "mantle_lease_expirations_total",
+		Help: "Total number of lease expirations (indicates node failures)",
+	})
+	ReaperReclaimedTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "mantle_reaper_reclaimed_total",
+		Help: "Total number of steps reclaimed by reaper",
+	})
 )
 
-// RecordExecution increments the workflow execution counter for the given workflow and status.
-func RecordExecution(workflow, status string) {
-	WorkflowExecutionsTotal.WithLabelValues(workflow, status).Inc()
-}
+// Tool-use metrics.
+var (
+	ToolCallsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_tool_calls_total",
+		Help: "Total tool calls by step, tool, and status",
+	}, []string{"step", "tool", "status"})
 
-// RecordStepDuration observes the duration of a step execution.
-func RecordStepDuration(workflow, step, action string, duration time.Duration) {
-	StepDurationSeconds.WithLabelValues(workflow, step, action).Observe(duration.Seconds())
-}
+	ToolRoundsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_tool_rounds_total",
+		Help: "Total tool use rounds by step",
+	}, []string{"step"})
 
-// RecordStepExecution increments the step execution counter for the given workflow, step, and status.
-func RecordStepExecution(workflow, step, status string) {
-	StepExecutionsTotal.WithLabelValues(workflow, step, status).Inc()
-}
+	ToolRoundDurationSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "mantle_tool_round_duration_seconds",
+		Help:    "Duration of tool use rounds",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"step"})
 
-// RecordConnectorDuration observes the duration of a connector invocation.
-func RecordConnectorDuration(action string, duration time.Duration) {
-	ConnectorDurationSeconds.WithLabelValues(action).Observe(duration.Seconds())
-}
+	LLMCacheHitsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "mantle_llm_cache_hits_total",
+		Help: "Total LLM response cache hits during recovery",
+	})
 
-// SetActiveExecutions sets the gauge for the number of active executions.
-func SetActiveExecutions(n int) {
-	ActiveExecutions.Set(float64(n))
+	ParallelStepsInFlight = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "mantle_parallel_steps_in_flight",
+		Help: "Number of concurrent step executions per workflow",
+	})
+)
+
+// Queue helper functions.
+
+func SetQueueDepth(n int)                { QueueDepth.Set(float64(n)) }
+func RecordClaimDuration(d time.Duration) { ClaimDurationSeconds.Observe(d.Seconds()) }
+func RecordLeaseRenewal()                { LeaseRenewalsTotal.Inc() }
+func RecordLeaseExpiration()             { LeaseExpirationsTotal.Inc() }
+func RecordReaperReclaimed(n int)        { ReaperReclaimedTotal.Add(float64(n)) }
+
+// Tool-use helper functions.
+
+func RecordToolCall(step, tool, status string) {
+	ToolCallsTotal.WithLabelValues(step, tool, status).Inc()
 }
+func RecordToolRound(step string) { ToolRoundsTotal.WithLabelValues(step).Inc() }
+func RecordToolRoundDuration(step string, d time.Duration) {
+	ToolRoundDurationSeconds.WithLabelValues(step).Observe(d.Seconds())
+}
+func RecordLLMCacheHit()          { LLMCacheHitsTotal.Inc() }
+func SetParallelStepsInFlight(n int) { ParallelStepsInFlight.Set(float64(n)) }

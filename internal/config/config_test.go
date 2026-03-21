@@ -4,8 +4,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // newTestCommand creates a cobra.Command with all config-related flags registered.
@@ -142,6 +145,24 @@ database:
 	if cfg.Database.URL != "postgres://envhost:5432/envdb" {
 		t.Errorf("Database.URL = %q, want env override over file", cfg.Database.URL)
 	}
+}
+
+func TestConfig_EngineDefaults(t *testing.T) {
+	cmd := newTestCommand()
+	cfg, err := Load(cmd)
+	require.NoError(t, err)
+
+	assert.Equal(t, 200*time.Millisecond, cfg.Engine.WorkerPollInterval)
+	assert.Equal(t, 5*time.Second, cfg.Engine.WorkerMaxBackoff)
+	assert.Equal(t, 500*time.Millisecond, cfg.Engine.OrchestratorPollInterval)
+	assert.Equal(t, 60*time.Second, cfg.Engine.StepLeaseDuration)
+	assert.Equal(t, 120*time.Second, cfg.Engine.OrchestrationLeaseDuration)
+	assert.Equal(t, 300*time.Second, cfg.Engine.AIStepLeaseDuration)
+	assert.Equal(t, 30*time.Second, cfg.Engine.ReaperInterval)
+	assert.Equal(t, 1048576, cfg.Engine.StepOutputMaxBytes)
+	assert.Equal(t, 10, cfg.Engine.DefaultMaxToolRounds)
+	assert.Equal(t, 10, cfg.Engine.DefaultMaxToolCallsPerRound)
+	assert.NotEmpty(t, cfg.Engine.NodeID)
 }
 
 func TestLoad_FlagOverridesAll(t *testing.T) {
