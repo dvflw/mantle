@@ -1,158 +1,261 @@
 package connector
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
-// AIConnector calls OpenAI-compatible chat completion APIs.
+// AIConnector dispatches chat completion requests to the appropriate LLMProvider.
 type AIConnector struct {
-	Client *http.Client
+	Client        *http.Client
+	AWSConfigFunc func(ctx context.Context, cred map[string]string, defaultRegion string) (aws.Config, error)
+	DefaultRegion string
 }
 
 func (c *AIConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
-	model, _ := params["model"].(string)
-	if model == "" {
-		return nil, fmt.Errorf("ai/completion: model is required")
+	providerName, _ := params["provider"].(string)
+	if providerName == "" {
+		providerName = "openai"
 	}
 
-	// Build messages: use _messages passthrough if provided, otherwise build from prompt/system_prompt.
-	var messages any
-	if rawMessages, ok := params["_messages"]; ok {
-		messages = rawMessages
-	} else {
-		prompt, _ := params["prompt"].(string)
-		if prompt == "" {
-			return nil, fmt.Errorf("ai/completion: prompt is required")
-		}
-		var msgList []map[string]string
-		if systemPrompt, _ := params["system_prompt"].(string); systemPrompt != "" {
-			msgList = append(msgList, map[string]string{"role": "system", "content": systemPrompt})
-		}
-		msgList = append(msgList, map[string]string{"role": "user", "content": prompt})
-		messages = msgList
-	}
-
-	// Build request body.
-	reqBody := map[string]any{
-		"model":    model,
-		"messages": messages,
-	}
-
-	// Include tools for function calling.
-	if tools, ok := params["_tools"]; ok {
-		reqBody["tools"] = tools
-	}
-
-	// Structured output via response_format.
-	if outputSchema, ok := params["output_schema"]; ok {
-		reqBody["response_format"] = map[string]any{
-			"type": "json_schema",
-			"json_schema": map[string]any{
-				"name":   "response",
-				"strict": true,
-				"schema": outputSchema,
-			},
-		}
-	}
-
-	// Determine API endpoint.
-	baseURL := "https://api.openai.com/v1"
-	if u, ok := params["base_url"].(string); ok && u != "" {
-		baseURL = u
-	}
-	endpoint := baseURL + "/chat/completions"
-
-	reqJSON, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("ai/completion: marshaling request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(reqJSON))
-	if err != nil {
-		return nil, fmt.Errorf("ai/completion: creating request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	// Apply credential-based auth (same pattern as HTTP connector).
-	if cred, ok := params["_credential"].(map[string]string); ok {
-		switch {
-		case cred["api_key"] != "":
-			req.Header.Set("Authorization", "Bearer "+cred["api_key"])
-		case cred["token"] != "":
-			req.Header.Set("Authorization", "Bearer "+cred["token"])
-		case cred["key"] != "":
-			req.Header.Set("Authorization", "Bearer "+cred["key"])
-		}
-		if orgID := cred["org_id"]; orgID != "" {
-			req.Header.Set("OpenAI-Organization", orgID)
-		}
-		delete(params, "_credential")
-	}
-
-	client := c.Client
-	if client == nil {
-		client = &http.Client{Timeout: 120 * time.Second}
-	}
-
-	resp, err := client.Do(req)
+	provider, err := c.getProvider(providerName, params)
 	if err != nil {
 		return nil, fmt.Errorf("ai/completion: %w", err)
 	}
-	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, DefaultMaxResponseBytes))
+	req, err := buildChatRequest(params)
 	if err != nil {
-		return nil, fmt.Errorf("ai/completion: reading response: %w", err)
+		return nil, fmt.Errorf("ai/completion: %w", err)
 	}
 
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("ai/completion: API returned %d: %s", resp.StatusCode, truncate(string(body), 500))
+	resp, err := provider.ChatCompletion(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("ai/completion: %w", err)
 	}
 
-	// Parse OpenAI response.
-	var apiResp chatCompletionResponse
-	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return nil, fmt.Errorf("ai/completion: parsing response: %w", err)
+	return chatResponseToOutput(resp), nil
+}
+
+// getProvider returns the LLMProvider for the given provider name.
+func (c *AIConnector) getProvider(name string, params map[string]any) (LLMProvider, error) {
+	switch name {
+	case "openai":
+		baseURL := "https://api.openai.com/v1"
+		if u, ok := params["base_url"].(string); ok && u != "" {
+			baseURL = u
+		}
+		return &OpenAIProvider{
+			Client:  c.Client,
+			BaseURL: baseURL,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown provider %q (available: openai)", name)
+	}
+}
+
+// buildChatRequest converts raw params into a provider-agnostic ChatRequest.
+func buildChatRequest(params map[string]any) (*ChatRequest, error) {
+	model, _ := params["model"].(string)
+	if model == "" {
+		return nil, fmt.Errorf("model is required")
 	}
 
-	if len(apiResp.Choices) == 0 {
-		return nil, fmt.Errorf("ai/completion: no choices returned")
+	req := &ChatRequest{
+		Model: model,
 	}
 
-	choice := apiResp.Choices[0]
+	// Build messages from _messages passthrough or prompt/system_prompt.
+	if rawMessages, ok := params["_messages"]; ok {
+		req.Messages = convertRawMessages(rawMessages)
+	} else {
+		prompt, _ := params["prompt"].(string)
+		if prompt == "" {
+			return nil, fmt.Errorf("prompt is required")
+		}
+		if systemPrompt, _ := params["system_prompt"].(string); systemPrompt != "" {
+			req.Messages = append(req.Messages, ChatMessage{Role: "system", Content: systemPrompt})
+		}
+		req.Messages = append(req.Messages, ChatMessage{Role: "user", Content: prompt})
+	}
 
+	// Tools from _tools passthrough.
+	if rawTools, ok := params["_tools"]; ok {
+		req.Tools = convertRawTools(rawTools)
+	}
+
+	// Output schema.
+	if schema, ok := params["output_schema"].(map[string]any); ok {
+		req.OutputSchema = schema
+	}
+
+	// Credential.
+	if cred, ok := params["_credential"].(map[string]string); ok {
+		req.Credential = cred
+		delete(params, "_credential")
+	}
+
+	// Max tokens.
+	if mt, ok := params["max_tokens"]; ok {
+		if v, ok2 := extractInt(mt); ok2 {
+			req.MaxTokens = v
+		}
+	}
+
+	return req, nil
+}
+
+// convertRawMessages converts the raw _messages param (various formats) into []ChatMessage.
+// It handles []map[string]any (from ToolLoop) and preserves all fields.
+func convertRawMessages(raw any) []ChatMessage {
+	switch msgs := raw.(type) {
+	case []map[string]any:
+		return convertMapMessages(msgs)
+	case []any:
+		var out []ChatMessage
+		for _, m := range msgs {
+			if mm, ok := m.(map[string]any); ok {
+				out = append(out, mapToMessage(mm))
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func convertMapMessages(msgs []map[string]any) []ChatMessage {
+	out := make([]ChatMessage, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, mapToMessage(m))
+	}
+	return out
+}
+
+func mapToMessage(m map[string]any) ChatMessage {
+	msg := ChatMessage{
+		Role:    stringVal(m, "role"),
+		Content: stringVal(m, "content"),
+	}
+	if tcID, ok := m["tool_call_id"].(string); ok {
+		msg.ToolCallID = tcID
+	}
+	if rawTC, ok := m["tool_calls"]; ok {
+		msg.ToolCalls = convertRawToolCalls(rawTC)
+	}
+	return msg
+}
+
+func stringVal(m map[string]any, key string) string {
+	v, _ := m[key].(string)
+	return v
+}
+
+// convertRawToolCalls converts tool_calls from various wire formats into []ToolCall.
+func convertRawToolCalls(raw any) []ToolCall {
+	switch tcs := raw.(type) {
+	case []ToolCall:
+		return tcs
+	case []map[string]any:
+		out := make([]ToolCall, 0, len(tcs))
+		for _, tc := range tcs {
+			call := ToolCall{
+				ID:   stringVal(tc, "id"),
+				Type: stringVal(tc, "type"),
+			}
+			if fn, ok := tc["function"].(map[string]any); ok {
+				call.Function.Name = stringVal(fn, "name")
+				call.Function.Arguments = stringVal(fn, "arguments")
+			}
+			out = append(out, call)
+		}
+		return out
+	case []any:
+		out := make([]ToolCall, 0, len(tcs))
+		for _, item := range tcs {
+			if tc, ok := item.(map[string]any); ok {
+				call := ToolCall{
+					ID:   stringVal(tc, "id"),
+					Type: stringVal(tc, "type"),
+				}
+				if fn, ok := tc["function"].(map[string]any); ok {
+					call.Function.Name = stringVal(fn, "name")
+					call.Function.Arguments = stringVal(fn, "arguments")
+				}
+				out = append(out, call)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+// convertRawTools converts the raw _tools param into []ChatTool.
+func convertRawTools(raw any) []ChatTool {
+	switch tools := raw.(type) {
+	case []map[string]any:
+		return mapSliceToTools(tools)
+	case []any:
+		var maps []map[string]any
+		for _, t := range tools {
+			if m, ok := t.(map[string]any); ok {
+				maps = append(maps, m)
+			}
+		}
+		return mapSliceToTools(maps)
+	default:
+		return nil
+	}
+}
+
+func mapSliceToTools(tools []map[string]any) []ChatTool {
+	var out []ChatTool
+	for _, t := range tools {
+		// OpenAI format: {type: "function", function: {name, description, parameters}}
+		if fn, ok := t["function"].(map[string]any); ok {
+			tool := ChatTool{
+				Name:        stringVal(fn, "name"),
+				Description: stringVal(fn, "description"),
+			}
+			if schema, ok := fn["parameters"].(map[string]any); ok {
+				tool.InputSchema = schema
+			}
+			out = append(out, tool)
+		}
+	}
+	return out
+}
+
+// chatResponseToOutput converts a ChatResponse back to the map[string]any output format.
+func chatResponseToOutput(resp *ChatResponse) map[string]any {
 	output := map[string]any{
-		"model": apiResp.Model,
+		"model": resp.Model,
 		"usage": map[string]any{
-			"prompt_tokens":     apiResp.Usage.PromptTokens,
-			"completion_tokens": apiResp.Usage.CompletionTokens,
-			"total_tokens":      apiResp.Usage.TotalTokens,
+			"prompt_tokens":     resp.Usage.PromptTokens,
+			"completion_tokens": resp.Usage.CompletionTokens,
+			"total_tokens":      resp.Usage.TotalTokens,
 		},
 	}
 
-	// If the model returned tool calls, surface them instead of text.
-	if len(choice.Message.ToolCalls) > 0 {
-		output["tool_calls"] = choice.Message.ToolCalls
+	if len(resp.ToolCalls) > 0 {
+		output["tool_calls"] = resp.ToolCalls
 		output["finish_reason"] = "tool_calls"
 	} else {
-		text := choice.Message.Content
-		output["text"] = text
+		output["text"] = resp.Text
 		output["finish_reason"] = "stop"
 
 		// Try to parse response as JSON (for structured output).
 		var parsed any
-		if json.Unmarshal([]byte(text), &parsed) == nil {
+		if json.Unmarshal([]byte(resp.Text), &parsed) == nil {
 			output["json"] = parsed
 		}
 	}
 
-	return output, nil
+	return output
 }
 
 // ToolCall represents an OpenAI function calling tool invocation.
