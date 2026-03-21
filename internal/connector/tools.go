@@ -160,12 +160,14 @@ func (tl *ToolLoop) Run(ctx context.Context, params map[string]any) (map[string]
 			if parseErr != nil {
 				// Send the parse error back to the LLM as the tool result
 				// rather than crashing the loop.
-				resultContent = fmt.Sprintf(`{"error":"invalid tool arguments: %s"}`, parseErr.Error())
+				slog.Warn("tool argument parse failed", "tool", tc.Function.Name, "error", parseErr)
+			resultContent = `{"error":"invalid tool arguments"}`
 				metrics.RecordToolCall(stepLabel, tc.Function.Name, "failed")
 			} else {
 				result, execErr := tl.ToolExecutor(ctx, tc.Function.Name, args)
 				if execErr != nil {
-					resultContent = fmt.Sprintf(`{"error":"%s"}`, execErr.Error())
+					slog.Warn("tool execution failed", "tool", tc.Function.Name, "error", execErr)
+				resultContent = `{"error":"tool execution failed"}`
 					metrics.RecordToolCall(stepLabel, tc.Function.Name, "failed")
 				} else {
 					encoded, _ := json.Marshal(result)

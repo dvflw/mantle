@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
@@ -97,7 +98,8 @@ func loginAuthCodePKCE(cmd *cobra.Command, cfg *config.Config) error {
 	port := listener.Addr().(*net.TCPAddr).Port
 
 	oauth2Cfg := &oauth2.Config{
-		ClientID:     cfg.Auth.OIDC.ClientID,
+		ClientID: cfg.Auth.OIDC.ClientID,
+		// ClientSecret is optional — empty string enables public client mode (PKCE-only).
 		ClientSecret: cfg.Auth.OIDC.ClientSecret,
 		Endpoint:     provider.Endpoint(),
 		RedirectURL:  fmt.Sprintf("http://localhost:%d/callback", port),
@@ -158,8 +160,16 @@ func loginAuthCodePKCE(cmd *cobra.Command, cfg *config.Config) error {
 
 	openBrowser(authURL)
 
-	// Wait for callback.
-	result := <-resultCh
+	// Wait for callback with a 5-minute timeout.
+	loginCtx, loginCancel := context.WithTimeout(cmd.Context(), 5*time.Minute)
+	defer loginCancel()
+
+	var result callbackResult
+	select {
+	case result = <-resultCh:
+	case <-loginCtx.Done():
+		return fmt.Errorf("login timed out after 5 minutes waiting for callback")
+	}
 	if result.err != nil {
 		return result.err
 	}
@@ -212,7 +222,8 @@ func loginDeviceFlow(cmd *cobra.Command, cfg *config.Config) error {
 	}
 
 	oauth2Cfg := &oauth2.Config{
-		ClientID:     cfg.Auth.OIDC.ClientID,
+		ClientID: cfg.Auth.OIDC.ClientID,
+		// ClientSecret is optional — empty string enables public client mode (PKCE-only).
 		ClientSecret: cfg.Auth.OIDC.ClientSecret,
 		Endpoint: oauth2.Endpoint{
 			AuthURL:       provider.Endpoint().AuthURL,

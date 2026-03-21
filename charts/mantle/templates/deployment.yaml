@@ -31,6 +31,7 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      terminationGracePeriodSeconds: 40
       containers:
         - name: mantle
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"

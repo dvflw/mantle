@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 )
 
 // Store handles CRUD for teams, users, and API keys.
@@ -189,7 +190,9 @@ func (s *Store) LookupAPIKey(ctx context.Context, rawKey string) (*User, error) 
 	}
 
 	// Update last_used_at.
-	s.DB.ExecContext(ctx, `UPDATE api_keys SET last_used_at = NOW() WHERE key_hash = $1`, hash)
+	if _, err := s.DB.ExecContext(ctx, `UPDATE api_keys SET last_used_at = NOW() WHERE key_hash = $1`, hash); err != nil {
+		slog.Warn("failed to update api key last_used_at", "error", err)
+	}
 
 	return &u, nil
 }
