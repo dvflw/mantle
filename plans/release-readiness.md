@@ -1,6 +1,8 @@
 # Mantle V1 Release Readiness Plan
 
-> Compiled 2026-03-21 from 12 specialist reviews: Brand Guardian, UX Architect, Product Manager, Reality Checker, Performance Benchmarker, Tool Evaluator, Workflow Optimizer, Infrastructure Maintainer, Compliance Auditor, Developer Advocate, Governance Architect, Technical Writer.
+> Compiled 2026-03-21 from 12 specialist reviews + security/compliance validation pass.
+> Reviews: Brand Guardian, UX Architect, Product Manager, Reality Checker, Performance Benchmarker, Tool Evaluator, Workflow Optimizer, Infrastructure Maintainer, Compliance Auditor, Developer Advocate, Governance Architect, Technical Writer.
+> Validated by: Security Engineer + Compliance Auditor (cross-referencing for conflicts and missing controls).
 
 ## Overall Assessment: B- (NEEDS WORK, but close)
 
@@ -21,6 +23,11 @@ The codebase is substantially more complete than most V1 projects. All 6 planned
 | 7 | **`ClaimAnyStep` has no team_id filter** — cross-tenant step execution | Compliance | 1 day |
 | 8 | **`trigger.payload` not declared in CEL environment** — webhook workflows broken | Workflow | 1 hr |
 | 9 | **CLI `logs` command queries without team_id** — data isolation bypass | Reality | 30 min |
+| 10a | **`handleCancel` cancels in-memory context before team_id DB check** — cross-tenant DoS | Security Validation | 1 hr |
+| 10b | **`LookupWebhookTrigger` has no team_id filter** — cross-tenant webhook trigger | Security Validation | 1 hr |
+| 10c | **`SyncTriggers` deletes triggers by name only** — cross-tenant trigger deletion | Security Validation | 1 hr |
+| 10d | **`ListCronTriggers` loads ALL tenants' cron triggers** — cross-tenant execution | Security Validation | 1 hr |
+| 10e | **Cascade API key deletion on user removal** — orphaned keys stay valid | Compliance Validation | 30 min |
 
 ## Tier 1: Must Fix Before Launch (high adoption/trust impact)
 
@@ -141,27 +148,37 @@ The codebase is substantially more complete than most V1 projects. All 6 planned
 
 ### Sprint 1 (3 days): Legal + Bugs + Quick Wins
 
-Items: 1-5, 6-9, 21-22, 30, 34, 50-51
+Items: 1-5, 6-9, 10a-10e, 21-22, 30, 34, 50-51
 
 - Legal files (LICENSE, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, CHANGELOG)
 - Fix cron duplicate execution (leader election via pg advisory lock)
 - Fix ClaimAnyStep cross-tenant leak
+- Fix trigger queries team_id (LookupWebhookTrigger, SyncTriggers, ListCronTriggers)
+- Fix handleCancel in-memory cancel ordering (team_id check BEFORE context cancel)
+- Cascade API key deletion on user removal
 - Fix trigger.payload CEL variable
 - Fix CLI logs team_id, orderedSteps sort, validate os.Exit
 - Fix Go version in README, add .dockerignore
+- Fix JSON injection in error responses (fmt.Sprintf → json.Marshal)
 - DB index + connection pool tuning
 
-### Sprint 2 (5 days): Security Hardening
+### Sprint 2 (7 days): Security Hardening + Compliance Foundation
 
-Items: 10-16
+Items: 10-16, 37, 40 + new compliance items
 
-- TLS support (or documented reverse proxy requirement)
-- DB sslmode enforcement
-- API key expiry + revocation
-- Rate limiting middleware
-- Webhook HMAC verification
-- Audit events for admin operations
-- Log sanitization
+- TLS support (or documented reverse proxy requirement with startup warning)
+- DB sslmode enforcement (warn/error on sslmode=disable)
+- API key expiry + revocation + notification before expiry
+- Rate limiting middleware (auth endpoints + API + webhooks)
+- Webhook auth model: HMAC verification when secret configured, Bearer auth otherwise
+- `base_url` restriction/allowlist (moved from Sprint 5 — credential exfiltration vector)
+- Audit events for ALL admin operations (user/key/credential/team CRUD + auth.failed)
+- Audit events scoped by team_id (add column + filter to Query)
+- Add auth to `/metrics` endpoint (remove from middleware skip list)
+- Log sanitization (errors, OIDC tokens, AI API responses)
+- API body size limits on non-webhook endpoints
+- Data retention/execution cleanup (configurable `retention_days`)
+- Document: key rotation procedure, backup/DR requirements, data residency, change management
 
 ### Sprint 3 (5 days): Observability + CLI + Metrics
 
@@ -187,9 +204,9 @@ Items: 25-29, 31-33, 27-28
 
 ### Sprint 5 (5 days): Governance + Workflow + Content
 
-Items: 35-39, 42, 44-45, 53-59
+Items: 35-36, 38-39, 42, 44-45, 53-59
 
-- Cross-retry token budget, model allowlist, base_url restriction, max_rounds ceiling
+- Cross-retry token budget, model allowlist, max_rounds ceiling (base_url moved to Sprint 2)
 - OpenAI 429 retryable classification
 - Input default values, workflow-level timeout, CEL validation
 - Logo, social preview, terminal recording, tool-use example
