@@ -8,6 +8,7 @@ import (
 	"github.com/dvflw/mantle/internal/audit"
 	"github.com/dvflw/mantle/internal/auth"
 	"github.com/dvflw/mantle/internal/config"
+	"github.com/dvflw/mantle/internal/connector"
 	"github.com/dvflw/mantle/internal/db"
 	"github.com/dvflw/mantle/internal/engine"
 	"github.com/dvflw/mantle/internal/logging"
@@ -44,6 +45,16 @@ func newServeCommand() *cobra.Command {
 			eng, err := engine.New(database)
 			if err != nil {
 				return fmt.Errorf("creating engine: %w", err)
+			}
+
+			// Configure AWS defaults for AI (Bedrock) and S3 connectors.
+			if cfg.AWS.Region != "" {
+				if aiConn, err := eng.Registry.Get("ai/completion"); err == nil {
+					if ai, ok := aiConn.(*connector.AIConnector); ok {
+						ai.DefaultRegion = cfg.AWS.Region
+						ai.AWSConfigFunc = connector.NewAWSConfig
+					}
+				}
 			}
 
 			// Wire up Postgres-backed audit emitter with auth context enrichment.

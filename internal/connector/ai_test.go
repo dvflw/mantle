@@ -562,3 +562,38 @@ func TestRegistry_AIConnector(t *testing.T) {
 		t.Fatalf("Get(ai/completion) error: %v", err)
 	}
 }
+
+func TestAIConnector_ExplicitProviderOpenAI(t *testing.T) {
+	server := mockOpenAIServer(t, "explicit provider response", 200)
+	defer server.Close()
+
+	c := &AIConnector{}
+	output, err := c.Execute(context.Background(), map[string]any{
+		"model":    "gpt-4o",
+		"prompt":   "Hello",
+		"base_url": server.URL,
+		"provider": "openai",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+	if output["text"] != "explicit provider response" {
+		t.Errorf("text = %v, want %q", output["text"], "explicit provider response")
+	}
+}
+
+func TestAIConnector_UnknownProvider(t *testing.T) {
+	c := &AIConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{
+		"model":    "some-model",
+		"prompt":   "Hello",
+		"provider": "anthropic",
+	})
+	if err == nil {
+		t.Fatal("Execute() expected error for unknown provider, got nil")
+	}
+	expected := `ai/completion: unknown provider "anthropic" (available: openai, bedrock)`
+	if err.Error() != expected {
+		t.Errorf("error = %q, want %q", err.Error(), expected)
+	}
+}

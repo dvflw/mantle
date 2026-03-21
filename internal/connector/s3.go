@@ -7,46 +7,50 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 // newS3Client builds an S3 client from the _credential map in params.
 // It extracts and deletes the credential key from params.
-// Supported credential fields: access_key, secret_key, region, endpoint.
-func newS3Client(params map[string]any) (*s3.Client, error) {
-	cred, ok := params["_credential"].(map[string]string)
-	if !ok {
-		return nil, fmt.Errorf("s3: _credential is required (need access_key and secret_key)")
-	}
-	delete(params, "_credential")
-
-	accessKey := cred["access_key"]
-	secretKey := cred["secret_key"]
-	if accessKey == "" || secretKey == "" {
-		return nil, fmt.Errorf("s3: access_key and secret_key are required in credential")
+// Supported credential fields: access_key_id (or legacy access_key), secret_access_key (or legacy secret_key), region, endpoint.
+// If _credential is absent or nil, credentials are sourced from the AWS SDK default chain.
+func newS3Client(ctx context.Context, params map[string]any, defaultRegion string) (*s3.Client, error) {
+	var cred map[string]string
+	if raw, ok := params["_credential"]; ok {
+		cred, _ = raw.(map[string]string)
+		delete(params, "_credential")
 	}
 
-	region := cred["region"]
-	if region == "" {
-		region = "us-east-1"
+	// Normalize legacy field names for backward compatibility.
+	if cred != nil {
+		if cred["access_key_id"] == "" && cred["access_key"] != "" {
+			cred["access_key_id"] = cred["access_key"]
+		}
+		if cred["secret_access_key"] == "" && cred["secret_key"] != "" {
+			cred["secret_access_key"] = cred["secret_key"]
+		}
 	}
 
-	opts := []func(*s3.Options){
-		func(o *s3.Options) {
-			o.Region = region
-			o.Credentials = credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")
-		},
+	// Capture endpoint before calling NewAWSConfig (endpoint is not part of aws.Config).
+	var endpoint string
+	if cred != nil {
+		endpoint = cred["endpoint"]
 	}
 
-	if endpoint := cred["endpoint"]; endpoint != "" {
+	awsCfg, err := NewAWSConfig(ctx, cred, defaultRegion)
+	if err != nil {
+		return nil, fmt.Errorf("s3: %w", err)
+	}
+
+	var opts []func(*s3.Options)
+	if endpoint != "" {
 		opts = append(opts, func(o *s3.Options) {
 			o.BaseEndpoint = aws.String(endpoint)
 			o.UsePathStyle = true // Required for most S3-compatible services (MinIO, etc.)
 		})
 	}
 
-	client := s3.New(s3.Options{}, opts...)
+	client := s3.NewFromConfig(awsCfg, opts...)
 	return client, nil
 }
 
@@ -71,7 +75,7 @@ func (c *S3PutConnector) Execute(ctx context.Context, params map[string]any) (ma
 		return nil, fmt.Errorf("s3/put: content is required")
 	}
 
-	client, err := newS3Client(params)
+	client, err := newS3Client(ctx, params, "")
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +121,7 @@ func (c *S3GetConnector) Execute(ctx context.Context, params map[string]any) (ma
 		return nil, fmt.Errorf("s3/get: key is required")
 	}
 
-	client, err := newS3Client(params)
+	client, err := newS3Client(ctx, params, "")
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +167,7 @@ func (c *S3ListConnector) Execute(ctx context.Context, params map[string]any) (m
 		return nil, fmt.Errorf("s3/list: bucket is required")
 	}
 
-	client, err := newS3Client(params)
+	client, err := newS3Client(ctx, params, "")
 	if err != nil {
 		return nil, err
 	}
