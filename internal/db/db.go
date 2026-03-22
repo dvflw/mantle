@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"database/sql"
+	"log/slog"
+	"strings"
 
 	"github.com/dvflw/mantle/internal/config"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -15,6 +17,10 @@ type contextKey struct{}
 // defaults are left in place (callers such as tests that only need a URL can
 // pass a DatabaseConfig with just the URL field set).
 func Open(cfg config.DatabaseConfig) (*sql.DB, error) {
+	if strings.Contains(cfg.URL, "sslmode=disable") {
+		slog.Warn("database connection using sslmode=disable — use sslmode=require or sslmode=verify-full for production")
+	}
+
 	database, err := sql.Open("pgx", cfg.URL)
 	if err != nil {
 		return nil, err

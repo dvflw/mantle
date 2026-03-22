@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/dvflw/mantle/internal/audit"
 )
 
 // TokenValidator validates bearer tokens and returns the claims.
@@ -85,7 +87,7 @@ func AuthMiddleware(store *Store, oidcValidator TokenValidator, next http.Handle
 			authMethod = "oidc"
 			claims, vErr := oidcValidator.ValidateToken(r.Context(), rawToken)
 			if vErr != nil {
-				slog.Warn("OIDC token validation failed", "error", vErr)
+				slog.Warn("OIDC token validation failed", "error", vErr.Error())
 				http.Error(w, `{"error":"invalid or expired token"}`, http.StatusUnauthorized)
 				return
 			}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -205,6 +206,9 @@ func (e *RetryableError) Unwrap() error {
 
 // classifyBedrockError maps AWS Bedrock errors into retryable vs non-retryable.
 func classifyBedrockError(err error) error {
+	// Log the full error server-side for debugging.
+	slog.Warn("Bedrock API error", "error", err.Error())
+
 	// Try the ErrorCode() interface first (all Bedrock API exceptions implement this).
 	type errorCoder interface {
 		ErrorCode() string
@@ -213,18 +217,18 @@ func classifyBedrockError(err error) error {
 		switch ec.ErrorCode() {
 		case "ThrottlingException", "ModelTimeoutException", "ServiceUnavailableException",
 			"ModelNotReadyException", "InternalServerException":
-			return &RetryableError{Err: err}
+			return &RetryableError{Err: fmt.Errorf("bedrock: service error (retryable)")}
 		}
-		return fmt.Errorf("bedrock: %w", err)
+		return fmt.Errorf("bedrock: API error [%s]", ec.ErrorCode())
 	}
 
 	// Fall back to string matching for wrapped errors.
 	msg := err.Error()
 	for _, keyword := range []string{"ThrottlingException", "ModelTimeoutException", "ServiceUnavailableException"} {
 		if strings.Contains(msg, keyword) {
-			return &RetryableError{Err: err}
+			return &RetryableError{Err: fmt.Errorf("bedrock: service error (retryable)")}
 		}
 	}
 
-	return fmt.Errorf("bedrock: %w", err)
+	return fmt.Errorf("bedrock: API request failed")
 }
