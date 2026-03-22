@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dvflw/mantle/internal/auth"
 )
 
 // CronScheduler polls the database for cron triggers and executes workflows on schedule.
@@ -83,9 +85,12 @@ func (c *CronScheduler) tick(ctx context.Context) {
 			c.server.Logger.Info("cron: firing workflow",
 				"workflow", t.WorkflowName,
 				"version", t.WorkflowVersion,
-				"schedule", t.Schedule)
+				"schedule", t.Schedule,
+				"team_id", t.TeamID)
 
-			execID, err := c.server.executeWorkflow(ctx, t.WorkflowName, t.WorkflowVersion, nil)
+			// Inject team context so executeWorkflow runs with proper tenant scoping.
+			teamCtx := auth.WithUser(ctx, &auth.User{TeamID: t.TeamID})
+			execID, err := c.server.executeWorkflow(teamCtx, t.WorkflowName, t.WorkflowVersion, nil)
 			if err != nil {
 				c.server.Logger.Error("cron: execution failed",
 					"workflow", t.WorkflowName,

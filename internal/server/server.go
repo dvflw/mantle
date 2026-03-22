@@ -270,13 +270,14 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	version, err := getLatestVersion(ctx, s.DB, workflowName)
 	if err != nil || version == 0 {
-		http.Error(w, fmt.Sprintf(`{"error":"workflow %q not found"}`, workflowName), http.StatusNotFound)
+		writeJSONError(w, "workflow not found", http.StatusNotFound)
 		return
 	}
 
 	execID, err := s.executeWorkflow(r.Context(), workflowName, version, nil)
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
+		s.Logger.Error("workflow execution failed", "workflow", workflowName, "error", err)
+		writeJSONError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
@@ -288,19 +289,31 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 // handleCancel cancels a running execution via the API.
 func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 	execID := r.PathValue("execution")
+
+	// Update DB status first (with team_id check) to prevent cross-tenant cancellation.
+	teamID := auth.TeamIDFromContext(r.Context())
+	result, err := s.DB.ExecContext(r.Context(),
+		`UPDATE workflow_executions SET status = 'cancelled', completed_at = NOW(), updated_at = NOW()
+		 WHERE id = $1 AND status IN ('pending', 'running') AND team_id = $2`, execID, teamID)
+	if err != nil {
+		s.Logger.Error("cancel: db update failed", "execution", execID, "error", err)
+		writeJSONError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		writeJSONError(w, "execution not found or not cancellable", http.StatusNotFound)
+		return
+	}
+
+	// Only cancel the in-memory context after confirming team ownership via DB.
 	s.mu.Lock()
 	cancel, ok := s.running[execID]
 	s.mu.Unlock()
-
 	if ok {
 		cancel()
 	}
-
-	// Also update DB status.
-	teamID := auth.TeamIDFromContext(r.Context())
-	s.DB.ExecContext(r.Context(),
-		`UPDATE workflow_executions SET status = 'cancelled', completed_at = NOW(), updated_at = NOW()
-		 WHERE id = $1 AND status IN ('pending', 'running') AND team_id = $2`, execID, teamID)
 
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"execution_id":"%s","status":"cancelled"}`, execID)

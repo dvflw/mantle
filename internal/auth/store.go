@@ -108,6 +108,19 @@ func (s *Store) ListUsers(ctx context.Context, teamID string) ([]User, error) {
 }
 
 func (s *Store) DeleteUser(ctx context.Context, email, teamID string) error {
+	// Explicitly delete API keys before removing the user for audit traceability.
+	// The FK has ON DELETE CASCADE, but an explicit delete lets us log the action.
+	res, err := s.DB.ExecContext(ctx,
+		`DELETE FROM api_keys WHERE user_id = (SELECT id FROM users WHERE email = $1 AND team_id = $2)`,
+		email, teamID)
+	if err != nil {
+		return fmt.Errorf("deleting user api keys: %w", err)
+	}
+	keysDeleted, _ := res.RowsAffected()
+	if keysDeleted > 0 {
+		slog.Info("deleted api keys for user", "email", email, "team_id", teamID, "count", keysDeleted)
+	}
+
 	result, err := s.DB.ExecContext(ctx, `DELETE FROM users WHERE email = $1 AND team_id = $2`, email, teamID)
 	if err != nil {
 		return fmt.Errorf("deleting user: %w", err)
