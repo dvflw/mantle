@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dvflw/mantle/internal/api/health"
+	"github.com/dvflw/mantle/internal/audit"
 	"github.com/dvflw/mantle/internal/auth"
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/engine"
@@ -24,6 +25,7 @@ type Server struct {
 	Engine        *engine.Engine
 	AuthStore     *auth.Store
 	OIDCValidator *auth.OIDCValidator
+	Auditor       audit.Emitter
 	Address       string
 	TLSCertFile   string
 	TLSKeyFile    string
@@ -147,7 +149,11 @@ func (s *Server) Start(ctx context.Context) error {
 	// Wrap with auth middleware if AuthStore is configured.
 	var handler http.Handler = mux
 	if s.AuthStore != nil {
-		handler = auth.AuthMiddleware(s.AuthStore, s.OIDCValidator, mux)
+		if s.Auditor != nil {
+			handler = auth.AuthMiddleware(s.AuthStore, s.OIDCValidator, mux, s.Auditor)
+		} else {
+			handler = auth.AuthMiddleware(s.AuthStore, s.OIDCValidator, mux)
+		}
 	}
 
 	// Apply rate limiting (after auth so rate limit keys can use API key prefix).

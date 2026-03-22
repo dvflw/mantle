@@ -59,10 +59,11 @@ func newServeCommand() *cobra.Command {
 			}
 
 			// Wire up Postgres-backed audit emitter with auth context enrichment.
-			eng.Auditor = &audit.PostgresEmitter{
+			auditor := &audit.PostgresEmitter{
 				DB:                  database,
 				AuthMethodExtractor: auth.AuthMethodFromContext,
 			}
+			eng.Auditor = auditor
 
 			// Wire up credential resolver if encryption key is configured.
 			if cfg.Encryption.Key != "" {
@@ -76,6 +77,7 @@ func newServeCommand() *cobra.Command {
 			}
 
 			srv := server.New(database, eng, cfg.API.Address)
+			srv.Auditor = auditor
 			srv.TLSCertFile = cfg.API.TLS.CertFile
 			srv.TLSKeyFile = cfg.API.TLS.KeyFile
 			srv.AuthStore = &auth.Store{DB: database}
