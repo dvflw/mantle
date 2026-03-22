@@ -25,6 +25,8 @@ type Server struct {
 	AuthStore     *auth.Store
 	OIDCValidator *auth.OIDCValidator
 	Address       string
+	TLSCertFile   string
+	TLSKeyFile    string
 	Logger        *slog.Logger
 
 	httpServer *http.Server
@@ -148,6 +150,10 @@ func (s *Server) Start(ctx context.Context) error {
 		handler = auth.AuthMiddleware(s.AuthStore, s.OIDCValidator, mux)
 	}
 
+	// Apply rate limiting (after auth so rate limit keys can use API key prefix).
+	rl := NewRateLimiter(100, 200)
+	handler = rl.Middleware(handler)
+
 	s.httpServer = &http.Server{
 		Addr:              s.Address,
 		Handler:           handler,
@@ -166,9 +172,17 @@ func (s *Server) Start(ctx context.Context) error {
 	// Start HTTP server.
 	errCh := make(chan error, 1)
 	go func() {
-		s.Logger.Info("server listening", "address", s.Address)
-		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errCh <- err
+		if s.TLSCertFile != "" && s.TLSKeyFile != "" {
+			s.Logger.Info("server listening with TLS", "address", s.Address)
+			if err := s.httpServer.ListenAndServeTLS(s.TLSCertFile, s.TLSKeyFile); err != nil && err != http.ErrServerClosed {
+				errCh <- err
+			}
+		} else {
+			slog.Warn("API server running without TLS — use a reverse proxy for production or configure tls.cert_file and tls.key_file")
+			s.Logger.Info("server listening", "address", s.Address)
+			if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				errCh <- err
+			}
 		}
 	}()
 
@@ -261,6 +275,8 @@ func (s *Server) waitForExecutions(ctx context.Context) {
 
 // handleRun triggers a workflow execution via the API.
 func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB limit
+
 	workflowName := r.PathValue("workflow")
 	if workflowName == "" {
 		http.Error(w, `{"error":"workflow name required"}`, http.StatusBadRequest)
