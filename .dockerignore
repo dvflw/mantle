@@ -4,19 +4,23 @@
 
 # Build artifacts
 mantle
+dist
 *.exe
 
 # IDE and editor files
 .idea
 .vscode
+.claude
 *.swp
 *.swo
 *~
 
 # Documentation and plans
 plans/
-docs/
+docs/superpowers
+marketing
 *.md
+!README.md
 LICENSE
 
 # CI/CD

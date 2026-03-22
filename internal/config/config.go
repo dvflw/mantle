@@ -113,7 +113,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	// Defaults
 	v.SetDefault("database.url", "postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable")
 	v.SetDefault("database.max_open_conns", 25)
-	v.SetDefault("database.max_idle_conns", 10)
+	v.SetDefault("database.max_idle_conns", 25)
 	v.SetDefault("database.conn_max_lifetime", 5*time.Minute)
 	v.SetDefault("api.address", ":8080")
 	v.SetDefault("log.level", "info")

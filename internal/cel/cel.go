@@ -14,8 +14,9 @@ import (
 
 // Context holds the runtime data available to CEL expressions.
 type Context struct {
-	Steps  map[string]map[string]any // steps.<name>.output → step outputs
-	Inputs map[string]any            // inputs.<name> → workflow inputs
+	Steps   map[string]map[string]any // steps.<name>.output → step outputs
+	Inputs  map[string]any            // inputs.<name> → workflow inputs
+	Trigger map[string]any            // trigger.payload → webhook trigger data
 }
 
 // Evaluator evaluates CEL expressions against a runtime context.
@@ -31,6 +32,7 @@ func NewEvaluator() (*Evaluator, error) {
 		cel.Variable("steps", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("inputs", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("env", cel.MapType(cel.StringType, cel.StringType)),
+		cel.Variable("trigger", cel.MapType(cel.StringType, cel.DynType)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating CEL environment: %w", err)
@@ -46,10 +48,16 @@ func (e *Evaluator) Eval(expression string, ctx *Context) (any, error) {
 		return nil, err
 	}
 
+	trigger := ctx.Trigger
+	if trigger == nil {
+		trigger = map[string]any{}
+	}
+
 	vars := map[string]any{
-		"steps":  ctx.Steps,
-		"inputs": ctx.Inputs,
-		"env":    e.envCache,
+		"steps":   ctx.Steps,
+		"inputs":  ctx.Inputs,
+		"env":     e.envCache,
+		"trigger": trigger,
 	}
 
 	out, _, err := prog.Eval(vars)

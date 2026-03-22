@@ -19,7 +19,7 @@ Mantle gives you an IaC-style lifecycle for AI-powered workflows: **validate** o
 
 ### Prerequisites
 
-- Go 1.22+
+- Go 1.25+
 - Docker & Docker Compose (for local development)
 
 ### Install
@@ -171,7 +171,7 @@ internal/
 
 ### Prerequisites
 
-- Go 1.22+
+- Go 1.25+
 - Docker & Docker Compose
 
 ### Setup
