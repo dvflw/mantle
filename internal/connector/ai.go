@@ -12,9 +12,10 @@ import (
 
 // AIConnector dispatches chat completion requests to the appropriate LLMProvider.
 type AIConnector struct {
-	Client        *http.Client
-	AWSConfigFunc func(ctx context.Context, cred map[string]string, defaultRegion string) (aws.Config, error)
-	DefaultRegion string
+	Client          *http.Client
+	AWSConfigFunc   func(ctx context.Context, cred map[string]string, defaultRegion string) (aws.Config, error)
+	DefaultRegion   string
+	AllowedBaseURLs []string
 }
 
 func (c *AIConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
@@ -48,6 +49,18 @@ func (c *AIConnector) getProvider(name string, params map[string]any) (LLMProvid
 		baseURL := "https://api.openai.com/v1"
 		if u, ok := params["base_url"].(string); ok && u != "" {
 			baseURL = u
+		}
+		if len(c.AllowedBaseURLs) > 0 && baseURL != "" {
+			allowed := false
+			for _, u := range c.AllowedBaseURLs {
+				if u == baseURL {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				return nil, fmt.Errorf("ai/completion: base_url %q not in allowed list", baseURL)
+			}
 		}
 		return &OpenAIProvider{
 			Client:  c.Client,

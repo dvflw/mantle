@@ -38,6 +38,8 @@ type APIKey struct {
 	KeyHash    string
 	KeyPrefix  string
 	LastUsedAt *time.Time
+	ExpiresAt  *time.Time
+	RevokedAt  *time.Time
 	CreatedAt  time.Time
 }
 

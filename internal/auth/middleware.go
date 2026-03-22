@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/dvflw/mantle/internal/audit"
 )
 
 // TokenValidator validates bearer tokens and returns the claims.
@@ -42,22 +44,54 @@ func AuthMethodFromContext(ctx context.Context) string {
 // sniffs the format (API key vs OIDC JWT), authenticates the user,
 // and stores it in the request context.
 // Health check endpoints are excluded from authentication.
-func AuthMiddleware(store *Store, oidcValidator TokenValidator, next http.Handler) http.Handler {
+// The optional auditor parameter, when non-nil, emits auth.failed audit events
+// on authentication failures.
+func AuthMiddleware(store *Store, oidcValidator TokenValidator, next http.Handler, auditor ...audit.Emitter) http.Handler {
+	var emitter audit.Emitter
+	if len(auditor) > 0 {
+		emitter = auditor[0]
+	}
+
+	emitAuthFailure := func(r *http.Request, method, reason string) {
+		if emitter == nil {
+			return
+		}
+		clientIP := r.RemoteAddr
+		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+			clientIP = strings.Split(forwarded, ",")[0]
+		}
+		_ = emitter.Emit(r.Context(), audit.Event{
+			Action: audit.ActionAuthFailed,
+			Actor:  clientIP,
+			Resource: audit.Resource{
+				Type: "auth",
+				ID:   r.URL.Path,
+			},
+			Metadata: map[string]string{
+				"method":    method,
+				"reason":    reason,
+				"client_ip": clientIP,
+			},
+		})
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Skip auth for health checks and metrics.
-		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" || r.URL.Path == "/metrics" {
+		// Skip auth for health checks only. /metrics requires authentication.
+		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
 			next.ServeHTTP(w, r)
 			return
 		}
 
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
+			emitAuthFailure(r, "none", "missing Authorization header")
 			http.Error(w, `{"error":"missing Authorization header"}`, http.StatusUnauthorized)
 			return
 		}
 
 		rawToken := strings.TrimPrefix(authHeader, "Bearer ")
 		if rawToken == authHeader {
+			emitAuthFailure(r, "unknown", "non-Bearer scheme")
 			http.Error(w, `{"error":"Authorization header must use Bearer scheme"}`, http.StatusUnauthorized)
 			return
 		}
@@ -76,6 +110,7 @@ func AuthMiddleware(store *Store, oidcValidator TokenValidator, next http.Handle
 				return
 			}
 			if user == nil {
+				emitAuthFailure(r, "api_key", "invalid API key")
 				http.Error(w, `{"error":"invalid API key"}`, http.StatusUnauthorized)
 				return
 			}
@@ -85,7 +120,8 @@ func AuthMiddleware(store *Store, oidcValidator TokenValidator, next http.Handle
 			authMethod = "oidc"
 			claims, vErr := oidcValidator.ValidateToken(r.Context(), rawToken)
 			if vErr != nil {
-				slog.Warn("OIDC token validation failed", "error", vErr)
+				slog.Warn("OIDC token validation failed", "error", vErr.Error())
+				emitAuthFailure(r, "oidc", "invalid or expired token")
 				http.Error(w, `{"error":"invalid or expired token"}`, http.StatusUnauthorized)
 				return
 			}
@@ -95,6 +131,7 @@ func AuthMiddleware(store *Store, oidcValidator TokenValidator, next http.Handle
 				return
 			}
 			if user == nil {
+				emitAuthFailure(r, "oidc", "no user account for email")
 				http.Error(w, `{"error":"no user account for this email"}`, http.StatusUnauthorized)
 				return
 			}
@@ -102,6 +139,7 @@ func AuthMiddleware(store *Store, oidcValidator TokenValidator, next http.Handle
 		default:
 			// Return a generic message regardless of why the token wasn't recognized
 			// to avoid leaking whether OIDC is configured.
+			emitAuthFailure(r, "unknown", "unrecognized credential format")
 			http.Error(w, `{"error":"invalid credentials"}`, http.StatusUnauthorized)
 			return
 		}

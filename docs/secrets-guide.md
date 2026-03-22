@@ -312,9 +312,46 @@ Cloud backends are tried in the order they are registered. The engine falls thro
 
 ## Key Rotation
 
-If your encryption key is compromised or your security policy requires periodic rotation, use `mantle secrets rotate-key` to re-encrypt all credentials with a new key:
+If your encryption key is compromised or your security policy requires periodic rotation, use `mantle secrets rotate-key` to re-encrypt all credentials with a new key.
 
-**Auto-generate a new key:**
+### How Rotation Works
+
+The `mantle secrets rotate-key` command decrypts every credential in the `credentials` table using the current (old) key, then re-encrypts each one with the new key. The entire operation runs inside a single Postgres transaction -- either all credentials are re-encrypted or none are. If any credential fails to decrypt (e.g., corrupted data), the transaction is rolled back and no changes are written.
+
+### When to Rotate
+
+Rotate your encryption key when:
+
+- **Key compromise** -- the current key has been exposed in logs, version control, or an unauthorized system
+- **Personnel change** -- an employee or contractor with access to the key has left the organization
+- **Policy compliance** -- your security policy requires periodic key rotation (e.g., every 90 days)
+- **Environment migration** -- you are moving from a development key to a production key
+
+### Step-by-Step Procedure
+
+**1. Generate a new 32-byte encryption key:**
+
+```bash
+openssl rand -hex 32
+```
+
+Save the output -- this is your new 64-character hex key.
+
+**2. Run the rotation command:**
+
+You can provide the old key explicitly with `--old-key`, which is useful when the new key is already set in the environment:
+
+```bash
+MANTLE_ENCRYPTION_KEY=<new-key> mantle secrets rotate-key --old-key <old-key>
+```
+
+Or let Mantle use the current `MANTLE_ENCRYPTION_KEY` as the old key and provide the new key with `--new-key`:
+
+```bash
+mantle secrets rotate-key --new-key <new-key>
+```
+
+Or omit `--new-key` entirely to have Mantle auto-generate a new key:
 
 ```bash
 $ mantle secrets rotate-key
@@ -323,18 +360,40 @@ New key: a1b2c3d4e5f6...
 Update MANTLE_ENCRYPTION_KEY to the new key and restart.
 ```
 
-**Provide a specific new key:**
+**3. Update your configuration with the new key:**
+
+Replace `MANTLE_ENCRYPTION_KEY` in your environment, secret store, or `mantle.yaml` with the new key. If running in Kubernetes, update the Helm values or Kubernetes secret:
 
 ```bash
-$ mantle secrets rotate-key --new-key "your-new-64-char-hex-string"
-Re-encrypted 3 credential(s).
-New key: your-new-64-char-hex-string
-Update MANTLE_ENCRYPTION_KEY to the new key and restart.
+kubectl create secret generic mantle-encryption \
+  --from-literal=key=<new-key> \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-After rotating, you must update `MANTLE_ENCRYPTION_KEY` (or `encryption.key` in `mantle.yaml`) to the new key before running any other secrets commands.
+Then restart the Mantle process so it picks up the new key.
 
-The rotation command decrypts all credentials with the current key and re-encrypts them with the new key in a single operation.
+**4. Verify the rotation:**
+
+```bash
+mantle secrets list
+```
+
+This should display all credentials with their names and types. If the key is wrong, the command fails with a decryption error.
+
+### Auto-Generate vs. Explicit Key
+
+| Method | Command | When to Use |
+|---|---|---|
+| Auto-generate | `mantle secrets rotate-key` | Quick rotation; Mantle prints the new key |
+| Explicit new key | `mantle secrets rotate-key --new-key <key>` | You pre-generated the key or it comes from a vault |
+| Explicit old key | `MANTLE_ENCRYPTION_KEY=<new> mantle secrets rotate-key --old-key <old>` | Environment already has the new key set |
+
+### Important Notes
+
+- The rotation is **transactional** -- all credentials are re-encrypted atomically. If the process is interrupted, no partial state is left behind.
+- After rotation, the old key is no longer valid. Any Mantle instance still configured with the old key will fail to decrypt credentials.
+- Rotation does not affect credentials stored in cloud secret backends (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault). Only Postgres-stored credentials are re-encrypted.
+- There is no downtime required. Run the rotation, update the key in your configuration, and restart the server.
 
 ## Security Model
 

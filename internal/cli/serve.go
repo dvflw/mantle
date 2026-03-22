@@ -48,20 +48,22 @@ func newServeCommand() *cobra.Command {
 			}
 
 			// Configure AWS defaults for AI (Bedrock) and S3 connectors.
-			if cfg.AWS.Region != "" {
-				if aiConn, err := eng.Registry.Get("ai/completion"); err == nil {
-					if ai, ok := aiConn.(*connector.AIConnector); ok {
+			if aiConn, err := eng.Registry.Get("ai/completion"); err == nil {
+				if ai, ok := aiConn.(*connector.AIConnector); ok {
+					if cfg.AWS.Region != "" {
 						ai.DefaultRegion = cfg.AWS.Region
 						ai.AWSConfigFunc = connector.NewAWSConfig
 					}
+					ai.AllowedBaseURLs = cfg.Engine.AllowedBaseURLs
 				}
 			}
 
 			// Wire up Postgres-backed audit emitter with auth context enrichment.
-			eng.Auditor = &audit.PostgresEmitter{
+			auditor := &audit.PostgresEmitter{
 				DB:                  database,
 				AuthMethodExtractor: auth.AuthMethodFromContext,
 			}
+			eng.Auditor = auditor
 
 			// Wire up credential resolver if encryption key is configured.
 			if cfg.Encryption.Key != "" {
@@ -75,6 +77,9 @@ func newServeCommand() *cobra.Command {
 			}
 
 			srv := server.New(database, eng, cfg.API.Address)
+			srv.Auditor = auditor
+			srv.TLSCertFile = cfg.API.TLS.CertFile
+			srv.TLSKeyFile = cfg.API.TLS.KeyFile
 			srv.AuthStore = &auth.Store{DB: database}
 
 			// Wire up OIDC validator if configured.

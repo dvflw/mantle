@@ -193,7 +193,9 @@ func (s *Store) LookupAPIKey(ctx context.Context, rawKey string) (*User, error) 
 	err := s.DB.QueryRowContext(ctx,
 		`SELECT u.id, u.email, u.name, u.team_id, u.role, u.created_at, u.updated_at
 		 FROM api_keys k JOIN users u ON k.user_id = u.id
-		 WHERE k.key_hash = $1`, hash,
+		 WHERE k.key_hash = $1
+		   AND k.revoked_at IS NULL
+		   AND (k.expires_at IS NULL OR k.expires_at > NOW())`, hash,
 	).Scan(&u.ID, &u.Email, &u.Name, &u.TeamID, &u.Role, &u.CreatedAt, &u.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -208,4 +210,40 @@ func (s *Store) LookupAPIKey(ctx context.Context, rawKey string) (*User, error) 
 	}
 
 	return &u, nil
+}
+
+// RevokeAPIKey marks an API key as revoked by its prefix.
+func (s *Store) RevokeAPIKey(ctx context.Context, keyPrefix string) error {
+	result, err := s.DB.ExecContext(ctx,
+		`UPDATE api_keys SET revoked_at = NOW() WHERE key_prefix = $1 AND revoked_at IS NULL`,
+		keyPrefix)
+	if err != nil {
+		return fmt.Errorf("revoking API key: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("API key with prefix %q not found or already revoked", keyPrefix)
+	}
+	return nil
+}
+
+// ListAPIKeys returns all API keys for a given user.
+func (s *Store) ListAPIKeys(ctx context.Context, userID string) ([]APIKey, error) {
+	rows, err := s.DB.QueryContext(ctx,
+		`SELECT id, name, key_prefix, last_used_at, expires_at, revoked_at, created_at
+		 FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("listing API keys: %w", err)
+	}
+	defer rows.Close()
+
+	var keys []APIKey
+	for rows.Next() {
+		var k APIKey
+		if err := rows.Scan(&k.ID, &k.Name, &k.KeyPrefix, &k.LastUsedAt, &k.ExpiresAt, &k.RevokedAt, &k.CreatedAt); err != nil {
+			return nil, err
+		}
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
 }

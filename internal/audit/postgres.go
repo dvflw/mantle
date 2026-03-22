@@ -56,11 +56,16 @@ func (p *PostgresEmitter) Emit(ctx context.Context, event Event) error {
 		ts = time.Now()
 	}
 
+	var teamID any
+	if event.TeamID != "" {
+		teamID = event.TeamID
+	}
+
 	_, err = p.DB.ExecContext(ctx,
-		`INSERT INTO audit_events (timestamp, actor, action, resource_type, resource_id, before_state, after_state, metadata)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		`INSERT INTO audit_events (timestamp, actor, action, resource_type, resource_id, before_state, after_state, metadata, team_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		ts, event.Actor, string(event.Action), event.Resource.Type, event.Resource.ID,
-		nullableBytes(beforeJSON), nullableBytes(afterJSON), nullableBytes(metadataJSON),
+		nullableBytes(beforeJSON), nullableBytes(afterJSON), nullableBytes(metadataJSON), teamID,
 	)
 	if err != nil {
 		return fmt.Errorf("inserting audit event: %w", err)
@@ -76,6 +81,7 @@ type QueryParams struct {
 	ResourceID   string
 	Since        time.Time
 	Limit        int
+	TeamID       string
 }
 
 // QueryRow represents a single audit event row returned from a query.
@@ -118,6 +124,11 @@ func Query(ctx context.Context, db *sql.DB, params QueryParams) ([]QueryRow, err
 	if !params.Since.IsZero() {
 		query += fmt.Sprintf(" AND timestamp >= $%d", argIdx)
 		args = append(args, params.Since)
+		argIdx++
+	}
+	if params.TeamID != "" {
+		query += fmt.Sprintf(" AND team_id = $%d", argIdx)
+		args = append(args, params.TeamID)
 		argIdx++
 	}
 

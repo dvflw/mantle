@@ -20,9 +20,17 @@ type Config struct {
 	Encryption EncryptionConfig `mapstructure:"encryption"`
 	Engine     EngineConfig     `mapstructure:"engine"`
 	Auth       AuthConfig       `mapstructure:"auth"`
+	Retention  RetentionConfig  `mapstructure:"retention"`
 	AWS        AWSConfig        `mapstructure:"aws"`
 	GCP        GCPConfig        `mapstructure:"gcp"`
 	Azure      AzureConfig      `mapstructure:"azure"`
+}
+
+// RetentionConfig holds data retention settings.
+// A value of 0 means no cleanup (disabled — user must opt-in).
+type RetentionConfig struct {
+	ExecutionDays int `mapstructure:"execution_days"`
+	AuditDays     int `mapstructure:"audit_days"`
 }
 
 // AWSConfig holds AWS provider settings.
@@ -67,9 +75,16 @@ type DatabaseConfig struct {
 	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
 }
 
+// TLSConfig holds TLS certificate settings.
+type TLSConfig struct {
+	CertFile string `mapstructure:"cert_file"`
+	KeyFile  string `mapstructure:"key_file"`
+}
+
 // APIConfig holds API server settings.
 type APIConfig struct {
-	Address string `mapstructure:"address"`
+	Address string    `mapstructure:"address"`
+	TLS     TLSConfig `mapstructure:"tls"`
 }
 
 // LogConfig holds logging settings.
@@ -90,6 +105,7 @@ type EngineConfig struct {
 	StepOutputMaxBytes          int           `mapstructure:"step_output_max_bytes"`
 	DefaultMaxToolRounds        int           `mapstructure:"default_max_tool_rounds"`
 	DefaultMaxToolCallsPerRound int           `mapstructure:"default_max_tool_calls_per_round"`
+	AllowedBaseURLs             []string      `mapstructure:"allowed_base_urls"`
 }
 
 type contextKey struct{}
@@ -168,10 +184,18 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	_ = v.BindEnv("auth.oidc.audience", "MANTLE_AUTH_OIDC_AUDIENCE")
 	_ = v.BindEnv("auth.oidc.allowed_domains", "MANTLE_AUTH_OIDC_ALLOWED_DOMAINS")
 
+	// TLS env var bindings
+	_ = v.BindEnv("api.tls.cert_file", "MANTLE_API_TLS_CERT_FILE")
+	_ = v.BindEnv("api.tls.key_file", "MANTLE_API_TLS_KEY_FILE")
+
 	// Cloud provider env var bindings
 	_ = v.BindEnv("aws.region", "MANTLE_AWS_REGION")
 	_ = v.BindEnv("gcp.region", "MANTLE_GCP_REGION")
 	_ = v.BindEnv("azure.region", "MANTLE_AZURE_REGION")
+
+	// Retention env var bindings
+	_ = v.BindEnv("retention.execution_days", "MANTLE_RETENTION_EXECUTION_DAYS")
+	_ = v.BindEnv("retention.audit_days", "MANTLE_RETENTION_AUDIT_DAYS")
 
 	// Engine env var bindings
 	_ = v.BindEnv("engine.node_id", "MANTLE_ENGINE_NODE_ID")
@@ -185,6 +209,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	_ = v.BindEnv("engine.step_output_max_bytes", "MANTLE_ENGINE_STEP_OUTPUT_MAX_BYTES")
 	_ = v.BindEnv("engine.default_max_tool_rounds", "MANTLE_ENGINE_DEFAULT_MAX_TOOL_ROUNDS")
 	_ = v.BindEnv("engine.default_max_tool_calls_per_round", "MANTLE_ENGINE_DEFAULT_MAX_TOOL_CALLS_PER_ROUND")
+	_ = v.BindEnv("engine.allowed_base_urls", "MANTLE_ENGINE_ALLOWED_BASE_URLS")
 
 	// CLI flag binding
 	if f := cmd.Flags().Lookup("database-url"); f != nil {

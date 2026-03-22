@@ -16,6 +16,7 @@ type Trigger struct {
 	Type     string `yaml:"type"`     // "cron" or "webhook"
 	Schedule string `yaml:"schedule"` // cron expression (for type: cron)
 	Path     string `yaml:"path"`     // webhook path (for type: webhook)
+	Secret   string `yaml:"secret"`   // HMAC secret for webhook signature verification
 }
 
 // Input defines a workflow input parameter.

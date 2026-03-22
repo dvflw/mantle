@@ -72,6 +72,43 @@ Integration tests use [testcontainers](https://testcontainers.com/) and require 
 - Connector tests should use mock HTTP servers
 - Aim for test coverage on all non-trivial logic
 
+## Change Management
+
+All changes to Mantle follow a controlled process from development through production deployment.
+
+### CI Pipeline
+
+Every pull request runs the full CI suite before it can be merged:
+
+- `go test ./...` -- unit and integration tests
+- `go vet ./...` -- static analysis
+- `golangci-lint run` -- linter checks
+- `govulncheck ./...` -- known vulnerability scanning
+- `gosec ./...` -- security-focused static analysis
+
+PRs with failing checks are not merged.
+
+### Production Deployment
+
+Mantle is deployed to production via Helm:
+
+```bash
+helm upgrade mantle charts/mantle --set image.tag=<version>
+```
+
+The Helm chart includes a pre-upgrade hook that runs database migrations before the new binary starts serving traffic.
+
+### Rollback
+
+If a release introduces a problem, roll back with Helm and verify migration state:
+
+```bash
+helm rollback mantle <revision>
+mantle migrate status
+```
+
+Migrations are forward-only. Rolling back the binary is safe as long as the database schema remains compatible with the older version. Check `mantle migrate status` to confirm.
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the project's [Business Source License 1.1](LICENSE).

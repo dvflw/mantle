@@ -1,6 +1,9 @@
 package server
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -52,6 +55,15 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"reading body"}`, http.StatusBadRequest)
 		return
 	}
+
+	// Verify HMAC signature if the trigger has a secret configured.
+	if trigger.Secret != "" {
+		if !verifyWebhookSignature(body, trigger.Secret, r.Header) {
+			writeJSONError(w, "invalid or missing webhook signature", http.StatusForbidden)
+			return
+		}
+	}
+
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &payload); err != nil {
 			// Not JSON — treat as string.
@@ -87,6 +99,38 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 	fmt.Fprintf(w, `{"execution_id":"%s","workflow":"%s","version":%d}`,
 		execID, trigger.WorkflowName, trigger.WorkflowVersion)
+}
+
+// verifyWebhookSignature checks the HMAC-SHA256 signature of the request body.
+// It looks for the signature in the X-Hub-Signature-256 header (GitHub format: "sha256=<hex>")
+// or the X-Signature-256 header as an alternative. Returns false if no signature
+// header is present or the signature does not match.
+func verifyWebhookSignature(body []byte, secret string, headers http.Header) bool {
+	// Try X-Hub-Signature-256 first (GitHub convention), then X-Signature-256.
+	sigHeader := headers.Get("X-Hub-Signature-256")
+	if sigHeader == "" {
+		sigHeader = headers.Get("X-Signature-256")
+	}
+	if sigHeader == "" {
+		return false
+	}
+
+	// Expect format "sha256=<hex>".
+	if !strings.HasPrefix(sigHeader, "sha256=") {
+		return false
+	}
+	sigHex := sigHeader[len("sha256="):]
+
+	sig, err := hex.DecodeString(sigHex)
+	if err != nil {
+		return false
+	}
+
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(body)
+	expected := mac.Sum(nil)
+
+	return hmac.Equal(sig, expected)
 }
 
 func headerMap(h http.Header) map[string]any {

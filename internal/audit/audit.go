@@ -16,6 +16,19 @@ const (
 	ActionStepFailed         Action = "step.failed"
 	ActionStepSkipped        Action = "step.skipped"
 	ActionExecutionCancelled Action = "execution.cancelled"
+
+	// Admin operations.
+	ActionUserCreated       Action = "user.created"
+	ActionUserDeleted       Action = "user.deleted"
+	ActionUserRoleChanged   Action = "user.role_changed"
+	ActionTeamCreated       Action = "team.created"
+	ActionTeamDeleted       Action = "team.deleted"
+	ActionAPIKeyCreated     Action = "apikey.created"
+	ActionAPIKeyRevoked     Action = "apikey.revoked"
+	ActionCredentialCreated Action = "credential.created"
+	ActionCredentialDeleted Action = "credential.deleted"
+	ActionCredentialRotated Action = "credential.rotated"
+	ActionAuthFailed        Action = "auth.failed"
 )
 
 // Resource identifies the target of an audit event.
@@ -34,6 +47,7 @@ type Event struct {
 	Before    any               // optional: state before the change
 	After     any               // optional: state after the change
 	Metadata  map[string]string // optional: additional context
+	TeamID    string            // optional: team scope for multi-tenant audit queries
 }
 
 // Emitter is the interface for emitting audit events. Implementations may

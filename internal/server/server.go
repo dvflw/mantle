@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dvflw/mantle/internal/api/health"
+	"github.com/dvflw/mantle/internal/audit"
 	"github.com/dvflw/mantle/internal/auth"
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/engine"
@@ -24,7 +25,10 @@ type Server struct {
 	Engine        *engine.Engine
 	AuthStore     *auth.Store
 	OIDCValidator *auth.OIDCValidator
+	Auditor       audit.Emitter
 	Address       string
+	TLSCertFile   string
+	TLSKeyFile    string
 	Logger        *slog.Logger
 
 	httpServer *http.Server
@@ -134,6 +138,30 @@ func (s *Server) Start(ctx context.Context) error {
 			&reaperLivenessChecker{r: s.reaper, threshold: reaperThreshold},
 		)
 
+		// Start retention cleanup if configured.
+		if cfg.Retention.ExecutionDays > 0 || cfg.Retention.AuditDays > 0 {
+			go func() {
+				ticker := time.NewTicker(24 * time.Hour)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+						if _, err := engine.CleanupExecutions(ctx, s.DB, cfg.Retention.ExecutionDays); err != nil {
+							s.Logger.Error("retention cleanup failed", "error", err)
+						}
+						if _, err := engine.CleanupAuditEvents(ctx, s.DB, cfg.Retention.AuditDays); err != nil {
+							s.Logger.Error("audit retention cleanup failed", "error", err)
+						}
+					}
+				}
+			}()
+			s.Logger.Info("retention cleanup scheduled",
+				"execution_days", cfg.Retention.ExecutionDays,
+				"audit_days", cfg.Retention.AuditDays)
+		}
+
 		// Periodically update queue depth metric.
 		go s.pollQueueDepth(ctx, cfg.Engine.ReaperInterval)
 	}
@@ -145,8 +173,16 @@ func (s *Server) Start(ctx context.Context) error {
 	// Wrap with auth middleware if AuthStore is configured.
 	var handler http.Handler = mux
 	if s.AuthStore != nil {
-		handler = auth.AuthMiddleware(s.AuthStore, s.OIDCValidator, mux)
+		if s.Auditor != nil {
+			handler = auth.AuthMiddleware(s.AuthStore, s.OIDCValidator, mux, s.Auditor)
+		} else {
+			handler = auth.AuthMiddleware(s.AuthStore, s.OIDCValidator, mux)
+		}
 	}
+
+	// Apply rate limiting (after auth so rate limit keys can use API key prefix).
+	rl := NewRateLimiter(100, 200)
+	handler = rl.Middleware(handler)
 
 	s.httpServer = &http.Server{
 		Addr:              s.Address,
@@ -166,9 +202,17 @@ func (s *Server) Start(ctx context.Context) error {
 	// Start HTTP server.
 	errCh := make(chan error, 1)
 	go func() {
-		s.Logger.Info("server listening", "address", s.Address)
-		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errCh <- err
+		if s.TLSCertFile != "" && s.TLSKeyFile != "" {
+			s.Logger.Info("server listening with TLS", "address", s.Address)
+			if err := s.httpServer.ListenAndServeTLS(s.TLSCertFile, s.TLSKeyFile); err != nil && err != http.ErrServerClosed {
+				errCh <- err
+			}
+		} else {
+			slog.Warn("API server running without TLS — use a reverse proxy for production or configure tls.cert_file and tls.key_file")
+			s.Logger.Info("server listening", "address", s.Address)
+			if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				errCh <- err
+			}
 		}
 	}()
 
@@ -261,6 +305,8 @@ func (s *Server) waitForExecutions(ctx context.Context) {
 
 // handleRun triggers a workflow execution via the API.
 func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB limit
+
 	workflowName := r.PathValue("workflow")
 	if workflowName == "" {
 		http.Error(w, `{"error":"workflow name required"}`, http.StatusBadRequest)
