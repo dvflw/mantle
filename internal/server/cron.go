@@ -58,6 +58,19 @@ func (c *CronScheduler) run(ctx context.Context) {
 }
 
 func (c *CronScheduler) tick(ctx context.Context) {
+	// Acquire a Postgres advisory lock (non-blocking) so that only one replica
+	// fires cron triggers when replicaCount > 1. Lock ID 42 is arbitrary but
+	// must be consistent across all replicas.
+	var acquired bool
+	if err := c.server.DB.QueryRowContext(ctx, "SELECT pg_try_advisory_lock(42)").Scan(&acquired); err != nil {
+		c.server.Logger.Error("cron: advisory lock query failed", "error", err)
+		return
+	}
+	if !acquired {
+		return // Another replica holds the lock; skip this cycle.
+	}
+	defer c.server.DB.ExecContext(ctx, "SELECT pg_advisory_unlock(42)")
+
 	triggers, err := ListCronTriggers(ctx, c.server.DB)
 	if err != nil {
 		c.server.Logger.Error("cron: listing triggers", "error", err)
