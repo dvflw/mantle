@@ -16,6 +16,7 @@ type TriggerRecord struct {
 	Type            string
 	Schedule        string
 	Path            string
+	Secret          string
 	Enabled         bool
 	TeamID          string
 }
@@ -41,9 +42,9 @@ func SyncTriggers(ctx context.Context, db *sql.DB, workflowName string, version 
 	// Insert new triggers.
 	for _, t := range triggers {
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO workflow_triggers (workflow_name, workflow_version, type, schedule, path, team_id)
-			 VALUES ($1, $2, $3, $4, $5, $6)`,
-			workflowName, version, t.Type, t.Schedule, t.Path, teamID)
+			`INSERT INTO workflow_triggers (workflow_name, workflow_version, type, schedule, path, secret, team_id)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			workflowName, version, t.Type, t.Schedule, t.Path, t.Secret, teamID)
 		if err != nil {
 			return fmt.Errorf("inserting trigger: %w", err)
 		}
@@ -57,6 +58,7 @@ type TriggerInput struct {
 	Type     string
 	Schedule string
 	Path     string
+	Secret   string
 }
 
 // ListCronTriggers returns all enabled cron triggers, including team_id for proper scoping.
@@ -76,9 +78,9 @@ func LookupWebhookTrigger(ctx context.Context, db *sql.DB, path string) (*Trigge
 	teamID := auth.TeamIDFromContext(ctx)
 	var t TriggerRecord
 	err := db.QueryRowContext(ctx,
-		`SELECT id, workflow_name, workflow_version, type, COALESCE(schedule, ''), COALESCE(path, ''), enabled
+		`SELECT id, workflow_name, workflow_version, type, COALESCE(schedule, ''), COALESCE(path, ''), COALESCE(secret, ''), enabled
 		 FROM workflow_triggers WHERE type = 'webhook' AND path = $1 AND enabled = true AND team_id = $2`, path, teamID,
-	).Scan(&t.ID, &t.WorkflowName, &t.WorkflowVersion, &t.Type, &t.Schedule, &t.Path, &t.Enabled)
+	).Scan(&t.ID, &t.WorkflowName, &t.WorkflowVersion, &t.Type, &t.Schedule, &t.Path, &t.Secret, &t.Enabled)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
