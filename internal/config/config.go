@@ -20,9 +20,17 @@ type Config struct {
 	Encryption EncryptionConfig `mapstructure:"encryption"`
 	Engine     EngineConfig     `mapstructure:"engine"`
 	Auth       AuthConfig       `mapstructure:"auth"`
+	Retention  RetentionConfig  `mapstructure:"retention"`
 	AWS        AWSConfig        `mapstructure:"aws"`
 	GCP        GCPConfig        `mapstructure:"gcp"`
 	Azure      AzureConfig      `mapstructure:"azure"`
+}
+
+// RetentionConfig holds data retention settings.
+// A value of 0 means no cleanup (disabled — user must opt-in).
+type RetentionConfig struct {
+	ExecutionDays int `mapstructure:"execution_days"`
+	AuditDays     int `mapstructure:"audit_days"`
 }
 
 // AWSConfig holds AWS provider settings.
@@ -184,6 +192,10 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	_ = v.BindEnv("aws.region", "MANTLE_AWS_REGION")
 	_ = v.BindEnv("gcp.region", "MANTLE_GCP_REGION")
 	_ = v.BindEnv("azure.region", "MANTLE_AZURE_REGION")
+
+	// Retention env var bindings
+	_ = v.BindEnv("retention.execution_days", "MANTLE_RETENTION_EXECUTION_DAYS")
+	_ = v.BindEnv("retention.audit_days", "MANTLE_RETENTION_AUDIT_DAYS")
 
 	// Engine env var bindings
 	_ = v.BindEnv("engine.node_id", "MANTLE_ENGINE_NODE_ID")

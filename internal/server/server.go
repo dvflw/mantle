@@ -138,6 +138,30 @@ func (s *Server) Start(ctx context.Context) error {
 			&reaperLivenessChecker{r: s.reaper, threshold: reaperThreshold},
 		)
 
+		// Start retention cleanup if configured.
+		if cfg.Retention.ExecutionDays > 0 || cfg.Retention.AuditDays > 0 {
+			go func() {
+				ticker := time.NewTicker(24 * time.Hour)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+						if _, err := engine.CleanupExecutions(ctx, s.DB, cfg.Retention.ExecutionDays); err != nil {
+							s.Logger.Error("retention cleanup failed", "error", err)
+						}
+						if _, err := engine.CleanupAuditEvents(ctx, s.DB, cfg.Retention.AuditDays); err != nil {
+							s.Logger.Error("audit retention cleanup failed", "error", err)
+						}
+					}
+				}
+			}()
+			s.Logger.Info("retention cleanup scheduled",
+				"execution_days", cfg.Retention.ExecutionDays,
+				"audit_days", cfg.Retention.AuditDays)
+		}
+
 		// Periodically update queue depth metric.
 		go s.pollQueueDepth(ctx, cfg.Engine.ReaperInterval)
 	}
