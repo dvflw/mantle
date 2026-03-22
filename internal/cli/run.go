@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/dvflw/mantle/internal/config"
@@ -104,5 +105,8 @@ func orderedSteps(result *engine.ExecutionResult) []stepSummary {
 	for name, sr := range result.Steps {
 		steps = append(steps, stepSummary{name: name, status: sr.Status})
 	}
+	sort.Slice(steps, func(i, j int) bool {
+		return steps[i].name < steps[j].name
+	})
 	return steps
 }

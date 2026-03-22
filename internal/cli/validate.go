@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/dvflw/mantle/internal/workflow"
@@ -24,7 +23,7 @@ func newValidateCommand() *cobra.Command {
 			result, err := workflow.Parse(filename)
 			if err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "%s: %v\n", filepath.Base(filename), err)
-				os.Exit(1)
+				return fmt.Errorf("validation failed")
 			}
 
 			errs := workflow.Validate(result)
@@ -38,7 +37,7 @@ func newValidateCommand() *cobra.Command {
 							filepath.Base(filename), e.Message, e.Field)
 					}
 				}
-				os.Exit(1)
+				return fmt.Errorf("validation failed")
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "%s: valid\n", filepath.Base(filename))

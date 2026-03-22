@@ -41,7 +41,7 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if trigger == nil {
-		http.Error(w, fmt.Sprintf(`{"error":"no webhook registered for path %q"}`, path), http.StatusNotFound)
+		writeJSONError(w, "no webhook registered for path", http.StatusNotFound)
 		return
 	}
 
@@ -79,7 +79,7 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.server.Logger.Error("webhook: execution failed",
 			"workflow", trigger.WorkflowName,
 			"error", err)
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
+		writeJSONError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 

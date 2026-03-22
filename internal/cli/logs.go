@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dvflw/mantle/internal/auth"
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
 	"github.com/spf13/cobra"
@@ -54,9 +55,10 @@ func showExecutionDetail(cmd *cobra.Command, execID string) error {
 	var version int
 	var status string
 	var startedAt, completedAt *time.Time
+	teamID := auth.TeamIDFromContext(cmd.Context())
 	err = database.QueryRowContext(cmd.Context(),
 		`SELECT workflow_name, workflow_version, status, started_at, completed_at
-		 FROM workflow_executions WHERE id = $1`, execID,
+		 FROM workflow_executions WHERE id = $1 AND team_id = $2`, execID, teamID,
 	).Scan(&workflowName, &version, &status, &startedAt, &completedAt)
 	if err != nil {
 		return fmt.Errorf("execution %q not found", execID)
