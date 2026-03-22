@@ -408,6 +408,101 @@ curl -X POST http://localhost:8080/api/v1/run/api-health-check
 curl -X POST http://localhost:8080/hooks/api-health-check
 ```
 
+## Backup and Disaster Recovery
+
+Postgres is Mantle's single point of state. All workflow definitions, execution history, step checkpoints, encrypted credentials, and audit events live in the database. Recovery from any failure depends on having a good database backup and access to your encryption key.
+
+### What to Back Up
+
+| Asset | Location | Notes |
+|---|---|---|
+| Postgres database | Your database host | Contains all Mantle state: definitions, executions, credentials, audit events |
+| Encryption key | `MANTLE_ENCRYPTION_KEY` env var or `mantle.yaml` | Required to decrypt credentials; store separately from database backups |
+| `mantle.yaml` | Configuration file on disk | Can be reconstructed, but easier to back up |
+| Workflow YAML files | Version control (Git) | Authoritative source; can be re-applied with `mantle apply` |
+
+**Critical:** Store the encryption key separately from database backups. If an attacker obtains both the database dump and the encryption key, they can decrypt all stored credentials.
+
+### Recommended Backup Approach
+
+**Managed Postgres (RDS, Cloud SQL, Azure Database):**
+
+- Enable automated daily snapshots with your cloud provider
+- Enable WAL archiving (point-in-time recovery) for near-zero RPO
+- Retain snapshots according to your compliance requirements
+
+**Self-hosted Postgres:**
+
+- Schedule `pg_dump` on a cron job (e.g., daily or hourly depending on RPO requirements):
+
+```bash
+pg_dump -Fc -h localhost -U mantle mantle > /backups/mantle-$(date +%Y%m%d-%H%M%S).dump
+```
+
+- Configure WAL archiving for continuous point-in-time recovery
+- Ship backups to off-site storage (S3, GCS, or another region)
+
+### Recovery Procedure
+
+1. **Restore Postgres from backup.** Use your cloud provider's restore flow or `pg_restore`:
+
+```bash
+pg_restore -h localhost -U mantle -d mantle /backups/mantle-20260322-120000.dump
+```
+
+2. **Verify migration state.** Run `mantle init` to confirm all migrations are applied. If the backup is from an older version of Mantle, this applies any missing migrations:
+
+```bash
+mantle init
+```
+
+3. **Verify credentials.** Confirm the encryption key matches the one used when the backup was taken:
+
+```bash
+mantle secrets list
+```
+
+If this fails with a decryption error, the encryption key does not match the backup.
+
+4. **Resume the server:**
+
+```bash
+mantle serve
+```
+
+5. **Re-apply workflow YAML files if needed.** Workflow definitions are stored in Postgres, so a database restore brings them back. However, if you need to apply changes that were made after the backup was taken, re-apply from version control:
+
+```bash
+mantle apply workflows/*.yaml
+```
+
+### RPO and RTO Guidance
+
+| Backup Strategy | Recovery Point Objective (RPO) | Recovery Time Objective (RTO) |
+|---|---|---|
+| Daily `pg_dump` | Up to 24 hours of data loss | Minutes (restore + restart) |
+| Hourly `pg_dump` | Up to 1 hour of data loss | Minutes |
+| WAL archiving (PITR) | Near-zero (seconds of data loss) | Minutes to restore to a point in time |
+| Managed snapshots + WAL | Near-zero | Depends on cloud provider restore time |
+
+For production deployments, WAL archiving combined with periodic base backups gives the best balance of RPO and operational simplicity.
+
+## Change Management
+
+All changes to Mantle's codebase and deployment follow a controlled process.
+
+1. **Pull request review.** All changes go through PR review on GitHub. At least one approval is required before merging to `main`.
+2. **CI must pass.** Every PR runs the full CI pipeline: `go test`, `go vet`, `golangci-lint`, `govulncheck`, and `gosec`. PRs with failing checks are not merged.
+3. **Production deployments.** Deploy via Helm with migration hooks. The Helm chart runs `mantle init` as a pre-install/pre-upgrade hook to apply database migrations before the new binary starts serving traffic.
+4. **Rollback.** If a deployment introduces a problem, roll back with `helm rollback` and verify the migration state:
+
+```bash
+helm rollback mantle <revision>
+mantle migrate status
+```
+
+Mantle migrations are forward-only by design. Rolling back the binary to an older version is safe as long as the database schema is compatible. Check `mantle migrate status` to confirm.
+
 ## Further Reading
 
 - [Workflow Reference](workflow-reference.md#triggers) -- trigger YAML syntax
@@ -416,3 +511,4 @@ curl -X POST http://localhost:8080/hooks/api-health-check
 - [Configuration](configuration.md) -- all configuration options
 - [Concepts](concepts.md#triggers-and-server-mode) -- architectural overview of triggers
 - [Observability Guide](observability-guide.md) -- Prometheus metrics, audit trail, and structured logging
+- [Secrets Guide](secrets-guide.md#key-rotation) -- encryption key rotation procedure

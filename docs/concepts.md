@@ -484,6 +484,54 @@ mantle apply workflow.yaml    # Deregisters all triggers
 
 Many workflows benefit from both: a cron trigger for periodic runs and a webhook trigger for on-demand execution by external systems.
 
+## Data Residency
+
+Mantle is a self-hosted platform. You control where your data lives by choosing where to deploy Postgres and the Mantle binary.
+
+### Where Data Resides
+
+All workflow data -- inputs, outputs, step checkpoints, encrypted credentials, and audit events -- is stored in the Postgres database. There is no external data store, no telemetry sent to Anthropic or any third party, and no cloud dependency unless you configure one (e.g., cloud secret backends).
+
+Data residency is determined entirely by where you host Postgres. Deploy Postgres in the EU, and all Mantle data resides in the EU.
+
+### BYOK and Credential Storage
+
+Mantle's Bring Your Own Key (BYOK) model means your API keys and credentials are stored in YOUR database, encrypted with YOUR encryption key. They are not sent to a third-party service for storage or management. This is a fundamental difference from SaaS platforms that hold your credentials on their infrastructure.
+
+### AI Connector and Cross-Border Data Flow
+
+While Mantle itself keeps all data in your Postgres instance, the AI connector sends prompts and receives responses from external LLM provider APIs. These API calls cross network boundaries and may cross geographic borders:
+
+| Provider | Default Endpoint | Data Location |
+|---|---|---|
+| OpenAI | `https://api.openai.com/v1` | US-based (unless using Azure OpenAI regional endpoints) |
+| Azure OpenAI | Configured via `base_url` | Region-specific, controlled by your Azure deployment |
+| AWS Bedrock | Configured via `region` param or `aws.region` config | Region-specific (e.g., `eu-west-1`, `us-east-1`) |
+| Self-hosted (Ollama, vLLM) | Configured via `base_url` | Wherever you host it |
+
+### Restricting AI Endpoints
+
+Use `engine.allowed_base_urls` in your configuration to restrict which AI API endpoints can be called. This prevents workflow authors from accidentally or intentionally sending data to unapproved regions or providers:
+
+```yaml
+# mantle.yaml
+engine:
+  allowed_base_urls:
+    - "https://bedrock-runtime.eu-west-1.amazonaws.com"
+    - "https://my-internal-llm.corp.example.com"
+```
+
+Any `ai/completion` step that specifies a `base_url` not on this list is rejected at validation time.
+
+### EU Compliance Example
+
+To keep all data within the EU:
+
+1. **Deploy Postgres in an EU region** (e.g., AWS `eu-west-1`, GCP `europe-west1`, or an EU-based self-hosted server)
+2. **Use EU-region AI endpoints** -- AWS Bedrock in `eu-west-1`, Azure OpenAI in `westeurope`, or a self-hosted model in your EU infrastructure
+3. **Restrict endpoints** with `engine.allowed_base_urls` to prevent calls to US-based APIs
+4. **Deploy the Mantle binary in the same EU region** to avoid cross-border traffic between the application and the database
+
 ## Architecture Summary
 
 Mantle is a single Go binary that connects to a Postgres database. Cloud secret stores are optional; plugins run as subprocesses.
