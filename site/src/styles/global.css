@@ -140,6 +140,11 @@ body {
 
 /* ── Prose styles for docs ─────────────────────────────────────────── */
 
+/* Offset scroll targets so headings don't hide behind the sticky nav */
+.prose :is(h1, h2, h3, h4)[id] {
+  scroll-margin-top: 5rem;
+}
+
 .prose {
   line-height: 1.75;
   color: var(--color-on-surface-variant);

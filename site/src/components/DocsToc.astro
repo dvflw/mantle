@@ -42,27 +42,45 @@ const tocHeadings = headings.filter((h) => h.depth === 2 || h.depth === 3);
 )}
 
 <script>
-  // Highlight the current TOC entry based on scroll position
+  // Highlight the TOC entry for the heading closest above the scroll offset
   const tocLinks = document.querySelectorAll('[data-toc-link]');
   if (tocLinks.length > 0) {
-    const headingEls = Array.from(tocLinks).map((link) => {
-      const slug = link.getAttribute('data-toc-link');
-      return slug ? document.getElementById(slug) : null;
-    }).filter(Boolean) as HTMLElement[];
+    const NAV_HEIGHT = 80; // 5rem scroll-margin-top
+    let ticking = false;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            tocLinks.forEach((link) => link.classList.remove('!text-primary', 'font-medium'));
-            const activeLink = document.querySelector(`[data-toc-link="${entry.target.id}"]`);
-            activeLink?.classList.add('!text-primary', 'font-medium');
-          }
+    function updateActiveToc() {
+      // Find the last heading that has scrolled past the nav offset
+      let activeSlug: string | null = null;
+
+      for (const link of tocLinks) {
+        const slug = link.getAttribute('data-toc-link');
+        if (!slug) continue;
+        const el = document.getElementById(slug);
+        if (!el) continue;
+        const top = el.getBoundingClientRect().top;
+        if (top <= NAV_HEIGHT + 4) {
+          activeSlug = slug;
         }
-      },
-      { rootMargin: '-80px 0px -60% 0px', threshold: 0 }
-    );
+      }
 
-    headingEls.forEach((el) => observer.observe(el));
+      tocLinks.forEach((link) => {
+        const isActive = link.getAttribute('data-toc-link') === activeSlug;
+        link.classList.toggle('!text-primary', isActive);
+        link.classList.toggle('font-medium', isActive);
+      });
+    }
+
+    window.addEventListener('scroll', () => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          updateActiveToc();
+          ticking = false;
+        });
+        ticking = true;
+      }
+    }, { passive: true });
+
+    // Run once on load
+    updateActiveToc();
   }
 </script>
