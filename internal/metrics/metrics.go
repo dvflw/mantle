@@ -7,6 +7,39 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+// HTTP request metrics.
+var (
+	HTTPRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "mantle_http_request_duration_seconds",
+		Help:    "HTTP request duration in seconds",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"method", "path", "status"})
+
+	HTTPRequestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_http_requests_total",
+		Help: "Total HTTP requests",
+	}, []string{"method", "path", "status"})
+)
+
+// Execution lifecycle metrics.
+var (
+	ExecutionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_executions_total",
+		Help: "Total workflow executions by status",
+	}, []string{"workflow", "status"})
+
+	ExecutionDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "mantle_execution_duration_seconds",
+		Help:    "Workflow execution duration in seconds",
+		Buckets: []float64{0.1, 0.5, 1, 5, 10, 30, 60, 120, 300},
+	}, []string{"workflow"})
+
+	StepsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_steps_total",
+		Help: "Total step executions by status",
+	}, []string{"workflow", "step", "status"})
+)
+
 // Queue and distribution metrics.
 var (
 	QueueDepth = promauto.NewGauge(prometheus.GaugeOpts{
@@ -30,6 +63,27 @@ var (
 		Name: "mantle_reaper_reclaimed_total",
 		Help: "Total number of steps reclaimed by reaper",
 	})
+)
+
+// AI/LLM observability metrics.
+var (
+	AITokensTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_ai_tokens_total",
+		Help: "Total AI tokens consumed",
+	}, []string{"workflow", "step", "model", "provider", "token_type"})
+	// token_type: "prompt" or "completion"
+
+	AIRequestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_ai_requests_total",
+		Help: "Total AI provider API requests",
+	}, []string{"workflow", "step", "model", "provider", "status"})
+	// status: "success" or "error"
+
+	AIRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "mantle_ai_request_duration_seconds",
+		Help:    "AI provider API request duration",
+		Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30, 60, 120},
+	}, []string{"workflow", "step", "model", "provider"})
 )
 
 // Tool-use metrics.

@@ -11,6 +11,7 @@ import (
 	"github.com/dvflw/mantle/internal/auth"
 	mantleCEL "github.com/dvflw/mantle/internal/cel"
 	"github.com/dvflw/mantle/internal/connector"
+	"github.com/dvflw/mantle/internal/metrics"
 	"github.com/dvflw/mantle/internal/secret"
 	"github.com/dvflw/mantle/internal/workflow"
 )
@@ -67,6 +68,8 @@ func (e *Engine) Execute(ctx context.Context, workflowName string, version int, 
 
 // resumeExecution runs (or resumes) a workflow execution from its last checkpoint.
 func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowName string, version int, inputs map[string]any) (*ExecutionResult, error) {
+	execStart := time.Now()
+
 	// Load the workflow definition.
 	wf, err := e.loadWorkflow(ctx, workflowName, version)
 	if err != nil {
@@ -121,7 +124,7 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 			continue
 		}
 
-		stepResult := e.executeStep(ctx, execID, step, celCtx)
+		stepResult := e.executeStep(ctx, execID, workflowName, step, celCtx)
 		result.Steps[step.Name] = stepResult
 
 		if stepResult.Status == "completed" {
@@ -134,6 +137,8 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 			if err := e.updateExecutionStatus(ctx, execID, "failed", result.Error); err != nil {
 				return nil, fmt.Errorf("checkpoint: %w", err)
 			}
+			metrics.ExecutionsTotal.WithLabelValues(workflowName, "failed").Inc()
+			metrics.ExecutionDuration.WithLabelValues(workflowName).Observe(time.Since(execStart).Seconds())
 			return result, nil
 		}
 	}
@@ -141,6 +146,8 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 	if err := e.updateExecutionStatus(ctx, execID, "completed", ""); err != nil {
 		return nil, fmt.Errorf("checkpoint: %w", err)
 	}
+	metrics.ExecutionsTotal.WithLabelValues(workflowName, "completed").Inc()
+	metrics.ExecutionDuration.WithLabelValues(workflowName).Observe(time.Since(execStart).Seconds())
 	return result, nil
 }
 
@@ -159,7 +166,7 @@ func checkOutputSize(output map[string]any, maxBytes int) error {
 	return nil
 }
 
-func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.Step, celCtx *mantleCEL.Context) StepResult {
+func (e *Engine) executeStep(ctx context.Context, execID string, workflowName string, step workflow.Step, celCtx *mantleCEL.Context) StepResult {
 	// Evaluate conditional.
 	if step.If != "" {
 		shouldRun, err := e.CEL.EvalBool(step.If, celCtx)
@@ -171,6 +178,7 @@ func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.S
 		}
 		if !shouldRun {
 			if cpErr := e.recordStep(ctx, execID, step.Name, "skipped", nil, ""); cpErr != nil {
+				metrics.StepsTotal.WithLabelValues(workflowName, step.Name, "failed").Inc()
 				return StepResult{Status: "failed", Error: fmt.Sprintf("checkpoint failure: %v", cpErr)}
 			}
 			e.Auditor.Emit(ctx, audit.Event{
@@ -179,6 +187,7 @@ func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.S
 				Action:    audit.ActionStepSkipped,
 				Resource:  audit.Resource{Type: "step_execution", ID: step.Name},
 			})
+			metrics.StepsTotal.WithLabelValues(workflowName, step.Name, "skipped").Inc()
 			return StepResult{Status: "skipped"}
 		}
 	}
@@ -208,6 +217,7 @@ func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.S
 			Action:    audit.ActionStepFailed,
 			Resource:  audit.Resource{Type: "step_execution", ID: step.Name},
 		})
+		metrics.StepsTotal.WithLabelValues(workflowName, step.Name, "failed").Inc()
 		return StepResult{Status: "failed", Output: output, Error: errMsg}
 	}
 
@@ -223,6 +233,7 @@ func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.S
 			Action:    audit.ActionStepFailed,
 			Resource:  audit.Resource{Type: "step_execution", ID: step.Name},
 		})
+		metrics.StepsTotal.WithLabelValues(workflowName, step.Name, "failed").Inc()
 		return StepResult{Status: "failed", Error: errMsg}
 	}
 
@@ -237,13 +248,14 @@ func (e *Engine) executeStep(ctx context.Context, execID string, step workflow.S
 		Resource:  audit.Resource{Type: "step_execution", ID: step.Name},
 	})
 
+	metrics.StepsTotal.WithLabelValues(workflowName, step.Name, "completed").Inc()
 	return StepResult{Status: "completed", Output: output}
 }
 
 // executeStepLogic contains the core connector invocation logic: CEL param resolution,
 // credential resolution, connector lookup, and retry/timeout handling. It is used by
 // both the sequential executeStep path and the distributed MakeStepExecutor bridge.
-func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workflow.Step, celCtx *mantleCEL.Context) (map[string]any, error) {
+func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workflow.Step, celCtx *mantleCEL.Context, workflowName string) (map[string]any, error) {
 	// Resolve CEL expressions in params.
 	resolvedParams, err := e.CEL.ResolveParams(step.Params, celCtx)
 	if err != nil {
@@ -258,6 +270,10 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 		}
 		resolvedParams["_credential"] = credData
 	}
+
+	// Inject workflow/step context for AI observability metrics.
+	resolvedParams["_workflow"] = workflowName
+	resolvedParams["_step"] = step.Name
 
 	// Check for AI tool use — delegate to tool-use loop if tools are declared.
 	if step.Action == "ai/completion" {
