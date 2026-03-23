@@ -129,7 +129,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	v := viper.New()
 
 	// Defaults
-	v.SetDefault("database.url", "postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable")
+	v.SetDefault("database.url", "postgres://mantle:mantle@localhost:5432/mantle?sslmode=prefer")
 	v.SetDefault("database.max_open_conns", 25)
 	v.SetDefault("database.max_idle_conns", 25)
 	v.SetDefault("database.conn_max_lifetime", 5*time.Minute)

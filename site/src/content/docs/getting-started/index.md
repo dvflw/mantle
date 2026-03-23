@@ -40,7 +40,7 @@ The default database URL uses `sslmode=disable`, which is correct for local deve
 export MANTLE_DATABASE_URL="postgres://mantle:secret@db.example.com:5432/mantle?sslmode=require"
 ```
 
-See [Configuration](/configuration) for all database options.
+See [Configuration](/docs/configuration) for all database options.
 
 You should see:
 

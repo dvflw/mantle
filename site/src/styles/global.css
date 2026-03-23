@@ -317,7 +317,7 @@ body {
   margin-top: 0;
 }
 
-/* Tables — horizontally scrollable on small screens */
+/* Tables — display:block enables horizontal scroll when content overflows */
 .prose table {
   display: block;
   width: 100%;

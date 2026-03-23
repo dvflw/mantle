@@ -4,7 +4,7 @@ interface Props {
 }
 const { isHome = false } = Astro.props;
 const prefix = isHome ? '' : '/';
-const isDocs = !isHome;
+const isDocs = Astro.url.pathname.startsWith('/docs');
 ---
 <nav class="fixed top-0 left-0 right-0 z-50 border-b border-outline-variant bg-surface/80 backdrop-blur-md">
   <div class={`nav-inner mx-auto px-6 flex items-center justify-between h-16 ${isHome ? 'max-w-[1200px]' : 'max-w-[1280px]'}`}>
