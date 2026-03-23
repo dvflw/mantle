@@ -18,7 +18,7 @@ const features = [
 
     <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-8" data-animate>
       {features.map((f) => (
-        <div class="flex items-start gap-3">
+        <div class="feature-card flex items-start gap-3 p-4 border border-outline-variant bg-surface-container-low">
           <div class="text-primary shrink-0 mt-0.5" set:html={f.icon} />
           <div>
             <h3 class="font-headline font-semibold text-sm mb-1">{f.title}</h3>

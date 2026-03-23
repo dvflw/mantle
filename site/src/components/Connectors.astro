@@ -14,9 +14,9 @@ const connectors = [
     <h2 class="font-headline text-3xl sm:text-4xl font-bold tracking-tight mb-4" data-animate>Built-in Connectors</h2>
     <p class="text-on-surface-variant mb-12 max-w-2xl" data-animate>9 connector actions ship with the binary. HTTP, AI, Slack, Email, Postgres, and S3 &mdash; ready to use.</p>
 
-    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6" data-animate>
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4" data-animate>
       {connectors.map((c) => (
-        <div class="flex items-start gap-4 p-4 border border-outline-variant bg-surface-container-low hover:border-outline transition-colors">
+        <div class="feature-card flex items-start gap-4 p-4 border border-outline-variant bg-surface-container-low">
           <div class="text-primary shrink-0 mt-0.5" set:html={c.icon} />
           <div>
             <h3 class="font-headline font-semibold text-sm">{c.name}</h3>
@@ -24,17 +24,15 @@ const connectors = [
           </div>
         </div>
       ))}
-    </div>
 
-    <!-- Plugin system -->
-    <div class="border border-outline-variant bg-surface-container p-6" data-animate>
-      <div class="flex items-start gap-4">
-        <div class="text-primary shrink-0">
+      <!-- Plugin system — spans 1 col to match connector cards -->
+      <div class="feature-card flex items-start gap-4 p-4 border border-dashed border-primary/40 bg-surface-container-low">
+        <div class="text-primary shrink-0 mt-0.5">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"/></svg>
         </div>
         <div>
-          <h3 class="font-headline font-semibold text-sm mb-1">Plugin System</h3>
-          <p class="text-sm text-on-surface-variant">Need something else? Write a plugin. Any executable that reads JSON from stdin and writes JSON to stdout. Python, Rust, Node, Bash &mdash; your call.</p>
+          <h3 class="font-headline font-semibold text-sm">+ Plugins</h3>
+          <p class="text-xs text-on-surface-variant mt-1">Any executable. JSON in, JSON out. Python, Go, Bash.</p>
         </div>
       </div>
     </div>
