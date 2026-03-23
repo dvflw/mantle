@@ -1,5 +1,69 @@
 @import "tailwindcss";
 
+/* ── View Transitions ────────────────────────────────────────────── */
+
+/* Instant swap on the root — no fade, no flash */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none !important;
+  mix-blend-mode: normal;
+}
+
+/* Shell elements stay completely static — no transition */
+::view-transition-old(nav),
+::view-transition-new(nav),
+::view-transition-old(sidebar),
+::view-transition-new(sidebar) {
+  animation: none !important;
+}
+
+/* Content area gets a subtle slide-up transition */
+::view-transition-old(docs-content) {
+  animation: vt-fade-out 150ms ease-out both;
+}
+::view-transition-new(docs-content) {
+  animation: vt-fade-in 150ms ease-in 50ms both;
+}
+
+@keyframes vt-fade-out {
+  to { opacity: 0; transform: translateY(-4px); }
+}
+@keyframes vt-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(docs-content),
+  ::view-transition-new(docs-content),
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
+  }
+
+  [data-animate] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  [data-animate].visible {
+    animation: none !important;
+  }
+
+  .animate-blink {
+    animation: none !important;
+    opacity: 1;
+  }
+
+  [data-terminal-line] {
+    opacity: 1 !important;
+  }
+
+  html {
+    scroll-behavior: auto !important;
+  }
+}
+
 @theme {
   /* Colors - Surface */
   --color-surface: #0e0e0e;
@@ -82,13 +146,13 @@ body {
   background-size: 24px 24px;
 }
 
-/* Fade-in-up animation */
-[data-animate] {
+/* Only hide animated elements when JS is available */
+.js [data-animate] {
   opacity: 0;
   transform: translateY(20px);
 }
 
-[data-animate].visible {
+.js [data-animate].visible {
   animation: fade-in-up 0.6s ease-out forwards;
 }
 
@@ -114,12 +178,12 @@ body {
 }
 
 /* Terminal line animation */
-[data-terminal-line] {
+.js [data-terminal-line] {
   opacity: 0;
   transition: opacity 0.4s ease-out;
 }
 
-[data-terminal-line].line-visible {
+.js [data-terminal-line].line-visible {
   opacity: 1;
 }
 
@@ -200,12 +264,13 @@ body {
 /* Links */
 .prose a {
   color: var(--color-primary);
-  text-decoration: none;
-  transition: text-decoration-color 0.15s;
+  text-decoration: underline;
+  text-decoration-color: var(--color-primary-dim);
+  text-underline-offset: 2px;
 }
 
 .prose a:hover {
-  text-decoration: underline;
+  text-decoration-color: var(--color-primary);
 }
 
 /* Paragraphs */

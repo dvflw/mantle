@@ -41,46 +41,44 @@ const tocHeadings = headings.filter((h) => h.depth === 2 || h.depth === 3);
   </aside>
 )}
 
-<script>
-  // Highlight the TOC entry for the heading closest above the scroll offset
+<script is:inline>
+function initToc() {
   const tocLinks = document.querySelectorAll('[data-toc-link]');
-  if (tocLinks.length > 0) {
-    const NAV_HEIGHT = 80; // 5rem scroll-margin-top
-    let ticking = false;
+  if (tocLinks.length === 0) return;
+  const NAV_HEIGHT = 80;
+  let ticking = false;
 
-    function updateActiveToc() {
-      // Find the last heading that has scrolled past the nav offset
-      let activeSlug: string | null = null;
-
-      for (const link of tocLinks) {
-        const slug = link.getAttribute('data-toc-link');
-        if (!slug) continue;
-        const el = document.getElementById(slug);
-        if (!el) continue;
-        const top = el.getBoundingClientRect().top;
-        if (top <= NAV_HEIGHT + 4) {
-          activeSlug = slug;
-        }
+  function updateActiveToc() {
+    let activeSlug = null;
+    for (const link of tocLinks) {
+      const slug = link.getAttribute('data-toc-link');
+      if (!slug) continue;
+      const el = document.getElementById(slug);
+      if (!el) continue;
+      if (el.getBoundingClientRect().top <= NAV_HEIGHT + 4) {
+        activeSlug = slug;
       }
-
-      tocLinks.forEach((link) => {
-        const isActive = link.getAttribute('data-toc-link') === activeSlug;
-        link.classList.toggle('!text-primary', isActive);
-        link.classList.toggle('font-medium', isActive);
-      });
     }
-
-    window.addEventListener('scroll', () => {
-      if (!ticking) {
-        requestAnimationFrame(() => {
-          updateActiveToc();
-          ticking = false;
-        });
-        ticking = true;
-      }
-    }, { passive: true });
-
-    // Run once on load
-    updateActiveToc();
+    tocLinks.forEach((link) => {
+      const isActive = link.getAttribute('data-toc-link') === activeSlug;
+      link.classList.toggle('!text-primary', isActive);
+      link.classList.toggle('font-medium', isActive);
+    });
   }
+
+  // Use a named handler so we can clean up
+  function onScroll() {
+    if (!ticking) {
+      requestAnimationFrame(() => { updateActiveToc(); ticking = false; });
+      ticking = true;
+    }
+  }
+
+  window.removeEventListener('scroll', window._tocScrollHandler);
+  window._tocScrollHandler = onScroll;
+  window.addEventListener('scroll', onScroll, { passive: true });
+  updateActiveToc();
+}
+initToc();
+document.addEventListener('astro:after-swap', initToc);
 </script>

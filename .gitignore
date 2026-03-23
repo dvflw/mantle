@@ -40,3 +40,17 @@ coverage.html
 
 # Worktrees
 .worktrees/
+
+# Claude Code / AI tooling
+.claude/
+ai/
+.stitch/
+
+# Internal development process (plans, specs, design exploration)
+docs/superpowers/
+plans/
+marketing/variants/
+
+# Node (site/)
+node_modules/
+.astro/

@@ -1,26 +1,44 @@
 ---
 import '../styles/global.css';
+import { ClientRouter } from 'astro:transitions';
 
 interface Props {
   title: string;
   description?: string;
+  image?: string;
+  url?: string;
 }
-const { title, description = "Define AI workflows as YAML. Deploy them like infrastructure. Run them anywhere." } = Astro.props;
+const { title, description = "Define AI workflows as YAML. Deploy them like infrastructure. Run them anywhere.", image, url } = Astro.props;
 ---
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en" class="dark" style="background-color:#0e0e0e;color:#e5e5e5">
 <head>
+  <script is:inline>document.documentElement.classList.add('js');</script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content={description} />
   <title>{title}</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="canonical" href={url || 'https://mantle.dev'} />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content={title} />
+  <meta property="og:description" content={description} />
+  <meta property="og:url" content={url || 'https://mantle.dev'} />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content={title} />
+  <meta name="twitter:description" content={description} />
+  <ClientRouter />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 </head>
 <body>
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:px-4 focus:py-2 focus:bg-primary focus:text-on-primary focus:text-sm">
+    Skip to content
+  </a>
   <slot />
-  <script>
+  <script is:inline>
+    function initPage() {
     // IntersectionObserver for fade-in-up animations
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
@@ -72,6 +90,13 @@ const { title, description = "Define AI workflows as YAML. Deploy them like infr
     document.querySelectorAll('[data-terminal-typing]').forEach((el) => {
       terminalObserver.observe(el);
     });
+    }
+
+    // Run on initial load
+    initPage();
+
+    // Re-run after View Transitions swap
+    document.addEventListener('astro:after-swap', initPage);
   </script>
 </body>
 </html>

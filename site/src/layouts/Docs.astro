@@ -41,7 +41,7 @@ const { prev, next } = getPrevNext(currentPath);
       <DocsSidebar currentPath={currentPath} />
 
       <!-- Main content -->
-      <main class="flex-1 min-w-0 py-8 px-2 sm:px-6 lg:px-10">
+      <main id="main-content" class="flex-1 min-w-0 py-8 px-2 sm:px-6 lg:px-10" style="view-transition-name: docs-content;">
         <article class="prose max-w-3xl">
           <slot />
         </article>

@@ -18,7 +18,7 @@ function isParentActive(item: NavItem): boolean {
 }
 ---
 
-<aside id="docs-sidebar" class="docs-sidebar hidden lg:block w-60 shrink-0">
+<aside id="docs-sidebar" class="docs-sidebar hidden lg:block w-60 shrink-0" style="view-transition-name: sidebar;">
   <div class="sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto py-8 pr-4 pl-2">
     <nav aria-label="Documentation sidebar">
       {docsNav.map((group) => (
@@ -37,13 +37,24 @@ function isParentActive(item: NavItem): boolean {
                   <a
                     href={item.href}
                     class:list={[
-                      'block px-3 py-1.5 text-[13px] transition-colors',
+                      'flex items-center justify-between px-3 py-1.5 text-[13px] transition-colors',
                       active
                         ? 'text-primary font-medium border-l-2 border-primary bg-primary/5'
                         : 'text-on-surface-variant hover:text-on-surface border-l-2 border-transparent hover:border-outline-variant',
                     ]}
                   >
                     {item.title}
+                    {hasChildren && (
+                      <svg
+                        class:list={[
+                          'w-3 h-3 shrink-0 transition-transform duration-150',
+                          parentActive ? 'rotate-90 text-primary/60' : 'text-on-surface-variant/40',
+                        ]}
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                      >
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                      </svg>
+                    )}
                   </a>
 
                   {hasChildren && parentActive && (
@@ -100,13 +111,24 @@ function isParentActive(item: NavItem): boolean {
                 <a
                   href={item.href}
                   class:list={[
-                    'block px-3 py-1.5 text-[13px] transition-colors',
+                    'flex items-center justify-between px-3 py-1.5 text-[13px] transition-colors',
                     active
                       ? 'text-primary font-medium border-l-2 border-primary bg-primary/5'
                       : 'text-on-surface-variant hover:text-on-surface border-l-2 border-transparent hover:border-outline-variant',
                   ]}
                 >
                   {item.title}
+                  {hasChildren && (
+                    <svg
+                      class:list={[
+                        'w-3 h-3 shrink-0 transition-transform duration-150',
+                        parentActive ? 'rotate-90 text-primary/60' : 'text-on-surface-variant/40',
+                      ]}
+                      fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    >
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                  )}
                 </a>
 
                 {hasChildren && parentActive && (
@@ -140,30 +162,37 @@ function isParentActive(item: NavItem): boolean {
   </nav>
 </aside>
 
-<script>
+<script is:inline>
+function initSidebar() {
   const toggleBtn = document.getElementById('sidebar-toggle');
   const mobileSidebar = document.getElementById('docs-sidebar-mobile');
   const overlay = document.getElementById('sidebar-overlay');
+  if (!toggleBtn || !mobileSidebar || !overlay) return;
 
   function openSidebar() {
-    mobileSidebar?.classList.remove('-translate-x-full');
-    overlay?.classList.remove('hidden');
+    mobileSidebar.classList.remove('-translate-x-full');
+    overlay.classList.remove('hidden');
   }
-
   function closeSidebar() {
-    mobileSidebar?.classList.add('-translate-x-full');
-    overlay?.classList.add('hidden');
+    mobileSidebar.classList.add('-translate-x-full');
+    overlay.classList.add('hidden');
   }
 
-  toggleBtn?.addEventListener('click', () => {
-    const isOpen = !mobileSidebar?.classList.contains('-translate-x-full');
-    if (isOpen) closeSidebar();
-    else openSidebar();
+  const newBtn = toggleBtn.cloneNode(true);
+  toggleBtn.parentNode?.replaceChild(newBtn, toggleBtn);
+  newBtn.addEventListener('click', () => {
+    const isOpen = !mobileSidebar.classList.contains('-translate-x-full');
+    if (isOpen) closeSidebar(); else openSidebar();
   });
 
-  overlay?.addEventListener('click', closeSidebar);
+  const newOverlay = overlay.cloneNode(true);
+  overlay.parentNode?.replaceChild(newOverlay, overlay);
+  newOverlay.addEventListener('click', closeSidebar);
 
-  mobileSidebar?.querySelectorAll('a').forEach((a) => {
+  mobileSidebar.querySelectorAll('a').forEach((a) => {
     a.addEventListener('click', closeSidebar);
   });
+}
+initSidebar();
+document.addEventListener('astro:after-swap', initSidebar);
 </script>
