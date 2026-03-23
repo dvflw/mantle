@@ -1,37 +1,73 @@
 ---
 import { docsNav } from '../data/docs-nav';
+import type { NavItem } from '../data/docs-nav';
 
 interface Props {
   currentPath: string;
 }
 
 const { currentPath } = Astro.props;
+
+function isActive(href: string): boolean {
+  return currentPath === href || currentPath === href + '/';
+}
+
+function isParentActive(item: NavItem): boolean {
+  if (isActive(item.href)) return true;
+  return item.children?.some((child) => isActive(child.href)) ?? false;
+}
 ---
 
 <aside id="docs-sidebar" class="docs-sidebar hidden lg:block w-60 shrink-0">
   <div class="sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto py-8 pr-4 pl-2">
     <nav aria-label="Documentation sidebar">
       {docsNav.map((group) => (
-        <div class="mb-6">
-          <h4 class="text-[11px] font-semibold uppercase tracking-widest text-on-surface-variant mb-2 px-3">
+        <div class="mb-8">
+          <h4 class="text-[10px] font-headline font-bold uppercase tracking-[0.15em] text-primary/60 mb-3 px-3">
             {group.title}
           </h4>
-          <ul class="space-y-0.5">
+          <ul>
             {group.items.map((item) => {
-              const isActive = currentPath === item.href || currentPath === item.href + '/';
+              const active = isActive(item.href);
+              const parentActive = isParentActive(item);
+              const hasChildren = item.children && item.children.length > 0;
+
               return (
                 <li>
                   <a
                     href={item.href}
                     class:list={[
-                      'block px-3 py-1.5 text-sm transition-colors rounded-sm',
-                      isActive
-                        ? 'text-primary border-l-2 border-primary bg-primary/5 font-medium'
-                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high border-l-2 border-transparent',
+                      'block px-3 py-1.5 text-[13px] transition-colors',
+                      active
+                        ? 'text-primary font-medium border-l-2 border-primary bg-primary/5'
+                        : 'text-on-surface-variant hover:text-on-surface border-l-2 border-transparent hover:border-outline-variant',
                     ]}
                   >
                     {item.title}
                   </a>
+
+                  {hasChildren && parentActive && (
+                    <ul class="mt-0.5 mb-2">
+                      {item.children!.map((child) => {
+                        const childActive = isActive(child.href);
+                        return (
+                          <li>
+                            <a
+                              href={child.href}
+                              class:list={[
+                                'block pl-6 pr-3 py-1 text-[12px] transition-colors',
+                                childActive
+                                  ? 'text-primary font-medium border-l-2 border-primary bg-primary/5'
+                                  : 'text-on-surface-variant/80 hover:text-on-surface border-l-2 border-outline-variant/30 hover:border-outline-variant',
+                              ]}
+                            >
+                              {child.title}
+                            </a>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
                 </li>
               );
             })}
@@ -49,26 +85,52 @@ const { currentPath } = Astro.props;
 <aside id="docs-sidebar-mobile" class="fixed top-16 left-0 bottom-0 z-50 w-72 bg-surface-container-lowest border-r border-outline-variant transform -translate-x-full transition-transform duration-200 lg:hidden overflow-y-auto">
   <nav class="py-6 px-4" aria-label="Documentation sidebar mobile">
     {docsNav.map((group) => (
-      <div class="mb-6">
-        <h4 class="text-[11px] font-semibold uppercase tracking-widest text-on-surface-variant mb-2 px-3">
+      <div class="mb-8">
+        <h4 class="text-[10px] font-headline font-bold uppercase tracking-[0.15em] text-primary/60 mb-3 px-3">
           {group.title}
         </h4>
-        <ul class="space-y-0.5">
+        <ul>
           {group.items.map((item) => {
-            const isActive = currentPath === item.href || currentPath === item.href + '/';
+            const active = isActive(item.href);
+            const parentActive = isParentActive(item);
+            const hasChildren = item.children && item.children.length > 0;
+
             return (
               <li>
                 <a
                   href={item.href}
                   class:list={[
-                    'block px-3 py-1.5 text-sm transition-colors rounded-sm',
-                    isActive
-                      ? 'text-primary border-l-2 border-primary bg-primary/5 font-medium'
-                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high border-l-2 border-transparent',
+                    'block px-3 py-1.5 text-[13px] transition-colors',
+                    active
+                      ? 'text-primary font-medium border-l-2 border-primary bg-primary/5'
+                      : 'text-on-surface-variant hover:text-on-surface border-l-2 border-transparent hover:border-outline-variant',
                   ]}
                 >
                   {item.title}
                 </a>
+
+                {hasChildren && parentActive && (
+                  <ul class="mt-0.5 mb-2">
+                    {item.children!.map((child) => {
+                      const childActive = isActive(child.href);
+                      return (
+                        <li>
+                          <a
+                            href={child.href}
+                            class:list={[
+                              'block pl-6 pr-3 py-1 text-[12px] transition-colors',
+                              childActive
+                                ? 'text-primary font-medium border-l-2 border-primary bg-primary/5'
+                                : 'text-on-surface-variant/80 hover:text-on-surface border-l-2 border-outline-variant/30 hover:border-outline-variant',
+                              ]}
+                          >
+                            {child.title}
+                          </a>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </li>
             );
           })}
@@ -101,7 +163,6 @@ const { currentPath } = Astro.props;
 
   overlay?.addEventListener('click', closeSidebar);
 
-  // Close on nav link click (mobile)
   mobileSidebar?.querySelectorAll('a').forEach((a) => {
     a.addEventListener('click', closeSidebar);
   });
