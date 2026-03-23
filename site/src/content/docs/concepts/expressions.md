@@ -55,7 +55,7 @@ inputs:
   name:
     type: string
   count:
-    type: integer
+    type: number
 
 steps:
   - name: greet
