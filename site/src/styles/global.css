@@ -327,6 +327,17 @@ body {
   margin-top: 0;
 }
 
+/* Tables — horizontally scrollable on small screens */
+.prose .table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 1.5em;
+}
+
+.prose .table-wrapper table {
+  margin-top: 0;
+}
+
 /* Tables — preserve table layout for border-collapse, scroll via parent */
 .prose table {
   width: 100%;
@@ -403,8 +414,7 @@ body {
   }
 
   .prose code {
-    overflow-wrap: anywhere;
-    word-break: normal;
+    word-break: break-word;
   }
 }
 

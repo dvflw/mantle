@@ -197,7 +197,9 @@ function initSidebar() {
     if (menuBtn) menuBtn.setAttribute('aria-expanded', 'false');
   }
 
-  overlay.onclick = closeSidebar;
+  const newOverlay = overlay.cloneNode(true);
+  overlay.parentNode?.replaceChild(newOverlay, overlay);
+  newOverlay.addEventListener('click', closeSidebar);
   mobileSidebar.querySelectorAll('a').forEach((a) => {
     a.onclick = closeSidebar;
   });

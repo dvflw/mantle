@@ -81,24 +81,30 @@ function initNav() {
   const overlay = document.getElementById('sidebar-overlay');
   if (!btn || !docsSidebar || !overlay) return;
 
-  btn.setAttribute('aria-expanded', 'false');
+  // Remove old listeners by cloning
+  const newBtn = btn.cloneNode(true);
+  btn.parentNode?.replaceChild(newBtn, btn);
 
-  btn.onclick = () => {
+  newBtn.setAttribute('aria-expanded', 'false');
+
+  newBtn.addEventListener('click', () => {
     const isOpen = !docsSidebar.classList.contains('-translate-x-full');
     if (isOpen) {
       docsSidebar.classList.add('-translate-x-full');
       docsSidebar.setAttribute('aria-hidden', 'true');
       docsSidebar.inert = true;
-      if (overlay) { overlay.classList.add('hidden'); overlay.setAttribute('aria-hidden', 'true'); }
-      btn.setAttribute('aria-expanded', 'false');
+      overlay.classList.add('hidden');
+      overlay.setAttribute('aria-hidden', 'true');
+      newBtn.setAttribute('aria-expanded', 'false');
     } else {
       docsSidebar.classList.remove('-translate-x-full');
       docsSidebar.setAttribute('aria-hidden', 'false');
       docsSidebar.inert = false;
-      if (overlay) { overlay.classList.remove('hidden'); overlay.setAttribute('aria-hidden', 'false'); }
-      btn.setAttribute('aria-expanded', 'true');
+      overlay.classList.remove('hidden');
+      overlay.setAttribute('aria-hidden', 'false');
+      newBtn.setAttribute('aria-expanded', 'true');
     }
-  };
+  });
 }
 // Defer init until sidebar DOM exists (Nav renders before DocsSidebar).
 // Bail after a few frames if sidebar never appears (non-docs pages).
