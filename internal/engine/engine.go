@@ -18,11 +18,12 @@ import (
 
 // Engine executes workflows by running steps sequentially with checkpoint-and-resume.
 type Engine struct {
-	DB       *sql.DB
-	Registry *connector.Registry
-	Auditor  audit.Emitter
-	CEL      *mantleCEL.Evaluator
-	Resolver *secret.Resolver
+	DB                 *sql.DB
+	Registry           *connector.Registry
+	Auditor            audit.Emitter
+	CEL                *mantleCEL.Evaluator
+	Resolver           *secret.Resolver
+	MaxToolRoundsLimit int // admin ceiling for max_rounds; 0 = no limit
 }
 
 // New creates an Engine with sensible defaults.
@@ -85,6 +86,27 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 		Resource:  audit.Resource{Type: "workflow_execution", ID: execID},
 		Metadata:  map[string]string{"workflow": workflowName, "version": fmt.Sprintf("%d", version)},
 	})
+
+	// Apply workflow-level timeout if specified.
+	if wf.Timeout != "" {
+		dur, err := time.ParseDuration(wf.Timeout)
+		if err != nil {
+			return nil, fmt.Errorf("invalid workflow timeout %q: %w", wf.Timeout, err)
+		}
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, dur)
+		defer cancel()
+	}
+
+	// Apply default values for missing inputs.
+	if inputs == nil {
+		inputs = make(map[string]any)
+	}
+	for name, input := range wf.Inputs {
+		if _, ok := inputs[name]; !ok && input.Default != nil {
+			inputs[name] = input.Default
+		}
+	}
 
 	// Build CEL context with inputs.
 	celCtx := &mantleCEL.Context{

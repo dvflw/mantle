@@ -88,6 +88,13 @@ func (e *Evaluator) getOrCompile(expression string) (cel.Program, error) {
 	return prog, nil
 }
 
+// CompileCheck compiles a CEL expression and returns any syntax/type errors
+// without evaluating it. This is used for offline validation.
+func (e *Evaluator) CompileCheck(expression string) error {
+	_, err := e.getOrCompile(expression)
+	return err
+}
+
 // EvalBool evaluates a CEL expression that should return a boolean.
 func (e *Evaluator) EvalBool(expression string, ctx *Context) (bool, error) {
 	result, err := e.Eval(expression, ctx)

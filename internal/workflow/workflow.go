@@ -9,6 +9,7 @@ type Workflow struct {
 	Inputs      map[string]Input `yaml:"inputs"`
 	Triggers    []Trigger        `yaml:"triggers"`
 	Steps       []Step           `yaml:"steps"`
+	Timeout     string           `yaml:"timeout"` // Go duration string, e.g., "30m"
 }
 
 // Trigger defines an automatic execution trigger for a workflow.
@@ -23,6 +24,7 @@ type Trigger struct {
 type Input struct {
 	Type        string `yaml:"type"`
 	Description string `yaml:"description"`
+	Default     any    `yaml:"default"`
 }
 
 // Step defines a single step within a workflow.
