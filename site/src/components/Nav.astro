@@ -81,14 +81,20 @@ function initNav() {
   const overlay = document.getElementById('sidebar-overlay');
   if (!btn || !docsSidebar || !overlay) return;
 
+  btn.setAttribute('aria-expanded', 'false');
+
   btn.onclick = () => {
     const isOpen = !docsSidebar.classList.contains('-translate-x-full');
     if (isOpen) {
       docsSidebar.classList.add('-translate-x-full');
       overlay.classList.add('hidden');
+      overlay.setAttribute('aria-hidden', 'true');
+      btn.setAttribute('aria-expanded', 'false');
     } else {
       docsSidebar.classList.remove('-translate-x-full');
       overlay.classList.remove('hidden');
+      overlay.setAttribute('aria-hidden', 'false');
+      btn.setAttribute('aria-expanded', 'true');
     }
   };
 }
