@@ -10,10 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newTestOrchestrator(db interface{ ExecContext(ctx context.Context, query string, args ...any) (interface{ RowsAffected() (int64, error) }, error) }) *Orchestrator {
-	// Minimal helper — we only need a type-compatible *Orchestrator
-	return nil
-}
 
 func TestOrchestrator_DAGBasedStepCreation(t *testing.T) {
 	database := setupTestDB(t)

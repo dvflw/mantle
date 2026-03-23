@@ -206,7 +206,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("/readyz", health.ReadyzHandler(s.DB, livenessCheckers...))
 
 	// Wrap with metrics middleware (innermost, runs for every request).
-	var handler http.Handler = metricsMiddleware(mux)
+	handler := metricsMiddleware(mux)
 	if s.AuthStore != nil {
 		if s.Auditor != nil {
 			handler = auth.AuthMiddleware(s.AuthStore, s.OIDCValidator, handler, s.Auditor)

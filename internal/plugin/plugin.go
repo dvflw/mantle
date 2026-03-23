@@ -18,7 +18,6 @@ type Plugin struct {
 	Name    string
 	Path    string
 	Actions []string
-	cmd     *exec.Cmd
 	cancel  context.CancelFunc
 }
 

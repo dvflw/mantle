@@ -2,6 +2,7 @@ package logging
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"log/slog"
 	"testing"
@@ -88,7 +89,7 @@ func TestSetup_SetsDefault(t *testing.T) {
 
 	// After Setup, the default logger should be configured.
 	// We can verify it's a JSON handler by checking that it's enabled for debug.
-	if !slog.Default().Enabled(nil, slog.LevelDebug) {
+	if !slog.Default().Enabled(context.TODO(), slog.LevelDebug) {
 		t.Error("expected debug level to be enabled after Setup(\"debug\")")
 	}
 }
