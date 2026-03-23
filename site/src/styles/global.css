@@ -317,7 +317,17 @@ body {
   margin-top: 0;
 }
 
-/* Tables */
+/* Tables — horizontally scrollable on small screens */
+.prose .table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 1.5em;
+}
+
+.prose .table-wrapper table {
+  margin-top: 0;
+}
+
 .prose table {
   width: 100%;
   border-collapse: collapse;
@@ -363,6 +373,30 @@ body {
   height: auto;
   margin-top: 1.5em;
   border: 1px solid var(--color-outline-variant);
+}
+
+/* Mobile prose adjustments */
+@media (max-width: 640px) {
+  .prose h1 {
+    font-size: 1.5rem;
+  }
+
+  .prose h2 {
+    font-size: 1.25rem;
+  }
+
+  .prose h3 {
+    font-size: 1.1rem;
+  }
+
+  .prose pre {
+    font-size: 0.8125rem;
+    padding: 0.75em 1em;
+  }
+
+  .prose code {
+    word-break: break-word;
+  }
 }
 
 /* Definition lists (used in some docs) */

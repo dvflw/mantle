@@ -59,11 +59,31 @@ const isDocs = !isHome;
 function initNav() {
   const btn = document.getElementById('mobile-menu-btn');
   const menu = document.getElementById('mobile-menu');
-  if (!btn || !menu) return;
+  const docsSidebar = document.getElementById('docs-sidebar-mobile');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (!btn) return;
+
   // Remove old listeners by cloning
   const newBtn = btn.cloneNode(true);
   btn.parentNode?.replaceChild(newBtn, btn);
-  newBtn.addEventListener('click', () => menu.classList.toggle('hidden'));
+
+  newBtn.addEventListener('click', () => {
+    if (docsSidebar && overlay) {
+      // On docs pages, toggle the sidebar drawer instead of the dropdown
+      const isOpen = !docsSidebar.classList.contains('-translate-x-full');
+      if (isOpen) {
+        docsSidebar.classList.add('-translate-x-full');
+        overlay.classList.add('hidden');
+      } else {
+        docsSidebar.classList.remove('-translate-x-full');
+        overlay.classList.remove('hidden');
+      }
+      // Keep dropdown hidden
+      if (menu) menu.classList.add('hidden');
+    } else if (menu) {
+      menu.classList.toggle('hidden');
+    }
+  });
 }
 initNav();
 document.addEventListener('astro:after-swap', initNav);
