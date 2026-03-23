@@ -117,6 +117,9 @@ func (p *OpenAIProvider) ChatCompletion(ctx context.Context, req *ChatRequest) (
 
 	if resp.StatusCode != 200 {
 		slog.Warn("OpenAI API error", "status", resp.StatusCode, "body", truncate(string(body), 500))
+		if resp.StatusCode == 429 {
+			return nil, &RetryableError{Err: fmt.Errorf("openai: rate limited (429)")}
+		}
 		return nil, fmt.Errorf("openai: API returned status %d", resp.StatusCode)
 	}
 

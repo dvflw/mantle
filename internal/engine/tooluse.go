@@ -123,6 +123,10 @@ func (e *Engine) executeToolUseStep(ctx context.Context, execID string, step wor
 			maxRounds = n
 		}
 	}
+	// Enforce admin ceiling on max_rounds.
+	if e.MaxToolRoundsLimit > 0 && maxRounds > e.MaxToolRoundsLimit {
+		maxRounds = e.MaxToolRoundsLimit
+	}
 	maxCallsPerRound := defaultMaxCallsPerRound
 	if v, ok := resolvedParams["max_calls_per_round"]; ok {
 		if n, ok := toInt(v); ok && n > 0 {

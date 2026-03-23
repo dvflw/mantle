@@ -43,6 +43,11 @@ type ToolLoop struct {
 	MaxTokenBudget int
 	// MaxToolResultBytes truncates individual tool results beyond this limit (default 32KB).
 	MaxToolResultBytes int
+	// CumulativeTokens is a shared counter across retries. When non-nil, token
+	// usage is accumulated here instead of in a local variable, and checked
+	// against MaxTokenBudget. This prevents multiplicative cost when a step
+	// retries (retry × max_rounds × max_calls).
+	CumulativeTokens *int64
 }
 
 // Run drives the LLM<->tool interaction loop to completion. It builds the
@@ -78,7 +83,12 @@ func (tl *ToolLoop) Run(ctx context.Context, params map[string]any) (map[string]
 
 	// Track cumulative bytes and tokens across rounds.
 	cumulativeBytes := estimateMessagesBytes(messages)
-	cumulativeTokens := 0
+	// Use shared cross-retry counter if provided, otherwise track locally.
+	var localTokens int64
+	tokenCounter := &localTokens
+	if tl.CumulativeTokens != nil {
+		tokenCounter = tl.CumulativeTokens
+	}
 
 	for round := 0; round < tl.MaxRounds; round++ {
 		roundStart := time.Now()
@@ -103,15 +113,15 @@ func (tl *ToolLoop) Run(ctx context.Context, params map[string]any) (map[string]
 			return nil, fmt.Errorf("tool loop round %d: AI call failed: %w", round+1, err)
 		}
 
-		// Track token usage across rounds.
+		// Track token usage across rounds (and across retries if CumulativeTokens is set).
 		if usage, ok := output["usage"].(map[string]any); ok {
 			if totalTokens, ok := extractInt(usage["total_tokens"]); ok {
-				cumulativeTokens += totalTokens
+				*tokenCounter += int64(totalTokens)
 			}
 		}
-		if tl.MaxTokenBudget > 0 && cumulativeTokens > tl.MaxTokenBudget {
+		if tl.MaxTokenBudget > 0 && int(*tokenCounter) > tl.MaxTokenBudget {
 			return nil, fmt.Errorf("tool loop round %d: cumulative token usage (%d) exceeded budget (%d)",
-				round+1, cumulativeTokens, tl.MaxTokenBudget)
+				round+1, *tokenCounter, tl.MaxTokenBudget)
 		}
 
 		// Cache LLM response for crash recovery.
