@@ -71,7 +71,7 @@ steps:
       method: POST
       url: https://hooks.slack.com/services/T00/B00/xxx
       body:
-        text: "API health check failed with status {{ steps.check-api.output.status }}"
+        text: "API health check failed with status {{ steps['check-api'].output.status }}"
 ```
 
 Apply the workflow and start the server:
