@@ -34,7 +34,7 @@ make build
 
 The `docker compose up -d` command starts Postgres 16 on `localhost:5432` with user `mantle`, password `mantle`, and database `mantle`. The `make build` command produces a single `mantle` binary in the project root. The `mantle init` command creates all required database tables.
 
-The default database URL uses `sslmode=disable`, which is correct for local development with the provided Docker Compose setup. For production, always use `sslmode=require` or `sslmode=verify-full`:
+The default database URL uses `sslmode=prefer`, which tries TLS and falls back gracefully for local development. For production, always use `sslmode=require` or `sslmode=verify-full`:
 
 ```bash
 export MANTLE_DATABASE_URL="postgres://mantle:secret@db.example.com:5432/mantle?sslmode=require"

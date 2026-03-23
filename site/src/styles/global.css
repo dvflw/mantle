@@ -317,15 +317,20 @@ body {
   margin-top: 0;
 }
 
-/* Tables — display:block enables horizontal scroll when content overflows */
+/* Tables — preserve table layout for border-collapse, scroll via parent */
 .prose table {
-  display: block;
   width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
   border-collapse: collapse;
   margin-top: 1.5em;
   font-size: 0.875rem;
+}
+
+/* Make the direct parent of a table scrollable (works with :has) */
+@supports selector(:has(*)) {
+  .prose :has(> table) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 .prose thead th {
