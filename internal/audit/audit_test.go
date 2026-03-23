@@ -74,3 +74,112 @@ func TestLogEmitter_DefaultLogger(t *testing.T) {
 		t.Fatalf("LogEmitter.Emit() with nil logger returned error: %v", err)
 	}
 }
+
+func TestEnrichFromContext_WithExtractor(t *testing.T) {
+	p := &PostgresEmitter{
+		AuthMethodExtractor: func(ctx context.Context) string {
+			return "api_key"
+		},
+	}
+
+	event := Event{
+		Action:   ActionWorkflowApplied,
+		Resource: Resource{Type: "workflow_definition", ID: "wf-1"},
+	}
+
+	enriched := p.enrichFromContext(context.Background(), event)
+
+	if enriched.Metadata == nil {
+		t.Fatal("expected Metadata to be non-nil")
+	}
+	if enriched.Metadata["auth_method"] != "api_key" {
+		t.Errorf("auth_method = %q, want api_key", enriched.Metadata["auth_method"])
+	}
+}
+
+func TestEnrichFromContext_NilExtractor(t *testing.T) {
+	p := &PostgresEmitter{
+		AuthMethodExtractor: nil,
+	}
+
+	event := Event{
+		Action:   ActionStepStarted,
+		Resource: Resource{Type: "step_execution", ID: "s-1"},
+		Metadata: map[string]string{"existing": "value"},
+	}
+
+	enriched := p.enrichFromContext(context.Background(), event)
+
+	if enriched.Metadata["existing"] != "value" {
+		t.Errorf("existing metadata should be preserved, got %v", enriched.Metadata)
+	}
+	if _, ok := enriched.Metadata["auth_method"]; ok {
+		t.Error("auth_method should not be set when extractor is nil")
+	}
+}
+
+func TestEnrichFromContext_EmptyMethod(t *testing.T) {
+	p := &PostgresEmitter{
+		AuthMethodExtractor: func(ctx context.Context) string {
+			return ""
+		},
+	}
+
+	event := Event{
+		Action:   ActionStepCompleted,
+		Resource: Resource{Type: "step_execution", ID: "s-2"},
+	}
+
+	enriched := p.enrichFromContext(context.Background(), event)
+
+	if enriched.Metadata != nil {
+		if _, ok := enriched.Metadata["auth_method"]; ok {
+			t.Error("auth_method should not be added when method is empty")
+		}
+	}
+}
+
+func TestMarshalNullableJSON_Nil(t *testing.T) {
+	b, err := marshalNullableJSON(nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if b != nil {
+		t.Errorf("expected nil, got %v", b)
+	}
+}
+
+func TestMarshalNullableJSON_Value(t *testing.T) {
+	b, err := marshalNullableJSON(map[string]string{"key": "val"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if b == nil {
+		t.Fatal("expected non-nil bytes")
+	}
+	if string(b) != `{"key":"val"}` {
+		t.Errorf("got %s, want {\"key\":\"val\"}", string(b))
+	}
+}
+
+func TestNullableBytes_Nil(t *testing.T) {
+	result := nullableBytes(nil)
+	if result != nil {
+		t.Errorf("expected nil, got %v", result)
+	}
+}
+
+func TestNullableBytes_Value(t *testing.T) {
+	input := []byte(`{"hello":"world"}`)
+	result := nullableBytes(input)
+	if result == nil {
+		t.Fatal("expected non-nil")
+	}
+	b, ok := result.([]byte)
+	if !ok {
+		t.Fatalf("expected []byte, got %T", result)
+	}
+	if string(b) != string(input) {
+		t.Errorf("got %s, want %s", string(b), string(input))
+	}
+}

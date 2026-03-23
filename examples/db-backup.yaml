@@ -1,0 +1,101 @@
+name: db-backup
+description: Scheduled database backup to S3 with retention policy
+
+triggers:
+  - type: cron
+    schedule: "0 2 * * *"  # Daily at 2 AM
+
+inputs:
+  database_url:
+    type: string
+    description: Postgres connection URL to back up
+    default: "{{ env.MANTLE_DATABASE_URL }}"
+  s3_bucket:
+    type: string
+    description: S3 bucket for backup storage
+  s3_prefix:
+    type: string
+    description: S3 key prefix for backups
+    default: "backups/mantle"
+  retention_days:
+    type: number
+    description: Delete backups older than this many days
+    default: 30
+
+steps:
+  # Step 1: Run pg_dump via HTTP connector calling a sidecar or shell
+  # In production, you'd run pg_dump via a trusted helper service.
+  # This example uses the postgres/query connector to export data as JSON.
+  - name: export-data
+    action: postgres/query
+    credential: backup-db
+    params:
+      query: |
+        SELECT json_agg(t) FROM (
+          SELECT schemaname, tablename
+          FROM pg_tables
+          WHERE schemaname = 'public'
+          ORDER BY tablename
+        ) t
+    timeout: 5m
+    retry:
+      max_attempts: 3
+      backoff: exponential
+
+  # Step 2: Upload the backup to S3
+  - name: upload-backup
+    action: s3/put
+    credential: backup-s3
+    depends_on: [export-data]
+    params:
+      bucket: "{{ inputs.s3_bucket }}"
+      key: "{{ inputs.s3_prefix }}/{{ env.MANTLE_ENV_DATE }}-tables.json"
+      content: "{{ steps.export-data.output.rows }}"
+      content_type: application/json
+
+  # Step 3: List existing backups to find old ones
+  - name: list-backups
+    action: s3/list
+    credential: backup-s3
+    depends_on: [upload-backup]
+    params:
+      bucket: "{{ inputs.s3_bucket }}"
+      prefix: "{{ inputs.s3_prefix }}/"
+
+  # Step 4: Use AI to determine which backups are past retention
+  - name: identify-expired
+    action: ai/completion
+    credential: openai-key
+    depends_on: [list-backups]
+    params:
+      model: gpt-4o-mini
+      prompt: |
+        Given these S3 backup files and a retention policy of {{ inputs.retention_days }} days,
+        return ONLY a JSON array of S3 keys that should be deleted (older than the retention period).
+        Today's date is {{ env.MANTLE_ENV_DATE }}.
+
+        Files:
+        {{ steps.list-backups.output.keys }}
+
+        Return an empty array [] if nothing should be deleted.
+      output_schema:
+        type: object
+        properties:
+          expired_keys:
+            type: array
+            items:
+              type: string
+        required: [expired_keys]
+
+  # Step 5: Notify on completion
+  - name: notify
+    action: slack/send
+    credential: slack-token
+    depends_on: [upload-backup, identify-expired]
+    params:
+      channel: "#ops-alerts"
+      text: |
+        :white_check_mark: *Mantle DB Backup Complete*
+        • Uploaded: `{{ inputs.s3_prefix }}/{{ env.MANTLE_ENV_DATE }}-tables.json`
+        • Bucket: `{{ inputs.s3_bucket }}`
+        • Expired backups found: {{ steps.identify-expired.output.json.expired_keys }}
