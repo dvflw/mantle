@@ -157,6 +157,13 @@ body {
   opacity: 1;
 }
 
+/* Pagefind search result highlights */
+mark[data-pagefind-highlight] {
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+  padding: 0 2px;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;

@@ -1,0 +1,137 @@
+---
+---
+<div class="relative" id="search-container">
+  <button
+    id="search-trigger"
+    class="flex items-center gap-2 px-3 py-1.5 text-xs text-on-surface-variant border border-outline-variant bg-surface-container-low hover:border-outline transition-colors font-mono w-full lg:w-48"
+    type="button"
+  >
+    <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    </svg>
+    <span class="flex-1 text-left">Search docs...</span>
+    <kbd class="hidden lg:inline text-[10px] text-on-surface-variant/60 border border-outline-variant/50 px-1 rounded-sm">⌘K</kbd>
+  </button>
+</div>
+
+<!-- Search modal -->
+<div id="search-modal" class="fixed inset-0 z-[100] hidden">
+  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" id="search-backdrop"></div>
+  <div class="fixed top-[15%] left-1/2 -translate-x-1/2 w-full max-w-xl bg-surface-container border border-outline-variant shadow-2xl max-h-[60vh] flex flex-col">
+    <div class="flex items-center gap-3 px-4 py-3 border-b border-outline-variant">
+      <svg class="w-4 h-4 text-on-surface-variant shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+      <input
+        id="search-input"
+        type="text"
+        placeholder="Search documentation..."
+        class="flex-1 bg-transparent text-on-surface text-sm outline-none placeholder:text-on-surface-variant/50 font-body"
+        autocomplete="off"
+      />
+      <kbd class="text-[10px] text-on-surface-variant/60 border border-outline-variant/50 px-1.5 py-0.5 rounded-sm">Esc</kbd>
+    </div>
+    <div id="search-results" class="overflow-y-auto p-2 text-sm">
+      <p class="px-3 py-4 text-on-surface-variant/60 text-center text-xs">Type to search...</p>
+    </div>
+  </div>
+</div>
+
+<script is:inline>
+function initSearch() {
+  const trigger = document.getElementById('search-trigger');
+  const modal = document.getElementById('search-modal');
+  const backdrop = document.getElementById('search-backdrop');
+  const input = document.getElementById('search-input');
+  const results = document.getElementById('search-results');
+  if (!trigger || !modal || !input || !results) return;
+
+  let pagefind = null;
+
+  async function loadPagefind() {
+    if (pagefind) return pagefind;
+    try {
+      pagefind = await import('/pagefind/pagefind.js');
+      await pagefind.init();
+    } catch (e) {
+      console.warn('Pagefind not available (run build first):', e);
+      pagefind = null;
+    }
+    return pagefind;
+  }
+
+  function openSearch() {
+    modal.classList.remove('hidden');
+    input.value = '';
+    input.focus();
+    results.innerHTML = '<p class="px-3 py-4 text-on-surface-variant/60 text-center text-xs">Type to search...</p>';
+  }
+
+  function closeSearch() {
+    modal.classList.add('hidden');
+  }
+
+  trigger.onclick = openSearch;
+  backdrop.onclick = closeSearch;
+
+  // Cmd+K / Ctrl+K shortcut
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault();
+      if (modal.classList.contains('hidden')) openSearch();
+      else closeSearch();
+    }
+    if (e.key === 'Escape') closeSearch();
+  });
+
+  let debounceTimer;
+  input.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(async () => {
+      const query = input.value.trim();
+      if (!query) {
+        results.innerHTML = '<p class="px-3 py-4 text-on-surface-variant/60 text-center text-xs">Type to search...</p>';
+        return;
+      }
+
+      const pf = await loadPagefind();
+      if (!pf) {
+        results.innerHTML = '<p class="px-3 py-4 text-on-surface-variant/60 text-center text-xs">Search unavailable (build required)</p>';
+        return;
+      }
+
+      const search = await pf.search(query);
+      if (search.results.length === 0) {
+        results.innerHTML = '<p class="px-3 py-4 text-on-surface-variant/60 text-center text-xs">No results for &quot;' + query.replace(/[<>"&]/g, '') + '&quot;</p>';
+        return;
+      }
+
+      const items = await Promise.all(search.results.slice(0, 8).map(r => r.data()));
+      const container = document.createElement('div');
+      items.forEach(item => {
+        const link = document.createElement('a');
+        link.href = item.url;
+        link.className = 'block px-3 py-2 hover:bg-surface-container-high transition-colors group';
+
+        const title = document.createElement('div');
+        title.className = 'font-medium text-on-surface text-sm group-hover:text-primary transition-colors';
+        title.textContent = item.meta?.title || item.url;
+        link.appendChild(title);
+
+        const excerpt = document.createElement('div');
+        excerpt.className = 'text-xs text-on-surface-variant mt-0.5 line-clamp-2';
+        // Pagefind excerpt contains <mark> tags from our own build index — safe to render
+        excerpt.innerHTML = item.excerpt;
+        link.appendChild(excerpt);
+
+        link.addEventListener('click', closeSearch);
+        container.appendChild(link);
+      });
+
+      results.replaceChildren(...container.childNodes);
+    }, 200);
+  });
+}
+initSearch();
+document.addEventListener('astro:after-swap', initSearch);
+</script>
