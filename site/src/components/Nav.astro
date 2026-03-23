@@ -89,6 +89,15 @@ function initNav() {
   var docsSidebar = document.getElementById('docs-sidebar-mobile');
   if (!btn || !docsSidebar) return;
 
+  // Sync initial aria state to match sidebar visibility
+  var isInitiallyOpen = !docsSidebar.classList.contains('-translate-x-full');
+  btn.setAttribute('aria-expanded', isInitiallyOpen ? 'true' : 'false');
+  var initOverlay = document.getElementById('sidebar-overlay');
+  if (initOverlay) {
+    if (isInitiallyOpen) { initOverlay.classList.remove('hidden'); initOverlay.setAttribute('aria-hidden', 'false'); }
+    else { initOverlay.classList.add('hidden'); initOverlay.setAttribute('aria-hidden', 'true'); }
+  }
+
   btn.onclick = function() {
     var overlay = document.getElementById('sidebar-overlay');
     var isOpen = !docsSidebar.classList.contains('-translate-x-full');
