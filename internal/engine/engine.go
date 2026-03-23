@@ -42,17 +42,19 @@ func New(db *sql.DB) (*Engine, error) {
 
 // ExecutionResult holds the outcome of a workflow execution.
 type ExecutionResult struct {
-	ExecutionID string
-	Status      string // "completed" or "failed"
-	Error       string
-	Steps       map[string]StepResult
+	ExecutionID string                `json:"execution_id"`
+	Status      string                `json:"status"`         // "completed" or "failed"
+	Error       string                `json:"error,omitempty"`
+	Duration    time.Duration         `json:"duration"`
+	Steps       map[string]StepResult `json:"steps"`
 }
 
 // StepResult holds the outcome of a single step.
 type StepResult struct {
-	Status string         // "completed", "failed", "skipped"
-	Output map[string]any // step output data
-	Error  string
+	Status   string         `json:"status"`           // "completed", "failed", "skipped"
+	Output   map[string]any `json:"output,omitempty"` // step output data
+	Error    string         `json:"error,omitempty"`
+	Duration time.Duration  `json:"duration"`
 }
 
 // Execute runs a workflow by name, pinned to the specified version.
@@ -124,7 +126,9 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 			continue
 		}
 
+		stepStart := time.Now()
 		stepResult := e.executeStep(ctx, execID, workflowName, step, celCtx)
+		stepResult.Duration = time.Since(stepStart)
 		result.Steps[step.Name] = stepResult
 
 		if stepResult.Status == "completed" {
@@ -134,6 +138,7 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 		} else if stepResult.Status == "failed" {
 			result.Status = "failed"
 			result.Error = fmt.Sprintf("step %q failed: %s", step.Name, stepResult.Error)
+			result.Duration = time.Since(execStart)
 			if err := e.updateExecutionStatus(ctx, execID, "failed", result.Error); err != nil {
 				return nil, fmt.Errorf("checkpoint: %w", err)
 			}
@@ -146,6 +151,7 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 	if err := e.updateExecutionStatus(ctx, execID, "completed", ""); err != nil {
 		return nil, fmt.Errorf("checkpoint: %w", err)
 	}
+	result.Duration = time.Since(execStart)
 	metrics.ExecutionsTotal.WithLabelValues(workflowName, "completed").Inc()
 	metrics.ExecutionDuration.WithLabelValues(workflowName).Observe(time.Since(execStart).Seconds())
 	return result, nil

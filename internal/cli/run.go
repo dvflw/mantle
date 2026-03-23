@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
@@ -20,7 +22,11 @@ func newRunCommand() *cobra.Command {
 		Use:   "run <workflow>",
 		Short: "Run a workflow",
 		Long:  "Triggers execution of a workflow, pinned to the current version.",
-		Args:  cobra.ExactArgs(1),
+		Example: `  mantle run my-workflow
+  mantle run my-workflow --input url=https://example.com
+  mantle run my-workflow --input url=https://example.com --verbose
+  mantle run my-workflow --output json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			workflowName := args[0]
 
@@ -70,17 +76,48 @@ func newRunCommand() *cobra.Command {
 				}
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Running %s (version %d)...\n", workflowName, version)
+			outputFormat, _ := cmd.Flags().GetString("output")
+			verbose, _ := cmd.Flags().GetBool("verbose")
+
+			if outputFormat != "json" {
+				fmt.Fprintf(cmd.OutOrStdout(), "Running %s (version %d)...\n", workflowName, version)
+			}
 
 			result, err := eng.Execute(cmd.Context(), workflowName, version, inputs)
 			if err != nil {
 				return fmt.Errorf("execution failed: %w", err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Execution %s: %s\n", result.ExecutionID, result.Status)
+			// JSON output mode.
+			if outputFormat == "json" {
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
+			}
 
-			for _, step := range orderedSteps(result) {
-				fmt.Fprintf(cmd.OutOrStdout(), "  %s: %s\n", step.name, step.status)
+			// Text output mode.
+			fmt.Fprintf(cmd.OutOrStdout(), "Execution %s: %s (%s)\n",
+				result.ExecutionID, result.Status, formatDuration(result.Duration))
+
+			steps := orderedSteps(result)
+			if verbose {
+				// Compute max step name width for alignment.
+				maxLen := 0
+				for _, s := range steps {
+					if len(s.name) > maxLen {
+						maxLen = len(s.name)
+					}
+				}
+				for _, step := range steps {
+					line := fmt.Sprintf("  %-*s  %s (%s)",
+						maxLen, step.name+":", step.status, formatDuration(step.duration))
+					if step.output != "" {
+						line += fmt.Sprintf(" -> %s", truncate(step.output, 500))
+					}
+					fmt.Fprintln(cmd.OutOrStdout(), line)
+				}
+			} else {
+				for _, step := range steps {
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s: %s\n", step.name, step.status)
+				}
 			}
 
 			if result.Status == "failed" {
@@ -92,21 +129,55 @@ func newRunCommand() *cobra.Command {
 	}
 
 	cmd.Flags().StringArrayVar(&inputFlags, "input", nil, "Input parameter (key=value), can be specified multiple times")
+	cmd.Flags().BoolP("verbose", "v", false, "Show step outputs and durations")
 	return cmd
 }
 
 type stepSummary struct {
-	name   string
-	status string
+	name     string
+	status   string
+	duration time.Duration
+	output   string
 }
 
 func orderedSteps(result *engine.ExecutionResult) []stepSummary {
 	steps := make([]stepSummary, 0, len(result.Steps))
 	for name, sr := range result.Steps {
-		steps = append(steps, stepSummary{name: name, status: sr.Status})
+		outputStr := ""
+		if sr.Output != nil {
+			if data, err := json.Marshal(sr.Output); err == nil {
+				outputStr = string(data)
+			}
+		}
+		steps = append(steps, stepSummary{
+			name:     name,
+			status:   sr.Status,
+			duration: sr.Duration,
+			output:   outputStr,
+		})
 	}
 	sort.Slice(steps, func(i, j int) bool {
 		return steps[i].name < steps[j].name
 	})
 	return steps
+}
+
+// formatDuration formats a duration for human-readable display (e.g., "3.2s", "150ms").
+func formatDuration(d time.Duration) string {
+	switch {
+	case d >= time.Minute:
+		return fmt.Sprintf("%.1fm", d.Minutes())
+	case d >= time.Second:
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	default:
+		return fmt.Sprintf("%dms", d.Milliseconds())
+	}
+}
+
+// truncate shortens s to maxLen characters, appending "..." if truncated.
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }

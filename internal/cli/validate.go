@@ -10,10 +10,11 @@ import (
 
 func newValidateCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "validate <file>",
-		Short: "Validate a workflow YAML file",
-		Long:  "Checks a workflow definition for schema conformance offline. No database or network connection required.",
-		Args:  cobra.ExactArgs(1),
+		Use:     "validate <file>",
+		Short:   "Validate a workflow YAML file",
+		Long:    "Checks a workflow definition for schema conformance offline. No database or network connection required.",
+		Example: "  mantle validate workflow.yaml",
+		Args:    cobra.ExactArgs(1),
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			return nil // Skip config loading — validate is fully offline
 		},

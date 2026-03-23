@@ -12,10 +12,11 @@ import (
 
 func newApplyCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "apply <file>",
-		Short: "Apply a workflow definition",
-		Long:  "Validates and stores a workflow definition as a new immutable version in the database.",
-		Args:  cobra.ExactArgs(1),
+		Use:     "apply <file>",
+		Short:   "Apply a workflow definition",
+		Long:    "Validates and stores a workflow definition as a new immutable version in the database.",
+		Example: "  mantle apply workflow.yaml",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			filename := args[0]
 
