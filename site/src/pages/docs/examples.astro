@@ -1,0 +1,153 @@
+---
+import fs from 'node:fs';
+import path from 'node:path';
+import Docs from '../../layouts/Docs.astro';
+import { Code } from 'astro:components';
+
+const examplesDir = new URL('../../../../examples', import.meta.url).pathname;
+
+function readExample(name: string): string {
+  return fs.readFileSync(path.join(examplesDir, name), 'utf-8');
+}
+
+interface Example {
+  filename: string;
+  description: string;
+  content: string;
+}
+
+function loadExample(filename: string): Example {
+  const content = readExample(filename);
+  // Extract description from YAML
+  const descMatch = content.match(/^description:\s*>?\s*\n((?:\s{2,}.+\n?)+)/m);
+  const descSimple = content.match(/^description:\s*(.+)$/m);
+  let description = filename.replace('.yaml', '').replace(/-/g, ' ');
+  if (descMatch) {
+    description = descMatch[1].replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+  } else if (descSimple) {
+    description = descSimple[1].trim();
+  }
+  return { filename, description, content };
+}
+
+const categories = [
+  {
+    title: 'Getting Started',
+    slug: 'getting-started',
+    examples: [
+      loadExample('hello-world.yaml'),
+      loadExample('chained-requests.yaml'),
+      loadExample('conditional-workflow.yaml'),
+    ],
+  },
+  {
+    title: 'AI & LLM',
+    slug: 'ai-llm',
+    examples: [
+      loadExample('fetch-and-summarize.yaml'),
+      loadExample('ai-structured-extraction.yaml'),
+      loadExample('ai-tool-use.yaml'),
+      loadExample('multi-model-comparison.yaml'),
+    ],
+  },
+  {
+    title: 'Data Pipelines',
+    slug: 'data-pipelines',
+    examples: [
+      loadExample('data-pipeline.yaml'),
+      loadExample('db-to-slack.yaml'),
+    ],
+  },
+  {
+    title: 'Integrations',
+    slug: 'integrations',
+    examples: [
+      loadExample('slack-notification.yaml'),
+      loadExample('email-report.yaml'),
+      loadExample('s3-backup.yaml'),
+      loadExample('api-with-auth.yaml'),
+    ],
+  },
+  {
+    title: 'Triggers & Server',
+    slug: 'triggers-server',
+    examples: [
+      loadExample('webhook-processor.yaml'),
+      loadExample('scheduled-health-check.yaml'),
+      loadExample('cron-and-webhook.yaml'),
+    ],
+  },
+  {
+    title: 'Parallel Execution',
+    slug: 'parallel-execution',
+    examples: [
+      loadExample('parallel-fanout.yaml'),
+    ],
+  },
+];
+
+const headings = [
+  ...categories.map((cat) => ({
+    depth: 2,
+    slug: cat.slug,
+    text: cat.title,
+  })),
+];
+---
+
+<Docs title="Examples" headings={headings}>
+  <h1>Examples</h1>
+  <p class="text-on-surface-variant text-lg mb-8">
+    Ready-to-use workflow definitions covering common patterns. Copy any example, adjust the credentials
+    and URLs, and <code class="text-sm bg-surface-container-high px-1.5 py-0.5 rounded">mantle apply</code> it.
+  </p>
+
+  {categories.map((cat) => (
+    <section class="mb-12">
+      <h2 id={cat.slug}>{cat.title}</h2>
+
+      {cat.examples.map((ex) => (
+        <div class="mb-8">
+          <h3 id={ex.filename.replace('.yaml', '')} class="text-base font-semibold text-on-surface mb-1">
+            {ex.filename}
+          </h3>
+          <p class="text-sm text-on-surface-variant mb-3">{ex.description}</p>
+
+          <div class="example-block terminal-block border border-outline-variant bg-surface-container-low overflow-hidden rounded-lg not-prose">
+            <div class="flex items-center gap-2 px-4 py-2 border-b border-outline-variant bg-surface-container-highest">
+              <span class="text-xs text-on-surface-variant font-mono flex-1">{ex.filename}</span>
+              <button class="copy-btn text-xs text-on-surface-variant hover:text-primary font-mono transition-colors cursor-pointer">copy</button>
+              <button class="download-btn text-xs text-on-surface-variant hover:text-primary font-mono transition-colors cursor-pointer" data-filename={ex.filename}>download</button>
+            </div>
+            <div class="p-4 overflow-x-auto max-h-[500px] overflow-y-auto [&_pre]:!m-0 [&_pre]:!p-0 [&_pre]:!bg-transparent [&_pre]:!border-0">
+              <Code code={ex.content} lang="yaml" theme="github-dark" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </section>
+  ))}
+
+  <script is:inline>
+    function initExamplesPage() {
+      document.querySelectorAll('.download-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const block = btn.closest('.example-block');
+          const code = block?.querySelector('code');
+          if (!code) return;
+          const text = code.textContent || '';
+          const filename = btn.getAttribute('data-filename') || 'workflow.yaml';
+          const blob = new Blob([text], { type: 'text/yaml' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          a.click();
+          URL.revokeObjectURL(url);
+        });
+      });
+    }
+    initExamplesPage();
+    document.addEventListener('astro:after-swap', initExamplesPage);
+  </script>
+</Docs>

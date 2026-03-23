@@ -84,6 +84,7 @@ export const docsNav: NavGroup[] = [
   {
     title: 'Resources',
     items: [
+      { title: 'Examples', href: '/docs/examples' },
       { title: 'Comparison', href: '/docs/comparison' },
     ],
   },
