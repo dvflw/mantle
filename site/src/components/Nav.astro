@@ -100,17 +100,23 @@ function initNav() {
     }
   };
 }
-// Defer init until sidebar DOM exists (Nav renders before DocsSidebar)
+// Defer init until sidebar DOM exists (Nav renders before DocsSidebar).
+// Bail after a few frames if sidebar never appears (non-docs pages).
+var _navRetries = 0;
+var _navMaxRetries = 10;
 function deferInitNav() {
   if (document.getElementById('docs-sidebar-mobile')) {
     initNav();
-  } else {
-    // Sidebar not yet in DOM — wait for it
+  } else if (_navRetries < _navMaxRetries) {
+    _navRetries++;
     requestAnimationFrame(deferInitNav);
   }
+  // else: sidebar doesn't exist on this page — stop trying
 }
+_navRetries = 0;
 deferInitNav();
 document.addEventListener('astro:after-swap', function() {
-  requestAnimationFrame(deferInitNav);
+  _navRetries = 0;
+  deferInitNav();
 });
 </script>
