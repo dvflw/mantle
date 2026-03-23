@@ -93,7 +93,7 @@ function isParentActive(item: NavItem): boolean {
 <div id="sidebar-overlay" class="fixed inset-0 z-40 bg-black/50 hidden lg:hidden" aria-hidden="true"></div>
 
 <!-- Mobile sidebar drawer -->
-<aside id="docs-sidebar-mobile" class="fixed top-16 left-0 bottom-14 md:bottom-0 z-50 w-72 bg-surface-container-lowest border-r border-outline-variant transform -translate-x-full transition-transform duration-200 lg:hidden overflow-y-auto">
+<aside id="docs-sidebar-mobile" class="fixed top-16 left-0 z-50 w-72 bg-surface-container-lowest border-r border-outline-variant transform -translate-x-full transition-transform duration-200 lg:hidden overflow-y-auto" style="bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));">
   <nav class="py-6 px-4" aria-label="Documentation sidebar mobile">
     {docsNav.map((group) => (
       <div class="mb-8">
@@ -192,12 +192,9 @@ function initSidebar() {
     overlay.classList.add('hidden');
   }
 
-  const newOverlay = overlay.cloneNode(true);
-  overlay.parentNode?.replaceChild(newOverlay, overlay);
-  newOverlay.addEventListener('click', closeSidebar);
-
+  overlay.onclick = closeSidebar;
   mobileSidebar.querySelectorAll('a').forEach((a) => {
-    a.addEventListener('click', closeSidebar);
+    a.onclick = closeSidebar;
   });
 }
 initSidebar();

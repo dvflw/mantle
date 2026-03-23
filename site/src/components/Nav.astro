@@ -81,11 +81,7 @@ function initNav() {
   const overlay = document.getElementById('sidebar-overlay');
   if (!btn || !docsSidebar || !overlay) return;
 
-  // Remove old listeners by cloning
-  const newBtn = btn.cloneNode(true);
-  btn.parentNode?.replaceChild(newBtn, btn);
-
-  newBtn.addEventListener('click', () => {
+  btn.onclick = () => {
     const isOpen = !docsSidebar.classList.contains('-translate-x-full');
     if (isOpen) {
       docsSidebar.classList.add('-translate-x-full');
@@ -94,7 +90,7 @@ function initNav() {
       docsSidebar.classList.remove('-translate-x-full');
       overlay.classList.remove('hidden');
     }
-  });
+  };
 }
 initNav();
 document.addEventListener('astro:after-swap', initNav);
