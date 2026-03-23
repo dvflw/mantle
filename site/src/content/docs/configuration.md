@@ -256,9 +256,9 @@ Plugins are stored in `.mantle/plugins/` relative to the current working directo
 
 See also:
 
-- [CLI Reference](cli-reference.md) -- flag documentation for every command
-- [Getting Started](getting-started.md) -- setup walkthrough using defaults
-- [Secrets Guide](secrets-guide.md) -- credential encryption, cloud backends, and key rotation
-- [Server Guide](server-guide.md) -- running Mantle as a persistent server with triggers
-- [Plugins Guide](plugins-guide.md) -- writing and managing third-party connector plugins
-- [Observability Guide](observability-guide.md) -- Prometheus metrics, audit trail, and structured logging
+- [CLI Reference](/docs/cli-reference) -- flag documentation for every command
+- [Getting Started](/docs/getting-started) -- setup walkthrough using defaults
+- [Secrets Guide](/docs/secrets-guide) -- credential encryption, cloud backends, and key rotation
+- [Server Guide](/docs/server-guide) -- running Mantle as a persistent server with triggers
+- [Plugins Guide](/docs/plugins-guide) -- writing and managing third-party connector plugins
+- [Observability Guide](/docs/observability-guide) -- Prometheus metrics, audit trail, and structured logging

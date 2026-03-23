@@ -347,8 +347,8 @@ See the [CLI Reference](cli-reference.md#rest-api) for the full API specificatio
 
 ## Further Reading
 
-- [CLI Reference](cli-reference.md#mantle-audit) -- `mantle audit` command and flags
-- [CLI Reference](cli-reference.md#rest-api) -- REST API endpoint documentation
-- [Server Guide](server-guide.md) -- running `mantle serve` with health probes and metrics
-- [Concepts](concepts.md#observability) -- architectural overview of the observability stack
-- [Configuration](configuration.md) -- log level and server address configuration
+- [CLI Reference](/docs/cli-reference/admin-commands) -- `mantle audit` command and flags
+- [Server Commands](/docs/cli-reference/server-commands) -- REST API endpoint documentation
+- [Server Guide](/docs/server-guide) -- running `mantle serve` with health probes and metrics
+- [Concepts](/docs/concepts) -- architectural overview of the observability stack
+- [Configuration](/docs/configuration) -- log level and server address configuration

@@ -1,13 +1,13 @@
 # Deployment Guide
 
-This guide covers installing Mantle, running it in production, and hardening your deployment. For trigger configuration and the REST API, see the [Server Guide](server-guide.md). For authentication setup, see the [Authentication & RBAC Guide](authentication-guide.md).
+This guide covers installing Mantle, running it in production, and hardening your deployment. For trigger configuration and the REST API, see the [Server Guide](/docs/server-guide). For authentication setup, see the [Authentication & RBAC Guide](/docs/authentication-guide).
 
 ## Prerequisites
 
 Before deploying Mantle, you need:
 
 - **Postgres 14+** -- Mantle's single point of state. All workflow definitions, executions, credentials, and audit events live in the database.
-- **Encryption key** -- a 32-byte hex-encoded key for encrypting credentials at rest. See the [Secrets Guide](secrets-guide.md) for details.
+- **Encryption key** -- a 32-byte hex-encoded key for encrypting credentials at rest. See the [Secrets Guide](/docs/secrets-guide) for details.
 - **Domain and TLS** -- required for production. Mantle can terminate TLS directly or run behind a reverse proxy.
 
 ## Installation Methods
@@ -95,7 +95,7 @@ Starting server on :8080
 Cron scheduler started (poll interval: 30s)
 ```
 
-Mantle is now running at `http://localhost:8080`. See the [Getting Started](getting-started.md) guide for your first workflow.
+Mantle is now running at `http://localhost:8080`. See the [Getting Started](/docs/getting-started) guide for your first workflow.
 
 ## Production Deployment (Kubernetes/Helm)
 
@@ -278,7 +278,7 @@ scrape_configs:
       - targets: ["mantle:8080"]
 ```
 
-See the [Observability Guide](observability-guide.md) for metric names, example PromQL queries, and Grafana dashboard configuration.
+See the [Observability Guide](/docs/observability-guide) for metric names, example PromQL queries, and Grafana dashboard configuration.
 
 ### Set Up Database Backups
 
@@ -307,9 +307,9 @@ Do not override these defaults unless you have a specific requirement.
 
 ## Further Reading
 
-- [Getting Started](getting-started.md) -- first workflow in under five minutes
-- [Server Guide](server-guide.md) -- triggers, REST API, graceful shutdown, backup and recovery
-- [Authentication & RBAC Guide](authentication-guide.md) -- API keys, OIDC/SSO, roles, and teams
-- [Secrets Guide](secrets-guide.md) -- credential encryption, cloud backends, key rotation
-- [Configuration](configuration.md) -- full configuration reference
-- [Observability Guide](observability-guide.md) -- Prometheus metrics, audit trail, structured logging
+- [Getting Started](/docs/getting-started) -- first workflow in under five minutes
+- [Server Guide](/docs/server-guide) -- triggers, REST API, graceful shutdown, backup and recovery
+- [Authentication & RBAC Guide](/docs/authentication-guide) -- API keys, OIDC/SSO, roles, and teams
+- [Secrets Guide](/docs/secrets-guide) -- credential encryption, cloud backends, key rotation
+- [Configuration](/docs/configuration) -- full configuration reference
+- [Observability Guide](/docs/observability-guide) -- Prometheus metrics, audit trail, structured logging

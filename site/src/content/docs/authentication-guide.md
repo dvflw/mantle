@@ -2,7 +2,7 @@
 
 Mantle supports two authentication methods: API keys and OIDC/SSO (JWT). Both resolve to the same User model with team scoping. This guide covers setting up authentication, configuring roles, and managing teams.
 
-For CLI flag details, see the [CLI Reference](cli-reference.md). For the server endpoints that require authentication, see the [Server Guide](server-guide.md).
+For CLI flag details, see the [CLI Reference](/docs/cli-reference). For the server endpoints that require authentication, see the [Server Guide](/docs/server-guide).
 
 ## Authentication Methods at a Glance
 
@@ -289,7 +289,7 @@ Every database query is scoped by `team_id`. This means:
 
 When Mantle starts without any teams configured, it operates in single-tenant mode. A `default` team is created automatically during `mantle init`. All users and data belong to this team unless you explicitly create additional teams.
 
-Single-tenant mode is the starting point described in the [Getting Started](getting-started.md) guide. You can migrate to multi-tenant mode at any time by creating teams and reassigning users.
+Single-tenant mode is the starting point described in the [Getting Started](/docs/getting-started) guide. You can migrate to multi-tenant mode at any time by creating teams and reassigning users.
 
 ## REST API Authentication
 
@@ -331,8 +331,8 @@ Requests with missing, expired, or revoked tokens receive a 401 Unauthorized res
 
 ## Further Reading
 
-- [CLI Reference](cli-reference.md) -- full flag documentation for auth, users, teams, and roles commands
-- [Server Guide](server-guide.md) -- production deployment and REST API
-- [Configuration](configuration.md) -- all auth-related configuration options and environment variables
-- [Secrets Guide](secrets-guide.md) -- credential storage and encryption (separate from authentication)
-- [Observability Guide](observability-guide.md) -- audit trail for authentication events
+- [CLI Reference](/docs/cli-reference) -- full flag documentation for auth, users, teams, and roles commands
+- [Server Guide](/docs/server-guide) -- production deployment and REST API
+- [Configuration](/docs/configuration) -- all auth-related configuration options and environment variables
+- [Secrets Guide](/docs/secrets-guide) -- credential storage and encryption (separate from authentication)
+- [Observability Guide](/docs/observability-guide) -- audit trail for authentication events

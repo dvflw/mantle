@@ -405,7 +405,7 @@ This should display all credentials with their names and types. If the key is wr
 
 ## Further Reading
 
-- [CLI Reference](cli-reference.md) -- full flag documentation for all secrets commands
-- [Workflow Reference](workflow-reference.md) -- the `credential` field on steps and all connectors
-- [Configuration](configuration.md) -- setting `encryption.key`, `MANTLE_ENCRYPTION_KEY`, and cloud backend env vars
-- [Concepts](concepts.md) -- how credential resolution fits into the engine architecture
+- [CLI Reference](/docs/cli-reference/admin-commands) -- full flag documentation for all secrets commands
+- [Workflow Reference](/docs/workflow-reference) -- the `credential` field on steps and all connectors
+- [Configuration](/docs/configuration) -- setting `encryption.key`, `MANTLE_ENCRYPTION_KEY`, and cloud backend env vars
+- [Concepts](/docs/concepts/security) -- how credential resolution fits into the engine architecture
