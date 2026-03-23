@@ -273,10 +273,11 @@ func listExecutions(cmd *cobra.Command) error {
 	}
 
 	// Build query dynamically with parameterized filters.
+	teamID := auth.TeamIDFromContext(cmd.Context())
 	query := `SELECT id, workflow_name, workflow_version, status, started_at, completed_at
-		 FROM workflow_executions WHERE 1=1`
-	params := []any{}
-	paramIdx := 1
+		 FROM workflow_executions WHERE team_id = $1`
+	params := []any{teamID}
+	paramIdx := 2
 
 	if workflow != "" {
 		query += " AND workflow_name = $" + strconv.Itoa(paramIdx)

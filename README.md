@@ -218,4 +218,4 @@ Mantle is being built in phases:
 
 ## License
 
-BSL/SSPL-style — source available, no commercial resale of forks.
+Licensed under the [Business Source License 1.1](LICENSE). Production use is permitted; commercial resale as a workflow-as-a-service is not. Converts to Apache 2.0 on 2030-03-22.

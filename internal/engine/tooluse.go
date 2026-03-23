@@ -147,12 +147,25 @@ func (e *Engine) executeToolUseStep(ctx context.Context, execID string, step wor
 		delete(resolvedParams, "system_prompt")
 	}
 
+	// Read token budget from step params or use engine default.
+	var maxTokenBudget int
+	if v, ok := resolvedParams["max_token_budget"]; ok {
+		if n, ok := toInt(v); ok && n > 0 {
+			maxTokenBudget = n
+		}
+	}
+
+	// Shared token counter across retries (caller should allocate once per retry loop).
+	var cumulativeTokens int64
+
 	// Create the ToolLoop.
 	toolLoop := &connector.ToolLoop{
 		AIExecute:        func(ctx context.Context, params map[string]any) (map[string]any, error) { return aiConn.Execute(ctx, params) },
 		ToolExecutor:     toolExecutor,
 		MaxRounds:        maxRounds,
 		MaxCallsPerRound: maxCallsPerRound,
+		MaxTokenBudget:   maxTokenBudget,
+		CumulativeTokens: &cumulativeTokens,
 		OnLLMResponse: func(response map[string]any) error {
 			return toolSteps.CacheLLMResponse(ctx, parentStepID, response)
 		},

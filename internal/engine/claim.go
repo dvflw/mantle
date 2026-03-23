@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"github.com/dvflw/mantle/internal/auth"
 )
 
 // StepClaim represents a successfully claimed step execution.
@@ -90,15 +92,17 @@ func (c *Claimer) ClaimAnyStep(ctx context.Context) (*StepClaim, string, error) 
 	var claim StepClaim
 	var executionID string
 	err = tx.QueryRowContext(ctx, `
-		SELECT id, execution_id, step_name, attempt
-		FROM step_executions
-		WHERE status = 'pending'
-		  AND claimed_by IS NULL
-		  AND parent_step_id IS NULL
-		ORDER BY created_at ASC
+		SELECT se.id, se.execution_id, se.step_name, se.attempt
+		FROM step_executions se
+		JOIN workflow_executions we ON se.execution_id = we.id
+		WHERE se.status = 'pending'
+		  AND se.claimed_by IS NULL
+		  AND se.parent_step_id IS NULL
+		  AND we.team_id = $1
+		ORDER BY se.created_at ASC
 		LIMIT 1
-		FOR UPDATE SKIP LOCKED
-	`).Scan(&claim.ID, &executionID, &claim.StepName, &claim.Attempt)
+		FOR UPDATE OF se SKIP LOCKED
+	`, auth.TeamIDFromContext(ctx)).Scan(&claim.ID, &executionID, &claim.StepName, &claim.Attempt)
 	if err == sql.ErrNoRows {
 		return nil, "", nil
 	}
