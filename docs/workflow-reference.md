@@ -261,7 +261,7 @@ if: "steps.summarize.output.key_points.size() > 0"
 Boolean logic:
 
 ```yaml
-if: "inputs.verbose == true && steps.fetch-data.output.status_code == 200"
+if: "inputs.verbose == true && steps.fetch-data.output.status == 200"
 ```
 
 String operations:
@@ -295,9 +295,10 @@ Makes an HTTP request.
 
 | Field | Type | Description |
 |---|---|---|
-| `status_code` | number | HTTP response status code. |
+| `status` | number | HTTP response status code. |
 | `headers` | map | Response headers. |
-| `body` | any | Response body. JSON responses are parsed into objects. |
+| `body` | string | Raw response body as a string. |
+| `json` | any | Parsed response body. Only present when the response is valid JSON. |
 
 **Example:**
 
@@ -323,8 +324,10 @@ Sends a prompt to an OpenAI-compatible chat completion API and returns the resul
 
 | Param | Type | Required | Description |
 |---|---|---|---|
-| `model` | string | Yes | Model name (e.g., `gpt-4o`, `gpt-4o-mini`). |
+| `provider` | string | No | AI provider to use: `openai` (default) or `bedrock`. |
+| `model` | string | Yes | Model name (e.g., `gpt-4o`, `gpt-4o-mini`, `anthropic.claude-3-sonnet-20240229-v1:0`). |
 | `prompt` | string | Yes | The user prompt to send. |
+| `region` | string | No | AWS region for the Bedrock provider (e.g., `us-east-1`). Only used when `provider` is `bedrock`. |
 | `system_prompt` | string | No | System message prepended to the conversation. |
 | `output_schema` | object | No | JSON Schema for structured output. When set, the model returns JSON conforming to this schema. |
 | `base_url` | string | No | Override the API base URL. Defaults to `https://api.openai.com/v1`. Use this for OpenAI-compatible providers like Azure, Ollama, or local models. |
@@ -396,6 +399,21 @@ The structured output is available as `steps.extract-entities.output.json.people
     base_url: http://localhost:11434/v1
     prompt: "Explain this error: {{ steps.fetch-logs.output.body }}"
 ```
+
+**Example -- AWS Bedrock:**
+
+```yaml
+- name: summarize
+  action: ai/completion
+  credential: aws-bedrock-creds
+  params:
+    provider: bedrock
+    model: anthropic.claude-3-sonnet-20240229-v1:0
+    region: us-east-1
+    prompt: "Summarize: {{ steps.fetch.output.body }}"
+```
+
+When running on AWS infrastructure with an IAM role attached (IRSA, instance profile, etc.), the `credential` field can be omitted -- the Bedrock provider uses the standard AWS credential chain automatically.
 
 **Authentication:** The AI connector reads the credential's `api_key` field (or `token` or `key` as fallbacks) and sends it as a Bearer token. If the credential includes an `org_id` field, it is sent as the `OpenAI-Organization` header. See the [Secrets Guide](secrets-guide.md) for how to create an `openai`-type credential.
 
