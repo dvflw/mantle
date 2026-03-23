@@ -2,45 +2,15 @@
 
 /* ── View Transitions ────────────────────────────────────────────── */
 
-/* Instant swap on the root — no fade, no flash */
-::view-transition-old(root),
-::view-transition-new(root) {
+/* Kill ALL view transition animations — instant swap, no visual artifacts */
+::view-transition-group(*),
+::view-transition-old(*),
+::view-transition-new(*) {
   animation: none !important;
-  mix-blend-mode: normal;
-}
-
-/* Shell elements stay completely static — no transition */
-::view-transition-old(nav),
-::view-transition-new(nav),
-::view-transition-old(sidebar),
-::view-transition-new(sidebar) {
-  animation: none !important;
-}
-
-/* Content area gets a subtle slide-up transition */
-::view-transition-old(docs-content) {
-  animation: vt-fade-out 150ms ease-out both;
-}
-::view-transition-new(docs-content) {
-  animation: vt-fade-in 150ms ease-in 50ms both;
-}
-
-@keyframes vt-fade-out {
-  to { opacity: 0; transform: translateY(-4px); }
-}
-@keyframes vt-fade-in {
-  from { opacity: 0; transform: translateY(4px); }
 }
 
 /* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  ::view-transition-old(docs-content),
-  ::view-transition-new(docs-content),
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
-    animation: none !important;
-  }
-
   [data-animate] {
     opacity: 1 !important;
     transform: none !important;
