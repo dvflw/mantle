@@ -100,6 +100,13 @@ body {
   color: var(--color-on-primary);
 }
 
+/* Bottom padding for fixed mobile nav — applied globally so all pages clear it */
+@media (max-width: 1023px) {
+  body {
+    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 /* Blinking cursor animation */
 @keyframes blink {
   0%, 50% { opacity: 1; }

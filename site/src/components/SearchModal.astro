@@ -68,28 +68,28 @@
     if (modal) modal.classList.add('hidden');
   }
 
-  // Sanitize Pagefind excerpt: strip all HTML except <mark> tags
+  // Recursively sanitize Pagefind excerpt: preserve only <mark> tags, strip everything else
   function sanitizeExcerpt(html) {
-    var tmp = document.createElement('div');
-    tmp.textContent = '';
-    // Parse into a temporary element to strip tags
     var parser = new DOMParser();
     var doc = parser.parseFromString(html, 'text/html');
-    var walker = doc.body.childNodes;
-    for (var i = 0; i < walker.length; i++) {
-      var node = walker[i];
-      if (node.nodeType === 3) {
-        tmp.appendChild(document.createTextNode(node.textContent));
-      } else if (node.nodeType === 1 && node.tagName === 'MARK') {
-        var mark = document.createElement('mark');
-        mark.setAttribute('data-pagefind-highlight', '');
-        mark.textContent = node.textContent;
-        tmp.appendChild(mark);
-      } else {
-        tmp.appendChild(document.createTextNode(node.textContent || ''));
+    var container = document.createElement('div');
+    function walk(parent, target) {
+      for (var i = 0; i < parent.childNodes.length; i++) {
+        var node = parent.childNodes[i];
+        if (node.nodeType === 3) {
+          target.appendChild(document.createTextNode(node.textContent));
+        } else if (node.nodeType === 1 && node.tagName === 'MARK') {
+          var mark = document.createElement('mark');
+          mark.setAttribute('data-pagefind-highlight', '');
+          walk(node, mark);
+          target.appendChild(mark);
+        } else if (node.nodeType === 1) {
+          walk(node, target);
+        }
       }
     }
-    return tmp;
+    walk(doc.body, container);
+    return container;
   }
 
   document.addEventListener('keydown', function(e) {
@@ -109,6 +109,7 @@
   });
 
   var debounceTimer;
+  var searchRequestId = 0;
   document.addEventListener('input', function(e) {
     if (!e.target || !e.target.hasAttribute('data-search-input')) return;
     clearTimeout(debounceTimer);
@@ -123,6 +124,8 @@
         return;
       }
 
+      var thisRequestId = ++searchRequestId;
+
       loadPagefind().then(function(pf) {
         if (!pf) {
           setResultsText('Search unavailable (build required)');
@@ -130,6 +133,7 @@
         }
 
         pf.search(query).then(function(search) {
+          if (thisRequestId !== searchRequestId) return; // stale response
           if (search.results.length === 0) {
             setResultsText('No results for "' + query + '"');
             return;
@@ -137,6 +141,7 @@
 
           Promise.all(search.results.slice(0, 8).map(function(r) { return r.data(); }))
             .then(function(items) {
+              if (thisRequestId !== searchRequestId) return; // stale response
               while (results.firstChild) results.removeChild(results.firstChild);
               items.forEach(function(item) {
                 var link = document.createElement('a');
