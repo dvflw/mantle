@@ -85,7 +85,7 @@ mantle run hello-world
 | Postgres | `postgres/query` | Parameterized SQL against external databases |
 | S3 | `s3/put`, `s3/get`, `s3/list` | Put, get, list objects (S3-compatible) |
 
-Need something else? Write a [plugin](https://mantle.dvflw.co/docs/plugins). Any executable that reads JSON from stdin and writes JSON to stdout -- Python, Rust, Node, Bash.
+Need something else? Write a [plugin](https://mantle.dvflw.co/docs/plugins-guide). Any executable that reads JSON from stdin and writes JSON to stdout -- Python, Rust, Node, Bash.
 
 ## CLI Reference
 
@@ -204,7 +204,7 @@ make clean      # Remove built binary
 
 ## Contributing
 
-Contributions are welcome. Please open an issue first to discuss what you want to change. See the [Contributing guide](https://mantle.dvflw.co/docs/contributing) for details.
+Contributions are welcome. Please open an issue first to discuss what you want to change. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ## License
 

@@ -4,7 +4,7 @@ interface Props {
 }
 const { isHome = false } = Astro.props;
 const prefix = isHome ? '' : '/';
-const isDocs = Astro.url.pathname.startsWith('/docs');
+const isDocs = Astro.url.pathname === '/docs' || Astro.url.pathname.startsWith('/docs/');
 ---
 <nav aria-label="Main navigation" class="fixed top-0 left-0 right-0 z-50 border-b border-outline-variant bg-surface/80 backdrop-blur-md">
   <div class={`nav-inner mx-auto px-6 flex items-center justify-between h-16 ${isHome ? 'max-w-[1200px]' : 'max-w-[1280px]'}`}>
@@ -87,17 +87,30 @@ function initNav() {
     const isOpen = !docsSidebar.classList.contains('-translate-x-full');
     if (isOpen) {
       docsSidebar.classList.add('-translate-x-full');
-      overlay.classList.add('hidden');
-      overlay.setAttribute('aria-hidden', 'true');
+      docsSidebar.setAttribute('aria-hidden', 'true');
+      docsSidebar.inert = true;
+      if (overlay) { overlay.classList.add('hidden'); overlay.setAttribute('aria-hidden', 'true'); }
       btn.setAttribute('aria-expanded', 'false');
     } else {
       docsSidebar.classList.remove('-translate-x-full');
-      overlay.classList.remove('hidden');
-      overlay.setAttribute('aria-hidden', 'false');
+      docsSidebar.setAttribute('aria-hidden', 'false');
+      docsSidebar.inert = false;
+      if (overlay) { overlay.classList.remove('hidden'); overlay.setAttribute('aria-hidden', 'false'); }
       btn.setAttribute('aria-expanded', 'true');
     }
   };
 }
-initNav();
-document.addEventListener('astro:after-swap', initNav);
+// Defer init until sidebar DOM exists (Nav renders before DocsSidebar)
+function deferInitNav() {
+  if (document.getElementById('docs-sidebar-mobile')) {
+    initNav();
+  } else {
+    // Sidebar not yet in DOM — wait for it
+    requestAnimationFrame(deferInitNav);
+  }
+}
+deferInitNav();
+document.addEventListener('astro:after-swap', function() {
+  requestAnimationFrame(deferInitNav);
+});
 </script>
