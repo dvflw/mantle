@@ -190,6 +190,9 @@ function initSidebar() {
   function closeSidebar() {
     mobileSidebar.classList.add('-translate-x-full');
     overlay.classList.add('hidden');
+    overlay.setAttribute('aria-hidden', 'true');
+    var menuBtn = document.getElementById('bottom-nav-docs-btn');
+    if (menuBtn) menuBtn.setAttribute('aria-expanded', 'false');
   }
 
   overlay.onclick = closeSidebar;
