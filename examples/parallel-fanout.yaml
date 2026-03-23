@@ -1,0 +1,36 @@
+name: parallel-processing
+description: Demonstrates parallel step execution with depends_on
+
+steps:
+  - name: fetch-data
+    action: http/request
+    params:
+      method: GET
+      url: "https://jsonplaceholder.typicode.com/posts/1"
+
+  - name: analyze-sentiment
+    action: ai/completion
+    credential: openai-key
+    depends_on: [fetch-data]
+    params:
+      model: gpt-4o-mini
+      prompt: "Analyze the sentiment of: {{ steps.fetch-data.output.json.body }}"
+
+  - name: extract-keywords
+    action: ai/completion
+    credential: openai-key
+    depends_on: [fetch-data]
+    params:
+      model: gpt-4o-mini
+      prompt: "Extract 5 keywords from: {{ steps.fetch-data.output.json.body }}"
+
+  - name: summarize
+    action: ai/completion
+    credential: openai-key
+    depends_on: [analyze-sentiment, extract-keywords]
+    params:
+      model: gpt-4o-mini
+      prompt: |
+        Combine these analyses into a brief report:
+        Sentiment: {{ steps.analyze-sentiment.output.text }}
+        Keywords: {{ steps.extract-keywords.output.text }}

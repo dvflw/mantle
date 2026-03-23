@@ -46,6 +46,7 @@ func newServeCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("creating engine: %w", err)
 			}
+			eng.MaxToolRoundsLimit = cfg.Engine.MaxToolRoundsLimit
 
 			// Configure AWS defaults for AI (Bedrock) and S3 connectors.
 			if aiConn, err := eng.Registry.Get("ai/completion"); err == nil {
@@ -55,6 +56,7 @@ func newServeCommand() *cobra.Command {
 						ai.AWSConfigFunc = connector.NewAWSConfig
 					}
 					ai.AllowedBaseURLs = cfg.Engine.AllowedBaseURLs
+					ai.AllowedModels = cfg.Engine.AllowedModels
 				}
 			}
 

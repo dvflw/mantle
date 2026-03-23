@@ -1,0 +1,38 @@
+name: research-assistant
+description: AI agent that searches the web and summarizes findings
+
+inputs:
+  - name: topic
+    type: string
+    description: Research topic
+
+steps:
+  - name: research
+    action: ai/completion
+    credential: openai-key
+    params:
+      model: gpt-4o
+      system_prompt: |
+        You are a research assistant. Use the search tool to find information,
+        then synthesize your findings into a concise summary.
+      prompt: "Research this topic: {{ inputs.topic }}"
+      max_rounds: 5
+      tools:
+        - name: web_search
+          description: Search the web for information on a topic
+          action: http/request
+          input_schema:
+            type: object
+            properties:
+              query:
+                type: string
+                description: Search query
+            required: [query]
+          params:
+            method: GET
+            url: "https://api.duckduckgo.com/"
+            headers:
+              Accept: application/json
+            query_params:
+              q: "{{ inputs.tool_input.query }}"
+              format: json

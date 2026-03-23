@@ -17,6 +17,8 @@ Mantle gives you an IaC-style lifecycle for AI-powered workflows: **validate** o
 
 ## Quick Start
 
+> **Want to skip the manual steps?** Run `./examples/quickstart.sh` for an automated setup.
+
 ### Prerequisites
 
 - Go 1.25+

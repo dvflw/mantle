@@ -18,6 +18,7 @@ type AIConnector struct {
 	AWSConfigFunc   func(ctx context.Context, cred map[string]string, defaultRegion string) (aws.Config, error)
 	DefaultRegion   string
 	AllowedBaseURLs []string
+	AllowedModels   []string // empty = all models allowed
 }
 
 func (c *AIConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
@@ -37,6 +38,20 @@ func (c *AIConnector) Execute(ctx context.Context, params map[string]any) (map[s
 	}
 
 	model := req.Model
+
+	// Enforce model allowlist if configured.
+	if len(c.AllowedModels) > 0 {
+		allowed := false
+		for _, m := range c.AllowedModels {
+			if m == model {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return nil, fmt.Errorf("ai/completion: model %q not in allowed list", model)
+		}
+	}
 	workflow, _ := params["_workflow"].(string)
 	step, _ := params["_step"].(string)
 

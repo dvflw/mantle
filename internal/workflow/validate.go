@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
+	mantleCEL "github.com/dvflw/mantle/internal/cel"
 	"gopkg.in/yaml.v3"
 )
 
@@ -70,6 +72,22 @@ func Validate(result *ParseResult) []ValidationError {
 			errs = append(errs, ValidationError{
 				Field:   fmt.Sprintf("inputs.%s.type", name),
 				Message: fmt.Sprintf("type must be one of: string, number, boolean (got %q)", inp.Type),
+			})
+		}
+	}
+
+	// Validate workflow-level timeout.
+	if w.Timeout != "" {
+		d, err := time.ParseDuration(w.Timeout)
+		if err != nil {
+			errs = append(errs, ValidationError{
+				Field:   "timeout",
+				Message: fmt.Sprintf("invalid duration: %v", err),
+			})
+		} else if d <= 0 {
+			errs = append(errs, ValidationError{
+				Field:   "timeout",
+				Message: "timeout must be a positive duration",
 			})
 		}
 	}
@@ -230,6 +248,27 @@ func Validate(result *ParseResult) []ValidationError {
 		}
 	}
 
+	// Validate CEL expression syntax in step params and if conditions.
+	celEval, celErr := mantleCEL.NewEvaluator()
+	if celErr == nil {
+		for i, step := range w.Steps {
+			prefix := fmt.Sprintf("steps[%d]", i)
+
+			// Check if condition.
+			if step.If != "" {
+				if err := celEval.CompileCheck(step.If); err != nil {
+					errs = append(errs, ValidationError{
+						Field:   prefix + ".if",
+						Message: fmt.Sprintf("invalid CEL expression: %v", err),
+					})
+				}
+			}
+
+			// Check params recursively.
+			errs = append(errs, validateCELInParams(celEval, step.Params, prefix+".params")...)
+		}
+	}
+
 	return errs
 }
 
@@ -306,6 +345,65 @@ func toInt(v any) (int, bool) {
 		return int(n), true
 	}
 	return 0, false
+}
+
+// validateCELInParams recursively walks a params map and validates any CEL
+// expressions found inside {{ }} delimiters.
+func validateCELInParams(eval *mantleCEL.Evaluator, params map[string]any, prefix string) []ValidationError {
+	var errs []ValidationError
+	for k, v := range params {
+		field := prefix + "." + k
+		errs = append(errs, validateCELInValue(eval, v, field)...)
+	}
+	return errs
+}
+
+// validateCELInValue recursively checks a value for embedded CEL expressions.
+func validateCELInValue(eval *mantleCEL.Evaluator, v any, field string) []ValidationError {
+	var errs []ValidationError
+	switch val := v.(type) {
+	case string:
+		for _, expr := range extractCELExpressions(val) {
+			if err := eval.CompileCheck(expr); err != nil {
+				errs = append(errs, ValidationError{
+					Field:   field,
+					Message: fmt.Sprintf("invalid CEL expression %q: %v", expr, err),
+				})
+			}
+		}
+	case map[string]any:
+		for k, child := range val {
+			errs = append(errs, validateCELInValue(eval, child, field+"."+k)...)
+		}
+	case []any:
+		for i, item := range val {
+			errs = append(errs, validateCELInValue(eval, item, fmt.Sprintf("%s[%d]", field, i))...)
+		}
+	}
+	return errs
+}
+
+// extractCELExpressions extracts CEL expressions from {{ }} delimiters in a string.
+func extractCELExpressions(s string) []string {
+	var exprs []string
+	remaining := s
+	for {
+		start := strings.Index(remaining, "{{")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(remaining[start:], "}}")
+		if end == -1 {
+			break
+		}
+		end += start
+		expr := strings.TrimSpace(remaining[start+2 : end])
+		if expr != "" {
+			exprs = append(exprs, expr)
+		}
+		remaining = remaining[end+2:]
+	}
+	return exprs
 }
 
 // findFieldPosition searches the root mapping node for a top-level key and

@@ -191,19 +191,6 @@ func (p *BedrockProvider) ChatCompletion(ctx context.Context, req *ChatRequest) 
 	return resp, nil
 }
 
-// RetryableError wraps an error to indicate the caller should retry.
-type RetryableError struct {
-	Err error
-}
-
-func (e *RetryableError) Error() string {
-	return fmt.Sprintf("retryable: %v", e.Err)
-}
-
-func (e *RetryableError) Unwrap() error {
-	return e.Err
-}
-
 // classifyBedrockError maps AWS Bedrock errors into retryable vs non-retryable.
 func classifyBedrockError(err error) error {
 	// Log the full error server-side for debugging.

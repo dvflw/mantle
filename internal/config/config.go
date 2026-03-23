@@ -106,6 +106,8 @@ type EngineConfig struct {
 	DefaultMaxToolRounds        int           `mapstructure:"default_max_tool_rounds"`
 	DefaultMaxToolCallsPerRound int           `mapstructure:"default_max_tool_calls_per_round"`
 	AllowedBaseURLs             []string      `mapstructure:"allowed_base_urls"`
+	AllowedModels               []string      `mapstructure:"allowed_models"`       // empty = all allowed
+	MaxToolRoundsLimit          int           `mapstructure:"max_tool_rounds_limit"` // 0 = no limit
 }
 
 type contextKey struct{}
@@ -210,6 +212,8 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	_ = v.BindEnv("engine.default_max_tool_rounds", "MANTLE_ENGINE_DEFAULT_MAX_TOOL_ROUNDS")
 	_ = v.BindEnv("engine.default_max_tool_calls_per_round", "MANTLE_ENGINE_DEFAULT_MAX_TOOL_CALLS_PER_ROUND")
 	_ = v.BindEnv("engine.allowed_base_urls", "MANTLE_ENGINE_ALLOWED_BASE_URLS")
+	_ = v.BindEnv("engine.allowed_models", "MANTLE_ENGINE_ALLOWED_MODELS")
+	_ = v.BindEnv("engine.max_tool_rounds_limit", "MANTLE_ENGINE_MAX_TOOL_ROUNDS_LIMIT")
 
 	// CLI flag binding
 	if f := cmd.Flags().Lookup("database-url"); f != nil {

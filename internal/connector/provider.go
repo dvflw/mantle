@@ -1,6 +1,9 @@
 package connector
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 // LLMProvider implements a specific AI provider's chat completion API.
 type LLMProvider interface {
@@ -49,4 +52,17 @@ type ChatUsage struct {
 	PromptTokens     int
 	CompletionTokens int
 	TotalTokens      int
+}
+
+// RetryableError wraps an error to indicate the caller should retry.
+type RetryableError struct {
+	Err error
+}
+
+func (e *RetryableError) Error() string {
+	return fmt.Sprintf("retryable: %v", e.Err)
+}
+
+func (e *RetryableError) Unwrap() error {
+	return e.Err
 }
