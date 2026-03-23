@@ -53,10 +53,15 @@
     r.appendChild(p);
   }
 
+  var previousFocus = null;
+  var searchRequestId = 0;
+
   function openSearch() {
     var modal = getModal();
     var input = getInput();
     if (!modal || !input) return;
+    previousFocus = document.activeElement;
+    searchRequestId++; // invalidate any pending requests
     modal.classList.remove('hidden');
     input.value = '';
     input.focus();
@@ -66,7 +71,37 @@
   function closeSearch() {
     var modal = getModal();
     if (modal) modal.classList.add('hidden');
+    searchRequestId++; // invalidate any pending requests
+    if (previousFocus && previousFocus.focus) {
+      previousFocus.focus();
+      previousFocus = null;
+    }
   }
+
+  // Trap focus inside the modal when open
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Tab') return;
+    var modal = getModal();
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    var focusable = modal.querySelectorAll('input, a, button, [tabindex]:not([tabindex="-1"])');
+    if (focusable.length === 0) return;
+
+    var first = focusable[0];
+    var last = focusable[focusable.length - 1];
+
+    if (e.shiftKey) {
+      if (document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      if (document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  });
 
   // Recursively sanitize Pagefind excerpt: preserve only <mark> tags, strip everything else
   function sanitizeExcerpt(html) {
@@ -109,7 +144,6 @@
   });
 
   var debounceTimer;
-  var searchRequestId = 0;
   document.addEventListener('input', function(e) {
     if (!e.target || !e.target.hasAttribute('data-search-input')) return;
     clearTimeout(debounceTimer);
