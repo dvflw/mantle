@@ -224,7 +224,7 @@ The timeout must be a positive duration. `0s` and negative values are invalid.
 
 ## CEL Expressions
 
-Mantle uses [CEL (Common Expression Language)](https://github.com/google/cel-go) for conditional logic and data access between steps. CEL expressions appear in two places:
+Mantle uses [CEL (Common Expression Language)](https://cel.dev) for conditional logic and data access between steps. See the [Expressions guide](/docs/concepts/expressions) for practical examples. CEL expressions appear in two places:
 
 1. **`if` fields** -- determine whether a step runs
 2. **Template strings in `params`** -- reference data from inputs and previous steps using `{{ expression }}` syntax
