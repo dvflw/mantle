@@ -19,7 +19,7 @@ const (
 // executeToolUseStep handles AI steps that declare tools. It wires the ToolLoop,
 // ToolSteps (for crash recovery), and the connector registry together to drive
 // a multi-turn LLM-tool interaction loop with DB-backed checkpointing.
-func (e *Engine) executeToolUseStep(ctx context.Context, execID string, step workflow.Step, celCtx *mantleCEL.Context, tools []workflow.Tool) (map[string]any, error) {
+func (e *Engine) executeToolUseStep(ctx context.Context, execID string, step workflow.Step, celCtx *mantleCEL.Context, tools []workflow.Tool, workflowName string) (map[string]any, error) {
 	// Look up the parent step's DB row ID for sub-step creation.
 	parentStepID, err := e.getStepID(ctx, execID, step.Name)
 	if err != nil {
@@ -62,6 +62,10 @@ func (e *Engine) executeToolUseStep(ctx context.Context, execID string, step wor
 		}
 		resolvedParams["_credential"] = credData
 	}
+
+	// Inject workflow/step context for AI observability metrics.
+	resolvedParams["_workflow"] = workflowName
+	resolvedParams["_step"] = step.Name
 
 	// Inject OpenAI-format tools into params.
 	resolvedParams["_tools"] = openaiTools

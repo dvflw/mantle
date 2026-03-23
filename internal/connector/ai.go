@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
+	"github.com/dvflw/mantle/internal/metrics"
 )
 
 // AIConnector dispatches chat completion requests to the appropriate LLMProvider.
@@ -34,9 +36,24 @@ func (c *AIConnector) Execute(ctx context.Context, params map[string]any) (map[s
 		return nil, fmt.Errorf("ai/completion: %w", err)
 	}
 
+	model := req.Model
+	workflow, _ := params["_workflow"].(string)
+	step, _ := params["_step"].(string)
+
+	start := time.Now()
 	resp, err := provider.ChatCompletion(ctx, req)
+	duration := time.Since(start).Seconds()
+
+	// Record metrics.
+	metrics.AIRequestDuration.WithLabelValues(workflow, step, model, providerName).Observe(duration)
 	if err != nil {
+		metrics.AIRequestsTotal.WithLabelValues(workflow, step, model, providerName, "error").Inc()
 		return nil, fmt.Errorf("ai/completion: %w", err)
+	}
+	if resp != nil {
+		metrics.AITokensTotal.WithLabelValues(workflow, step, model, providerName, "prompt").Add(float64(resp.Usage.PromptTokens))
+		metrics.AITokensTotal.WithLabelValues(workflow, step, model, providerName, "completion").Add(float64(resp.Usage.CompletionTokens))
+		metrics.AIRequestsTotal.WithLabelValues(workflow, step, model, providerName, "success").Inc()
 	}
 
 	return chatResponseToOutput(resp), nil

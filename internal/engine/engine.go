@@ -204,7 +204,7 @@ func (e *Engine) executeStep(ctx context.Context, execID string, workflowName st
 	})
 
 	// Delegate to the shared step logic (connector lookup, CEL resolution, retry).
-	output, lastErr := e.executeStepLogic(ctx, execID, step, celCtx)
+	output, lastErr := e.executeStepLogic(ctx, execID, step, celCtx, workflowName)
 
 	if lastErr != nil {
 		errMsg := lastErr.Error()
@@ -279,7 +279,7 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 	if step.Action == "ai/completion" {
 		tools, _ := workflow.ParseTools(step.Params)
 		if len(tools) > 0 {
-			return e.executeToolUseStep(ctx, execID, step, celCtx, tools)
+			return e.executeToolUseStep(ctx, execID, step, celCtx, tools, workflowName)
 		}
 	}
 
@@ -346,7 +346,7 @@ func (e *Engine) MakeStepExecutor(wf *workflow.Workflow, execID string, celCtx *
 		if step == nil {
 			return nil, fmt.Errorf("step %q not found in workflow", stepName)
 		}
-		output, err := e.executeStepLogic(ctx, execID, *step, celCtx)
+		output, err := e.executeStepLogic(ctx, execID, *step, celCtx, wf.Name)
 		if err != nil {
 			return output, err
 		}
@@ -417,7 +417,7 @@ func (e *Engine) MakeGlobalStepExecutor() StepExecutor {
 			celCtx.Steps[name] = map[string]any{"output": output}
 		}
 
-		output, err := e.executeStepLogic(ctx, execID, *step, celCtx)
+		output, err := e.executeStepLogic(ctx, execID, *step, celCtx, workflowName)
 		if err != nil {
 			return output, err
 		}
