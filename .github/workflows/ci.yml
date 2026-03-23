@@ -37,7 +37,7 @@ jobs:
           go-version: '1.25'
       - uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.62.2
+          version: v2.1.6
 
   govulncheck:
     name: Govulncheck
@@ -57,6 +57,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: securego/gosec@v2.21.4
+      - uses: actions/setup-go@v5
         with:
-          args: ./...
+          go-version: '1.25'
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+      - name: Run gosec
+        run: gosec ./...
