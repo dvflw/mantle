@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mantle — Enterprise AI Workflow Automation</title>
+  <meta name="description" content="Headless AI workflow automation platform. Your keys, your infrastructure, your control. BYOK, IaC-first, enterprise-grade, open source.">
+  <style>
+    /* ===== Custom Properties ===== */
+    :root {
+      --color-primary: #0a2540;
+      --color-primary-light: #1a3a5c;
+      --color-accent: #0066ff;
+      --color-accent-hover: #0052cc;
+      --color-accent-subtle: #e8f0fe;
+      --color-surface: #ffffff;
+      --color-surface-alt: #f7f9fc;
+      --color-surface-elevated: #ffffff;
+      --color-border: #e2e8f0;
+      --color-border-light: #f0f3f7;
+      --color-text: #0a2540;
+      --color-text-secondary: #506680;
+      --color-text-tertiary: #8898aa;
+      --color-success: #00a67e;
+      --color-success-bg: #e6f9f3;
+      --color-code-bg: #0d1b2a;
+      --color-code-text: #a4cdfe;
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      --font-mono: 'SF Mono', SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+      --shadow-sm: 0 1px 3px rgba(10, 37, 64, 0.06);
+      --shadow-md: 0 4px 16px rgba(10, 37, 64, 0.08);
+      --shadow-lg: 0 8px 32px rgba(10, 37, 64, 0.1);
+      --shadow-xl: 0 16px 48px rgba(10, 37, 64, 0.12);
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --radius-xl: 24px;
+      --max-width: 1200px;
+      --section-padding: 120px;
+    }
+
+    /* ===== Reset & Base ===== */
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      color: var(--color-text);
+      background: var(--color-surface);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    img, svg { display: block; max-width: 100%; }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    /* ===== Animation Keyframes ===== */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    @keyframes slideInLeft {
+      from { opacity: 0; transform: translateX(-20px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
+    .animate-on-scroll {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+
+    .animate-on-scroll.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ===== Utility ===== */
+    .container {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: var(--color-accent-subtle);
+      color: var(--color-accent);
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 100px;
+      letter-spacing: 0.02em;
+    }
+
+    .badge svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* ===== Buttons ===== */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 14px 28px;
+      font-family: var(--font-sans);
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      background: var(--color-accent);
+      color: #ffffff;
+      box-shadow: 0 2px 8px rgba(0, 102, 255, 0.25);
+    }
+    .btn-primary:hover {
+      background: var(--color-accent-hover);
+      box-shadow: 0 4px 16px rgba(0, 102, 255, 0.35);
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: var(--color-surface);
+      color: var(--color-text);
+      border: 1px solid var(--color-border);
+    }
+    .btn-secondary:hover {
+      background: var(--color-surface-alt);
+      border-color: var(--color-text-tertiary);
+      transform: translateY(-1px);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--color-text-secondary);
+      padding: 8px 16px;
+    }
+    .btn-ghost:hover {
+      color: var(--color-text);
+      background: var(--color-surface-alt);
+    }
+
+    .btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    /* ===== Header / Nav ===== */
+    .header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--color-border-light);
+      transition: box-shadow 0.3s ease;
+    }
+
+    .header.scrolled {
+      box-shadow: var(--shadow-sm);
+    }
+
+    .header-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--color-primary);
+      letter-spacing: -0.02em;
+    }
+
+    .logo-mark {
+      width: 32px;
+      height: 32px;
+      background: var(--color-accent);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-mark svg {
+      width: 18px;
+      height: 18px;
+      color: #fff;
+    }
+
+    .nav { display: flex; align-items: center; gap: 8px; }
+    .nav a {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--color-text-secondary);
+      padding: 8px 14px;
+      border-radius: var(--radius-sm);
+      transition: color 0.2s, background 0.2s;
+    }
+    .nav a:hover { color: var(--color-text); background: var(--color-surface-alt); }
+
+    .nav-actions { display: flex; align-items: center; gap: 12px; }
+
+    .mobile-toggle {
+      display: none;
+      background: none;
+      border: none;
+      padding: 8px;
+      cursor: pointer;
+      color: var(--color-text);
+    }
+
+    /* ===== Hero ===== */
+    .hero {
+      padding: 160px 0 var(--section-padding);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -200px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 800px;
+      background: radial-gradient(circle, rgba(0, 102, 255, 0.04) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-badge {
+      animation: fadeInUp 0.6s ease both;
+    }
+
+    .hero h1 {
+      font-size: clamp(40px, 5.5vw, 72px);
+      font-weight: 800;
+      line-height: 1.08;
+      letter-spacing: -0.035em;
+      color: var(--color-primary);
+      margin: 24px auto 0;
+      max-width: 820px;
+      animation: fadeInUp 0.6s ease 0.1s both;
+    }
+
+    .hero h1 .accent {
+      background: linear-gradient(135deg, var(--color-accent) 0%, #4d9aff 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-subtitle {
+      font-size: clamp(17px, 2vw, 20px);
+      line-height: 1.6;
+      color: var(--color-text-secondary);
+      max-width: 600px;
+      margin: 20px auto 0;
+      animation: fadeInUp 0.6s ease 0.2s both;
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      margin-top: 40px;
+      flex-wrap: wrap;
+      animation: fadeInUp 0.6s ease 0.3s both;
+    }
+
+    .hero-terminal {
+      max-width: 640px;
+      margin: 56px auto 0;
+      background: var(--color-code-bg);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: var(--shadow-xl);
+      animation: fadeInUp 0.6s ease 0.4s both;
+      text-align: left;
+    }
+
+    .terminal-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 20px;
+      background: rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .terminal-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .terminal-body {
+      padding: 20px 24px;
+      font-family: var(--font-mono);
+      font-size: 13.5px;
+      line-height: 1.8;
+      color: var(--color-code-text);
+      overflow-x: auto;
+    }
+
+    .terminal-body .prompt { color: var(--color-success); }
+    .terminal-body .command { color: #e2e8f0; }
+    .terminal-body .flag { color: #a78bfa; }
+    .terminal-body .comment { color: #506680; }
+    .terminal-body .output { color: #8898aa; }
+    .terminal-body .success { color: var(--color-success); }
+
+    /* ===== Trust Bar ===== */
+    .trust-bar {
+      padding: 48px 0;
+      border-top: 1px solid var(--color-border-light);
+      border-bottom: 1px solid var(--color-border-light);
+      background: var(--color-surface-alt);
+    }
+
+    .trust-bar-inner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 48px;
+      flex-wrap: wrap;
+    }
+
+    .trust-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--color-text-secondary);
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .trust-icon {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      color: var(--color-accent);
+    }
+
+    .trust-icon svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    /* ===== Features ===== */
+    .features {
+      padding: var(--section-padding) 0;
+    }
+
+    .section-label {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--color-accent);
+      margin-bottom: 12px;
+    }
+
+    .section-title {
+      font-size: clamp(30px, 4vw, 44px);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      color: var(--color-primary);
+      max-width: 580px;
+    }
+
+    .section-subtitle {
+      font-size: 18px;
+      color: var(--color-text-secondary);
+      margin-top: 16px;
+      max-width: 540px;
+      line-height: 1.6;
+    }
+
+    .section-header {
+      text-align: center;
+      margin-bottom: 64px;
+    }
+
+    .section-header .section-title,
+    .section-header .section-subtitle {
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+
+    .feature-card {
+      padding: 36px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      transition: all 0.3s ease;
+      position: relative;
+    }
+
+    .feature-card:hover {
+      border-color: var(--color-accent);
+      box-shadow: var(--shadow-md);
+      transform: translateY(-2px);
+    }
+
+    .feature-icon {
+      width: 44px;
+      height: 44px;
+      background: var(--color-accent-subtle);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-accent);
+      margin-bottom: 20px;
+    }
+
+    .feature-icon svg {
+      width: 22px;
+      height: 22px;
+    }
+
+    .feature-card h3 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: -0.01em;
+    }
+
+    .feature-card p {
+      font-size: 15px;
+      color: var(--color-text-secondary);
+      line-height: 1.6;
+    }
+
+    /* ===== How It Works ===== */
+    .how-it-works {
+      padding: var(--section-padding) 0;
+      background: var(--color-surface-alt);
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 32px;
+      margin-top: 0;
+      position: relative;
+    }
+
+    .steps::before {
+      content: '';
+      position: absolute;
+      top: 36px;
+      left: calc(12.5% + 16px);
+      right: calc(12.5% + 16px);
+      height: 2px;
+      background: var(--color-border);
+    }
+
+    .step {
+      text-align: center;
+      position: relative;
+    }
+
+    .step-number {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--color-accent);
+      color: #fff;
+      font-size: 18px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+      position: relative;
+      z-index: 2;
+      box-shadow: 0 2px 8px rgba(0, 102, 255, 0.2);
+    }
+
+    .step h3 {
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 6px;
+      letter-spacing: -0.01em;
+    }
+
+    .step-code {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      background: var(--color-code-bg);
+      color: var(--color-code-text);
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 10px;
+    }
+
+    .step p {
+      font-size: 14px;
+      color: var(--color-text-secondary);
+      line-height: 1.6;
+      max-width: 220px;
+      margin: 0 auto;
+    }
+
+    /* ===== Split Feature (BYOK) ===== */
+    .split-feature {
+      padding: var(--section-padding) 0;
+    }
+
+    .split-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: center;
+    }
+
+    .split-content .section-title {
+      max-width: 480px;
+    }
+
+    .split-list {
+      list-style: none;
+      margin-top: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .split-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      font-size: 15px;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+    }
+
+    .split-list li .check {
+      width: 22px;
+      height: 22px;
+      min-width: 22px;
+      background: var(--color-success-bg);
+      color: var(--color-success);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 1px;
+    }
+
+    .split-list li .check svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    .split-visual {
+      background: var(--color-surface-alt);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 40px;
+    }
+
+    .arch-diagram {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .arch-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .arch-box {
+      flex: 1;
+      padding: 14px 18px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      transition: all 0.2s;
+    }
+
+    .arch-box.highlight {
+      background: var(--color-accent);
+      color: #fff;
+      border-color: var(--color-accent);
+    }
+
+    .arch-arrow {
+      color: var(--color-text-tertiary);
+      font-size: 18px;
+      text-align: center;
+    }
+
+    .arch-divider {
+      border: none;
+      border-top: 1px dashed var(--color-border);
+      margin: 4px 0;
+    }
+
+    .arch-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-text-tertiary);
+      text-align: center;
+    }
+
+    /* ===== Security Section ===== */
+    .security {
+      padding: var(--section-padding) 0;
+      background: var(--color-primary);
+      color: #ffffff;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .security::before {
+      content: '';
+      position: absolute;
+      top: -400px;
+      right: -200px;
+      width: 800px;
+      height: 800px;
+      background: radial-gradient(circle, rgba(0, 102, 255, 0.15) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .security .section-label { color: #4d9aff; }
+    .security .section-title {
+      color: #ffffff;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .security .section-subtitle {
+      color: rgba(255, 255, 255, 0.65);
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .security-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+
+    .security-card {
+      padding: 32px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-lg);
+      transition: all 0.3s ease;
+    }
+
+    .security-card:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.15);
+      transform: translateY(-2px);
+    }
+
+    .security-card .feature-icon {
+      background: rgba(77, 154, 255, 0.15);
+      color: #4d9aff;
+    }
+
+    .security-card h3 {
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #ffffff;
+    }
+
+    .security-card p {
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.6);
+      line-height: 1.6;
+    }
+
+    /* ===== Testimonials ===== */
+    .testimonials {
+      padding: var(--section-padding) 0;
+    }
+
+    .testimonials-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+
+    .testimonial-card {
+      padding: 36px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      transition: all 0.3s ease;
+    }
+
+    .testimonial-card:hover {
+      box-shadow: var(--shadow-md);
+      transform: translateY(-2px);
+    }
+
+    .testimonial-stars {
+      display: flex;
+      gap: 2px;
+      color: #f59e0b;
+      margin-bottom: 16px;
+    }
+
+    .testimonial-stars svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .testimonial-quote {
+      font-size: 15px;
+      color: var(--color-text);
+      line-height: 1.7;
+      margin-bottom: 24px;
+    }
+
+    .testimonial-author {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .testimonial-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--color-accent-subtle);
+      color: var(--color-accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 15px;
+    }
+
+    .testimonial-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--color-text);
+    }
+
+    .testimonial-role {
+      font-size: 13px;
+      color: var(--color-text-tertiary);
+    }
+
+    /* ===== CTA ===== */
+    .cta {
+      padding: var(--section-padding) 0;
+      background: var(--color-surface-alt);
+      text-align: center;
+    }
+
+    .cta-inner {
+      max-width: 620px;
+      margin: 0 auto;
+    }
+
+    .cta h2 {
+      font-size: clamp(30px, 4vw, 42px);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      color: var(--color-primary);
+      margin-bottom: 16px;
+    }
+
+    .cta p {
+      font-size: 18px;
+      color: var(--color-text-secondary);
+      margin-bottom: 36px;
+      line-height: 1.6;
+    }
+
+    .cta-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .cta-note {
+      font-size: 13px;
+      color: var(--color-text-tertiary);
+      margin-top: 20px;
+    }
+
+    /* ===== Footer ===== */
+    .footer {
+      padding: 64px 0 32px;
+      border-top: 1px solid var(--color-border-light);
+    }
+
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1fr;
+      gap: 48px;
+    }
+
+    .footer-brand p {
+      font-size: 14px;
+      color: var(--color-text-secondary);
+      line-height: 1.6;
+      margin-top: 12px;
+      max-width: 280px;
+    }
+
+    .footer-col h4 {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-text-tertiary);
+      margin-bottom: 16px;
+    }
+
+    .footer-col ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .footer-col a {
+      font-size: 14px;
+      color: var(--color-text-secondary);
+      transition: color 0.2s;
+    }
+
+    .footer-col a:hover { color: var(--color-text); }
+
+    .footer-bottom {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 32px;
+      margin-top: 48px;
+      border-top: 1px solid var(--color-border-light);
+      font-size: 13px;
+      color: var(--color-text-tertiary);
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 24px;
+    }
+
+    .footer-links a {
+      color: var(--color-text-tertiary);
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: var(--color-text-secondary); }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 1024px) {
+      :root { --section-padding: 80px; }
+
+      .features-grid,
+      .security-grid,
+      .testimonials-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .steps {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 40px;
+      }
+
+      .steps::before { display: none; }
+
+      .split-grid { gap: 48px; }
+
+      .footer-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 768px) {
+      :root { --section-padding: 64px; }
+
+      .nav { display: none; }
+      .nav-actions .btn-secondary { display: none; }
+      .mobile-toggle { display: block; }
+
+      .hero { padding: 120px 0 80px; }
+
+      .hero-terminal {
+        margin-left: -12px;
+        margin-right: -12px;
+        border-radius: var(--radius-md);
+      }
+
+      .features-grid,
+      .security-grid,
+      .testimonials-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .steps { grid-template-columns: 1fr; gap: 32px; }
+
+      .split-grid {
+        grid-template-columns: 1fr;
+        gap: 40px;
+      }
+
+      .split-visual { order: -1; }
+
+      .trust-bar-inner { gap: 24px; }
+
+      .footer-grid {
+        grid-template-columns: 1fr;
+        gap: 32px;
+      }
+
+      .footer-bottom {
+        flex-direction: column;
+        gap: 16px;
+        text-align: center;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .hero-actions {
+        flex-direction: column;
+        width: 100%;
+      }
+      .hero-actions .btn { width: 100%; }
+
+      .trust-bar-inner {
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .cta-actions {
+        flex-direction: column;
+        width: 100%;
+      }
+      .cta-actions .btn { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ===== Header ===== -->
+  <header class="header" id="header">
+    <div class="container header-inner">
+      <a href="#" class="logo">
+        <div class="logo-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="4 17 10 11 4 5"></polyline>
+            <line x1="12" y1="19" x2="20" y2="19"></line>
+          </svg>
+        </div>
+        Mantle
+      </a>
+
+      <nav class="nav">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How It Works</a>
+        <a href="#security">Security</a>
+        <a href="https://github.com/mantle-automation/mantle" target="_blank" rel="noopener">GitHub</a>
+        <a href="#" target="_blank" rel="noopener">Docs</a>
+      </nav>
+
+      <div class="nav-actions">
+        <a href="#" class="btn btn-secondary" style="padding: 10px 20px; font-size: 14px;">Sign In</a>
+        <a href="#cta" class="btn btn-primary" style="padding: 10px 20px; font-size: 14px;">Get Started</a>
+      </div>
+
+      <button class="mobile-toggle" aria-label="Toggle navigation">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===== Hero ===== -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-badge badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Open Source &middot; Enterprise-Ready
+      </div>
+
+      <h1>AI Workflow Automation<br>for the <span class="accent">Modern Enterprise</span></h1>
+
+      <p class="hero-subtitle">
+        Your keys, your infrastructure, your control. Deploy reliable AI workflows
+        with IaC precision, checkpoint-and-resume execution, and audit trails from day one.
+      </p>
+
+      <div class="hero-actions">
+        <a href="#cta" class="btn btn-primary">
+          Deploy Mantle
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+        </a>
+        <a href="#" class="btn btn-secondary">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+
+      <div class="hero-terminal">
+        <div class="terminal-header">
+          <span class="terminal-dot"></span>
+          <span class="terminal-dot"></span>
+          <span class="terminal-dot"></span>
+        </div>
+        <div class="terminal-body">
+          <div><span class="comment"># Define, validate, and deploy AI workflows</span></div>
+          <div><span class="prompt">$</span> <span class="command">mantle validate</span> <span class="flag">workflow.yaml</span></div>
+          <div><span class="output">&check; Schema valid &middot; 3 steps &middot; 1 AI connector</span></div>
+          <div style="height: 6px"></div>
+          <div><span class="prompt">$</span> <span class="command">mantle plan</span> <span class="flag">workflow.yaml</span></div>
+          <div><span class="output">~ update &quot;classify-ticket&quot; v2 &rarr; v3</span></div>
+          <div><span class="output">+ add    &quot;route-to-team&quot; (new step)</span></div>
+          <div style="height: 6px"></div>
+          <div><span class="prompt">$</span> <span class="command">mantle apply</span> <span class="flag">workflow.yaml</span></div>
+          <div><span class="success">&check; Applied &middot; workflow &quot;ticket-triage&quot; v3</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Trust Bar ===== -->
+  <section class="trust-bar">
+    <div class="container">
+      <div class="trust-bar-inner">
+        <div class="trust-item">
+          <div class="trust-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          AES-256-GCM Encryption
+        </div>
+        <div class="trust-item">
+          <div class="trust-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          Full Audit Trail
+        </div>
+        <div class="trust-item">
+          <div class="trust-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          </div>
+          Secrets Never Exposed
+        </div>
+        <div class="trust-item">
+          <div class="trust-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+          </div>
+          BYOK &mdash; No Vendor Lock-In
+        </div>
+        <div class="trust-item">
+          <div class="trust-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+          </div>
+          Open Source
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Features ===== -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="section-header animate-on-scroll">
+        <div class="section-label">Platform Capabilities</div>
+        <h2 class="section-title">Everything you need to automate AI workflows at scale</h2>
+        <p class="section-subtitle">
+          Built for teams that demand reliability, security, and full operational control over their AI infrastructure.
+        </p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card animate-on-scroll">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
+          </div>
+          <h3>Infrastructure as Code</h3>
+          <p>Define workflows in YAML with version-controlled lifecycle. Validate offline, plan changes with diffs, and apply atomically &mdash; just like Terraform.</p>
+        </div>
+
+        <div class="feature-card animate-on-scroll">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+          </div>
+          <h3>Checkpoint &amp; Resume</h3>
+          <p>Every step checkpoints to Postgres. If a process crashes, execution resumes from the last completed step &mdash; no lost work, no duplicate operations.</p>
+        </div>
+
+        <div class="feature-card animate-on-scroll">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+          </div>
+          <h3>Bring Your Own Keys</h3>
+          <p>Use your own API keys for every provider. No proxy fees, no vendor lock-in, no third party touching your data. Full cost transparency and control.</p>
+        </div>
+
+        <div class="feature-card animate-on-scroll">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+          </div>
+          <h3>Single Binary Deploy</h3>
+          <p>One binary, one Postgres instance. No Kafka, no Redis, no container orchestrators required. Ship to production in minutes, not weeks.</p>
+        </div>
+
+        <div class="feature-card animate-on-scroll">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+          </div>
+          <h3>Full Audit Trail</h3>
+          <p>Every state-changing operation emits an audit event from day one. Know who did what, when, and why. Built for compliance requirements.</p>
+        </div>
+
+        <div class="feature-card animate-on-scroll">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+          </div>
+          <h3>Extensible via gRPC</h3>
+          <p>Build custom connectors as gRPC plugins running as subprocesses. Extend Mantle with your own integrations without forking the core.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== How It Works ===== -->
+  <section class="how-it-works" id="how-it-works">
+    <div class="container">
+      <div class="section-header animate-on-scroll">
+        <div class="section-label">Workflow Lifecycle</div>
+        <h2 class="section-title">From YAML to production in four commands</h2>
+        <p class="section-subtitle">
+          A familiar IaC lifecycle that your platform team already understands. No new paradigms to learn.
+        </p>
+      </div>
+
+      <div class="steps">
+        <div class="step animate-on-scroll">
+          <div class="step-number">1</div>
+          <div class="step-code">mantle validate</div>
+          <h3>Validate</h3>
+          <p>Offline schema validation. Catch errors in CI before they reach production.</p>
+        </div>
+
+        <div class="step animate-on-scroll">
+          <div class="step-number">2</div>
+          <div class="step-code">mantle plan</div>
+          <h3>Plan</h3>
+          <p>Diff against the applied version. See exactly what will change before committing.</p>
+        </div>
+
+        <div class="step animate-on-scroll">
+          <div class="step-number">3</div>
+          <div class="step-code">mantle apply</div>
+          <h3>Apply</h3>
+          <p>Atomically apply the versioned workflow definition. Fully audited, rollback-ready.</p>
+        </div>
+
+        <div class="step animate-on-scroll">
+          <div class="step-number">4</div>
+          <div class="step-code">mantle run</div>
+          <h3>Run</h3>
+          <p>Execute with checkpointing, retry, timeout, and crash recovery built in.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Split Feature: BYOK ===== -->
+  <section class="split-feature">
+    <div class="container">
+      <div class="split-grid">
+        <div class="split-content animate-on-scroll">
+          <div class="section-label">Zero Trust Architecture</div>
+          <h2 class="section-title">Your keys never leave your infrastructure</h2>
+          <p class="section-subtitle" style="max-width: 440px;">
+            Mantle treats secrets as opaque handles. Credentials are encrypted at rest with AES-256-GCM and resolved only at connector invocation time. They are never exposed in expressions, logs, or API responses.
+          </p>
+
+          <ul class="split-list">
+            <li>
+              <span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+              <span>API keys encrypted at rest with AES-256-GCM</span>
+            </li>
+            <li>
+              <span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+              <span>Secrets resolved at invocation, never in CEL expressions</span>
+            </li>
+            <li>
+              <span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+              <span>No proxy layer &mdash; direct connection to providers</span>
+            </li>
+            <li>
+              <span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+              <span>Full cost transparency with your own billing</span>
+            </li>
+            <li>
+              <span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+              <span>Multi-tenancy and RBAC on the roadmap</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="split-visual animate-on-scroll">
+          <div class="arch-diagram">
+            <div class="arch-label">Your Infrastructure</div>
+            <div class="arch-row">
+              <div class="arch-box highlight">Mantle Engine</div>
+            </div>
+            <div class="arch-arrow">&darr;</div>
+            <div class="arch-row">
+              <div class="arch-box">Postgres</div>
+              <div class="arch-box">Secret Store</div>
+            </div>
+            <div class="arch-arrow">&darr; Opaque Handle Resolution</div>
+            <hr class="arch-divider">
+            <div class="arch-label">External Providers (Your Keys)</div>
+            <div class="arch-row">
+              <div class="arch-box">OpenAI</div>
+              <div class="arch-box">Anthropic</div>
+              <div class="arch-box">Any LLM</div>
+            </div>
+            <div class="arch-row" style="margin-top: 8px;">
+              <div class="arch-box">HTTP APIs</div>
+              <div class="arch-box">gRPC Plugins</div>
+              <div class="arch-box">Webhooks</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Security ===== -->
+  <section class="security" id="security">
+    <div class="container">
+      <div class="section-header animate-on-scroll">
+        <div class="section-label">Security First</div>
+        <h2 class="section-title">Built for teams that take security seriously</h2>
+        <p class="section-subtitle">
+          Every design decision in Mantle prioritizes security, auditability, and operational control.
+        </p>
+      </div>
+
+      <div class="security-grid">
+        <div class="security-card animate-on-scroll">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          </div>
+          <h3>Opaque Secret Handles</h3>
+          <p>Credentials are never exposed as raw values. The engine resolves secrets at connector invocation time, keeping them out of logs and expressions.</p>
+        </div>
+
+        <div class="security-card animate-on-scroll">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <h3>Encryption at Rest</h3>
+          <p>All stored credentials use AES-256-GCM authenticated encryption. Keys managed through your own infrastructure and rotation policies.</p>
+        </div>
+
+        <div class="security-card animate-on-scroll">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          </div>
+          <h3>Immutable Audit Log</h3>
+          <p>Every state-changing operation is recorded. Who changed what, when, and the full before/after state. Meet compliance requirements from day one.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Testimonials ===== -->
+  <section class="testimonials">
+    <div class="container">
+      <div class="section-header animate-on-scroll">
+        <div class="section-label">What Engineers Say</div>
+        <h2 class="section-title">Trusted by platform teams building reliable AI systems</h2>
+      </div>
+
+      <div class="testimonials-grid">
+        <div class="testimonial-card animate-on-scroll">
+          <div class="testimonial-stars">
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </div>
+          <p class="testimonial-quote">
+            &ldquo;The IaC lifecycle is exactly what we needed. Our team reviews workflow changes in PRs just like application code. The validate-plan-apply cycle eliminated deployment surprises.&rdquo;
+          </p>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">JK</div>
+            <div>
+              <div class="testimonial-name">James K.</div>
+              <div class="testimonial-role">VP of Engineering, Series B SaaS</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="testimonial-card animate-on-scroll">
+          <div class="testimonial-stars">
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </div>
+          <p class="testimonial-quote">
+            &ldquo;Checkpoint-and-resume is a game changer. We process thousands of AI tasks daily, and when something fails, it picks up right where it left off. Our reliability went from 94% to 99.7%.&rdquo;
+          </p>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">SR</div>
+            <div>
+              <div class="testimonial-name">Sarah R.</div>
+              <div class="testimonial-role">Platform Lead, Enterprise FinTech</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="testimonial-card animate-on-scroll">
+          <div class="testimonial-stars">
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </div>
+          <p class="testimonial-quote">
+            &ldquo;BYOK was the deciding factor for us. Our security team refused any platform that proxied our API keys. With Mantle, keys stay in our Vault and we control the billing directly.&rdquo;
+          </p>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">MT</div>
+            <div>
+              <div class="testimonial-name">Michael T.</div>
+              <div class="testimonial-role">CTO, Healthcare AI Startup</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== CTA ===== -->
+  <section class="cta" id="cta">
+    <div class="container">
+      <div class="cta-inner animate-on-scroll">
+        <div class="section-label">Get Started</div>
+        <h2>Deploy reliable AI workflows in minutes</h2>
+        <p>
+          One binary. One Postgres instance. Full operational control.
+          Start building production-grade AI workflows today.
+        </p>
+
+        <div class="cta-actions">
+          <a href="#" class="btn btn-primary" style="padding: 16px 32px; font-size: 16px;">
+            Download Mantle
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </a>
+          <a href="#" class="btn btn-secondary" style="padding: 16px 32px; font-size: 16px;">
+            Read the Docs
+          </a>
+        </div>
+
+        <p class="cta-note">Free and open source. Deploy on your infrastructure. Helm chart included for Kubernetes.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Footer ===== -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="#" class="logo">
+            <div class="logo-mark">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="4 17 10 11 4 5"></polyline>
+                <line x1="12" y1="19" x2="20" y2="19"></line>
+              </svg>
+            </div>
+            Mantle
+          </a>
+          <p>Headless AI workflow automation platform. Your keys, your infrastructure, your control.</p>
+        </div>
+
+        <div class="footer-col">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#security">Security</a></li>
+            <li><a href="#how-it-works">How It Works</a></li>
+            <li><a href="#">Pricing</a></li>
+            <li><a href="#">Changelog</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4>Developers</h4>
+          <ul>
+            <li><a href="#">Documentation</a></li>
+            <li><a href="#">API Reference</a></li>
+            <li><a href="#">Quickstart Guide</a></li>
+            <li><a href="#">Plugin SDK</a></li>
+            <li><a href="https://github.com/mantle-automation/mantle" target="_blank" rel="noopener">GitHub</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4>Company</h4>
+          <ul>
+            <li><a href="#">About</a></li>
+            <li><a href="#">Blog</a></li>
+            <li><a href="#">Contact</a></li>
+            <li><a href="#">Careers</a></li>
+            <li><a href="#">Security</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <span>&copy; 2026 Mantle. All rights reserved.</span>
+        <div class="footer-links">
+          <a href="#">Privacy Policy</a>
+          <a href="#">Terms of Service</a>
+          <a href="#">License</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ===== Scripts ===== -->
+  <script>
+    // Header scroll effect
+    const header = document.getElementById('header');
+    let lastScroll = 0;
+    window.addEventListener('scroll', () => {
+      const currentScroll = window.pageYOffset;
+      if (currentScroll > 10) {
+        header.classList.add('scrolled');
+      } else {
+        header.classList.remove('scrolled');
+      }
+      lastScroll = currentScroll;
+    }, { passive: true });
+
+    // Scroll-triggered animations
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry, index) => {
+        if (entry.isIntersecting) {
+          // Stagger animations within the same section
+          const siblings = entry.target.parentElement.querySelectorAll('.animate-on-scroll');
+          const idx = Array.from(siblings).indexOf(entry.target);
+          entry.target.style.transitionDelay = `${idx * 0.08}s`;
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, {
+      threshold: 0.1,
+      rootMargin: '0px 0px -40px 0px'
+    });
+
+    document.querySelectorAll('.animate-on-scroll').forEach(el => {
+      observer.observe(el);
+    });
+  </script>
+
+</body>
+</html>

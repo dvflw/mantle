@@ -1,0 +1,338 @@
+@import "tailwindcss";
+
+@theme {
+  /* Colors - Surface */
+  --color-surface: #0e0e0e;
+  --color-surface-dim: #0e0e0e;
+  --color-surface-bright: #2c2c2c;
+  --color-surface-container-lowest: #000000;
+  --color-surface-container-low: #131313;
+  --color-surface-container: #1a1919;
+  --color-surface-container-high: #201f1f;
+  --color-surface-container-highest: #262626;
+  --color-surface-variant: #262626;
+
+  /* Colors - Primary */
+  --color-primary: #a4ffb9;
+  --color-primary-dim: #00ed7e;
+  --color-primary-container: #00fd87;
+  --color-primary-fixed: #00fd87;
+
+  /* Colors - Secondary */
+  --color-secondary: #72fbbd;
+  --color-secondary-dim: #63ecaf;
+  --color-secondary-container: #006c49;
+
+  /* Colors - Tertiary */
+  --color-tertiary: #7ee6ff;
+  --color-tertiary-dim: #00cdee;
+  --color-tertiary-container: #00dcff;
+
+  /* Colors - On */
+  --color-on-surface: #ffffff;
+  --color-on-surface-variant: #adaaaa;
+  --color-on-primary: #006532;
+  --color-on-background: #ffffff;
+
+  /* Colors - Outline */
+  --color-outline: #777575;
+  --color-outline-variant: #494847;
+
+  /* Colors - Error */
+  --color-error: #ff716c;
+  --color-error-container: #9f0519;
+
+  /* Fonts */
+  --font-headline: "Space Grotesk", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+}
+
+/* Base styles */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-on-surface);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+/* Blinking cursor animation */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.animate-blink {
+  animation: blink 1s step-end infinite;
+}
+
+/* Dot grid background */
+.dot-grid {
+  background-image: radial-gradient(circle, var(--color-outline-variant) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Fade-in-up animation */
+[data-animate] {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+[data-animate].visible {
+  animation: fade-in-up 0.6s ease-out forwards;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Feature card hover glow */
+.feature-card {
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.feature-card:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 20px -5px rgba(164, 255, 185, 0.15);
+}
+
+/* Terminal line animation */
+[data-terminal-line] {
+  opacity: 0;
+  transition: opacity 0.4s ease-out;
+}
+
+[data-terminal-line].line-visible {
+  opacity: 1;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-outline-variant);
+  border-radius: 0;
+}
+
+/* ── Prose styles for docs ─────────────────────────────────────────── */
+
+.prose {
+  line-height: 1.75;
+  color: var(--color-on-surface-variant);
+}
+
+.prose > * + * {
+  margin-top: 1.25em;
+}
+
+/* Headings */
+.prose h1 {
+  font-family: var(--font-headline);
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--color-on-surface);
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
+.prose h2 {
+  font-family: var(--font-headline);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-on-surface);
+  margin-top: 2.5em;
+  margin-bottom: 0.75em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--color-outline-variant);
+}
+
+.prose h3 {
+  font-family: var(--font-headline);
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--color-on-surface);
+  margin-top: 2em;
+  margin-bottom: 0.5em;
+}
+
+.prose h4 {
+  font-family: var(--font-headline);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--color-on-surface);
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+/* Links */
+.prose a {
+  color: var(--color-primary);
+  text-decoration: none;
+  transition: text-decoration-color 0.15s;
+}
+
+.prose a:hover {
+  text-decoration: underline;
+}
+
+/* Paragraphs */
+.prose p {
+  margin-top: 1.25em;
+  margin-bottom: 0;
+}
+
+/* Lists */
+.prose ul {
+  list-style-type: disc;
+  padding-left: 1.5em;
+  margin-top: 1em;
+  margin-bottom: 0;
+}
+
+.prose ol {
+  list-style-type: decimal;
+  padding-left: 1.5em;
+  margin-top: 1em;
+  margin-bottom: 0;
+}
+
+.prose li {
+  margin-top: 0.375em;
+}
+
+.prose li > ul,
+.prose li > ol {
+  margin-top: 0.375em;
+}
+
+/* Inline code */
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background-color: var(--color-surface-container);
+  color: var(--color-primary);
+  padding: 0.125em 0.375em;
+  border-radius: 2px;
+}
+
+/* Code blocks */
+.prose pre {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  background-color: var(--color-surface-container-low) !important;
+  border: 1px solid var(--color-outline-variant);
+  padding: 1em 1.25em;
+  overflow-x: auto;
+  margin-top: 1.5em;
+  margin-bottom: 0;
+}
+
+.prose pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* Blockquotes */
+.prose blockquote {
+  border-left: 3px solid var(--color-primary);
+  padding-left: 1em;
+  margin-left: 0;
+  margin-top: 1.25em;
+  color: var(--color-on-surface-variant);
+  font-style: italic;
+}
+
+.prose blockquote p {
+  margin-top: 0;
+}
+
+/* Tables */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1.5em;
+  font-size: 0.875rem;
+}
+
+.prose thead th {
+  background-color: var(--color-surface-container-low);
+  font-weight: 600;
+  color: var(--color-on-surface);
+  text-align: left;
+  padding: 0.5em 0.75em;
+  border: 1px solid var(--color-outline-variant);
+}
+
+.prose tbody td {
+  padding: 0.5em 0.75em;
+  border: 1px solid var(--color-outline-variant);
+}
+
+.prose tbody tr:nth-child(even) {
+  background-color: var(--color-surface-container-lowest);
+}
+
+/* Horizontal rules */
+.prose hr {
+  border: none;
+  border-top: 1px solid var(--color-outline-variant);
+  margin-top: 2em;
+  margin-bottom: 2em;
+}
+
+/* Strong / bold */
+.prose strong {
+  color: var(--color-on-surface);
+  font-weight: 600;
+}
+
+/* Images */
+.prose img {
+  max-width: 100%;
+  height: auto;
+  margin-top: 1.5em;
+  border: 1px solid var(--color-outline-variant);
+}
+
+/* Definition lists (used in some docs) */
+.prose dt {
+  font-weight: 600;
+  color: var(--color-on-surface);
+  margin-top: 1em;
+}
+
+.prose dd {
+  padding-left: 1.5em;
+  margin-top: 0.25em;
+}

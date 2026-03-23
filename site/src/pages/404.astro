@@ -1,0 +1,39 @@
+---
+import Base from '../layouts/Base.astro';
+import Nav from '../components/Nav.astro';
+---
+<Base title="404 — Route Not Found | Mantle">
+  <Nav />
+  <main class="min-h-screen flex items-center justify-center pt-16">
+    <div class="mx-auto max-w-[700px] px-6 py-24">
+      <h1 class="font-headline text-4xl sm:text-5xl font-bold tracking-tight mb-8">
+        404: Route Not Found
+      </h1>
+
+      <!-- Terminal window -->
+      <div class="border border-outline-variant bg-surface-container-low overflow-hidden">
+        <div class="flex items-center gap-2 px-4 py-3 border-b border-outline-variant bg-surface-container-highest">
+          <div class="flex gap-1.5">
+            <div class="w-3 h-3 rounded-full bg-[#ff5f57]"></div>
+            <div class="w-3 h-3 rounded-full bg-[#febc2e]"></div>
+            <div class="w-3 h-3 rounded-full bg-[#28c840]"></div>
+          </div>
+          <span class="text-xs text-on-surface-variant font-mono ml-2">Terminal</span>
+        </div>
+        <div class="p-4 sm:p-6">
+          <pre class="text-sm font-mono leading-loose"><code><span class="text-on-surface-variant">$</span> <span class="text-primary">mantle get</span> /this/page
+<span class="text-error">Error: route not found</span>
+
+<span class="text-on-surface-variant">Suggestions:</span>
+  <span class="text-on-surface-variant">&rarr;</span> <a href="/" class="text-primary hover:underline">mantle.dev/</a>           <span class="text-on-surface-variant">(home)</span>
+  <span class="text-on-surface-variant">&rarr;</span> <a href="/docs/getting-started" class="text-primary hover:underline">mantle.dev/docs</a>       <span class="text-on-surface-variant">(documentation)</span>
+  <span class="text-on-surface-variant">&rarr;</span> <a href="https://github.com/dvflw/mantle" class="text-primary hover:underline">github.com/dvflw/mantle</a> <span class="text-on-surface-variant">(source code)</span></code></pre>
+        </div>
+      </div>
+
+      <p class="text-sm text-on-surface-variant mt-6">
+        This page doesn't exist. But it could, if you <a href="https://github.com/dvflw/mantle" class="text-primary hover:underline">submit a PR</a>.
+      </p>
+    </div>
+  </main>
+</Base>

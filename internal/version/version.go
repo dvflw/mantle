@@ -1,6 +1,9 @@
 package version
 
-import "fmt"
+import (
+	"fmt"
+	"runtime"
+)
 
 // Set via ldflags at build time.
 var (
@@ -11,5 +14,5 @@ var (
 
 // String returns a formatted version string.
 func String() string {
-	return fmt.Sprintf("mantle %s (%s, built %s)", Version, Commit, Date)
+	return fmt.Sprintf("mantle %s (%s, built %s, %s/%s)", Version, Commit, Date, runtime.GOOS, runtime.GOARCH)
 }

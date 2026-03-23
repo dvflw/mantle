@@ -107,8 +107,8 @@ func newRunCommand() *cobra.Command {
 					}
 				}
 				for _, step := range steps {
-					line := fmt.Sprintf("  %-*s  %s (%s)",
-						maxLen, step.name+":", step.status, formatDuration(step.duration))
+					line := fmt.Sprintf("  %s %-*s  %s (%s)",
+						statusIcon(step.status), maxLen, step.name+":", step.status, formatDuration(step.duration))
 					if step.output != "" {
 						line += fmt.Sprintf(" -> %s", truncate(step.output, 500))
 					}
@@ -116,11 +116,22 @@ func newRunCommand() *cobra.Command {
 				}
 			} else {
 				for _, step := range steps {
-					fmt.Fprintf(cmd.OutOrStdout(), "  %s: %s\n", step.name, step.status)
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s %s: %s\n", statusIcon(step.status), step.name, step.status)
 				}
 			}
 
 			if result.Status == "failed" {
+				// Find the failed step name for a more actionable error message.
+				failedStep := ""
+				for name, sr := range result.Steps {
+					if sr.Status == "failed" {
+						failedStep = name
+						break
+					}
+				}
+				if failedStep != "" {
+					return fmt.Errorf("workflow failed at step %q: %s", failedStep, result.Error)
+				}
 				return fmt.Errorf("workflow failed: %s", result.Error)
 			}
 

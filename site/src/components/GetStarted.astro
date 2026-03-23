@@ -1,0 +1,66 @@
+---
+const steps = [
+  {
+    number: '1',
+    title: 'Install',
+    code: 'go install github.com/dvflw/mantle/cmd/mantle@latest',
+  },
+  {
+    number: '2',
+    title: 'Start Postgres and initialize',
+    code: 'docker compose up -d\nmantle init',
+  },
+  {
+    number: '3',
+    title: 'Apply your first workflow',
+    code: 'mantle apply examples/hello-world.yaml\n# Applied hello-world version 1',
+  },
+  {
+    number: '4',
+    title: 'Run it',
+    code: 'mantle run hello-world\n# Running hello-world (version 1)...\n# Execution a1b2c3d4: completed\n#   fetch: completed (1.0s)',
+  },
+];
+---
+<section id="get-started" class="py-24 lg:py-32 border-t border-outline-variant">
+  <div class="mx-auto max-w-[1200px] px-6">
+    <h2 class="font-headline text-3xl sm:text-4xl font-bold tracking-tight mb-4" data-animate>Get Running in 5 Minutes</h2>
+    <p class="text-on-surface-variant mb-12 max-w-2xl" data-animate>From zero to running workflow in four commands.</p>
+
+    <div class="space-y-4 max-w-3xl" data-animate>
+      {steps.map((step) => (
+        <div>
+          <div class="flex items-center gap-3 mb-2">
+            <span class="inline-flex items-center justify-center w-6 h-6 bg-primary text-on-primary text-xs font-mono font-bold">{step.number}</span>
+            <span class="text-sm font-headline font-semibold">{step.title}</span>
+          </div>
+          <div class="terminal-block border border-outline-variant bg-surface-container-low overflow-hidden">
+            <div class="flex items-center gap-2 px-4 py-2 border-b border-outline-variant bg-surface-container-highest">
+              <span class="text-xs text-on-surface-variant font-mono flex-1"></span>
+              <button class="copy-btn text-xs text-on-surface-variant hover:text-primary font-mono transition-colors" type="button">copy</button>
+            </div>
+            <div class="p-4 overflow-x-auto">
+              <pre class="text-sm font-mono leading-relaxed"><code set:html={step.code.split('\n').map((line) => {
+                if (line.startsWith('#')) {
+                  return `<span class="text-on-surface-variant">${line}</span>`;
+                }
+                return `<span class="text-primary">$</span> ${line}`;
+              }).join('\n')} /></pre>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <p class="text-sm text-on-surface-variant mt-8 max-w-2xl" data-animate>
+      17 example workflows included. HTTP, AI, Slack, Postgres, S3, parallel execution, cron triggers, webhooks, and multi-turn tool use.
+    </p>
+
+    <div class="mt-8" data-animate>
+      <a href="/docs/getting-started" class="inline-flex items-center gap-2 px-6 py-3 bg-primary text-on-primary font-medium hover:bg-primary-dim transition-colors">
+        Read the Getting Started guide
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      </a>
+    </div>
+  </div>
+</section>

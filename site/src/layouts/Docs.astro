@@ -1,0 +1,82 @@
+---
+import Base from './Base.astro';
+import Nav from '../components/Nav.astro';
+import DocsSidebar from '../components/DocsSidebar.astro';
+import DocsToc from '../components/DocsToc.astro';
+import Footer from '../components/Footer.astro';
+import { getPrevNext } from '../data/docs-nav';
+
+interface Heading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+
+interface Props {
+  title: string;
+  headings: Heading[];
+}
+
+const { title, headings } = Astro.props;
+const currentPath = Astro.url.pathname.replace(/\/$/, '');
+const { prev, next } = getPrevNext(currentPath);
+---
+
+<Base title={`${title} - Mantle Docs`}>
+  <Nav />
+  <div class="mx-auto max-w-[1400px] px-4 sm:px-6">
+    <div class="flex min-h-screen pt-16">
+      <!-- Mobile sidebar toggle -->
+      <button
+        id="sidebar-toggle"
+        class="lg:hidden fixed bottom-6 left-6 z-50 flex items-center gap-2 px-4 py-2.5 bg-surface-container-high border border-outline-variant text-on-surface text-sm font-medium shadow-lg"
+        aria-label="Toggle sidebar"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+        Menu
+      </button>
+
+      <DocsSidebar currentPath={currentPath} />
+
+      <!-- Main content -->
+      <main class="flex-1 min-w-0 py-8 px-2 sm:px-6 lg:px-10">
+        <article class="prose max-w-3xl">
+          <slot />
+        </article>
+
+        <!-- Prev / Next navigation -->
+        {(prev || next) && (
+          <nav class="mt-16 mb-8 flex items-center justify-between gap-4 border-t border-outline-variant pt-6 max-w-3xl">
+            {prev ? (
+              <a
+                href={prev.href}
+                class="group flex flex-col gap-1 text-sm"
+              >
+                <span class="text-[11px] uppercase tracking-widest text-on-surface-variant">Previous</span>
+                <span class="text-on-surface group-hover:text-primary transition-colors">
+                  &larr; {prev.title}
+                </span>
+              </a>
+            ) : <div />}
+            {next ? (
+              <a
+                href={next.href}
+                class="group flex flex-col gap-1 text-sm text-right ml-auto"
+              >
+                <span class="text-[11px] uppercase tracking-widest text-on-surface-variant">Next</span>
+                <span class="text-on-surface group-hover:text-primary transition-colors">
+                  {next.title} &rarr;
+                </span>
+              </a>
+            ) : <div />}
+          </nav>
+        )}
+      </main>
+
+      <DocsToc headings={headings} />
+    </div>
+  </div>
+  <Footer />
+</Base>

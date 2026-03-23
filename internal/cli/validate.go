@@ -41,7 +41,7 @@ func newValidateCommand() *cobra.Command {
 				return fmt.Errorf("validation failed")
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "%s: valid\n", filepath.Base(filename))
+			fmt.Fprintf(cmd.OutOrStdout(), "%s: valid (%d steps)\n", filepath.Base(filename), len(result.Workflow.Steps))
 			return nil
 		},
 	}

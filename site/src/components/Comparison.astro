@@ -1,0 +1,49 @@
+---
+const rows = [
+  { label: 'Primary use case', mantle: 'AI workflow automation', temporal: 'Distributed transactions', n8n: 'SaaS integration', langchain: 'LLM app development', prefect: 'Data pipelines' },
+  { label: 'Workflow format', mantle: 'YAML + CEL', temporal: 'Go / Java SDK', n8n: 'Visual canvas', langchain: 'Python code', prefect: 'Python code' },
+  { label: 'Deployment', mantle: 'Single binary + Postgres', temporal: 'Multi-service cluster', n8n: 'Self-hosted or cloud', langchain: 'Library in your app', prefect: 'Python platform' },
+  { label: 'AI/LLM support', mantle: 'First-class (built-in)', temporal: 'Build it yourself', n8n: 'Partial (AI nodes)', langchain: 'First-class (library)', prefect: 'Build it yourself' },
+  { label: 'Checkpointing', mantle: 'Built-in', temporal: 'Built-in', n8n: 'Partial', langchain: 'None', prefect: 'Built-in' },
+  { label: 'Secrets management', mantle: 'Built-in, encrypted', temporal: 'External', n8n: 'Built-in', langchain: 'External', prefect: 'External' },
+  { label: 'Version control', mantle: 'Git-native (IaC)', temporal: 'Code in repos', n8n: 'Database-stored', langchain: 'Code in repos', prefect: 'Code in repos' },
+  { label: 'Target user', mantle: 'Platform engineers', temporal: 'Backend engineers', n8n: 'Non-technical users', langchain: 'Python developers', prefect: 'Data engineers' },
+  { label: 'Operational complexity', mantle: 'Low', temporal: 'High', n8n: 'Medium', langchain: 'N/A (library)', prefect: 'Medium-High' },
+];
+---
+<section id="comparison" class="py-24 lg:py-32 border-t border-outline-variant">
+  <div class="mx-auto max-w-[1200px] px-6">
+    <h2 class="font-headline text-3xl sm:text-4xl font-bold tracking-tight mb-12" data-animate>How Mantle Compares</h2>
+
+    <div class="overflow-x-auto border border-outline-variant" data-animate>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-outline-variant bg-surface-container-highest">
+            <th class="text-left p-4 font-mono text-xs text-on-surface-variant font-normal w-[180px] min-w-[140px]"></th>
+            <th class="text-left p-4 font-headline font-semibold text-primary min-w-[150px] bg-surface-container-high border-t-2 border-t-primary">Mantle</th>
+            <th class="text-left p-4 font-mono text-xs text-on-surface-variant font-normal min-w-[150px]">Temporal</th>
+            <th class="text-left p-4 font-mono text-xs text-on-surface-variant font-normal min-w-[150px]">n8n / Zapier</th>
+            <th class="text-left p-4 font-mono text-xs text-on-surface-variant font-normal min-w-[150px]">LangChain</th>
+            <th class="text-left p-4 font-mono text-xs text-on-surface-variant font-normal min-w-[150px]">Prefect / Airflow</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr class="border-b border-outline-variant last:border-b-0 hover:bg-surface-container-low transition-colors">
+              <td class="p-4 font-mono text-xs text-on-surface-variant">{row.label}</td>
+              <td class="p-4 text-on-surface bg-primary/[0.06]">{row.mantle}</td>
+              <td class="p-4 text-on-surface-variant">{row.temporal}</td>
+              <td class="p-4 text-on-surface-variant">{row.n8n}</td>
+              <td class="p-4 text-on-surface-variant">{row.langchain}</td>
+              <td class="p-4 text-on-surface-variant">{row.prefect}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-xs text-on-surface-variant mt-6 max-w-3xl" data-animate>
+      Mantle is early (v0.1.0). Temporal, Airflow, and LangChain have years of production hardening and larger ecosystems. Choose the tool that fits your use case and team.
+    </p>
+  </div>
+</section>

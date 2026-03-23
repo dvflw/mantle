@@ -1,0 +1,77 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+const { title, description = "Define AI workflows as YAML. Deploy them like infrastructure. Run them anywhere." } = Astro.props;
+---
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content={description} />
+  <title>{title}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <slot />
+  <script>
+    // IntersectionObserver for fade-in-up animations
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+
+    document.querySelectorAll('[data-animate]').forEach((el) => {
+      observer.observe(el);
+    });
+
+    // Copy button for terminal blocks
+    document.querySelectorAll('.copy-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const block = btn.closest('.terminal-block');
+        if (!block) return;
+        const code = block.querySelector('code');
+        if (!code) return;
+        const text = code.textContent || '';
+        navigator.clipboard.writeText(text).then(() => {
+          btn.textContent = 'copied';
+          btn.classList.add('text-primary');
+          setTimeout(() => {
+            btn.textContent = 'copy';
+            btn.classList.remove('text-primary');
+          }, 2000);
+        });
+      });
+    });
+
+    // Scroll-triggered terminal typing animation
+    const terminalObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const lines = entry.target.querySelectorAll('[data-terminal-line]');
+          lines.forEach((line, i) => {
+            setTimeout(() => {
+              line.classList.add('line-visible');
+            }, i * 400);
+          });
+          terminalObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.2 });
+
+    document.querySelectorAll('[data-terminal-typing]').forEach((el) => {
+      terminalObserver.observe(el);
+    });
+  </script>
+</body>
+</html>

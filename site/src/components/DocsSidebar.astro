@@ -1,0 +1,108 @@
+---
+import { docsNav } from '../data/docs-nav';
+
+interface Props {
+  currentPath: string;
+}
+
+const { currentPath } = Astro.props;
+---
+
+<aside id="docs-sidebar" class="docs-sidebar hidden lg:block w-60 shrink-0">
+  <div class="sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto py-8 pr-4 pl-2">
+    <nav aria-label="Documentation sidebar">
+      {docsNav.map((group) => (
+        <div class="mb-6">
+          <h4 class="text-[11px] font-semibold uppercase tracking-widest text-on-surface-variant mb-2 px-3">
+            {group.title}
+          </h4>
+          <ul class="space-y-0.5">
+            {group.items.map((item) => {
+              const isActive = currentPath === item.href || currentPath === item.href + '/';
+              return (
+                <li>
+                  <a
+                    href={item.href}
+                    class:list={[
+                      'block px-3 py-1.5 text-sm transition-colors rounded-sm',
+                      isActive
+                        ? 'text-primary border-l-2 border-primary bg-primary/5 font-medium'
+                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high border-l-2 border-transparent',
+                    ]}
+                  >
+                    {item.title}
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </nav>
+  </div>
+</aside>
+
+<!-- Mobile sidebar overlay -->
+<div id="sidebar-overlay" class="fixed inset-0 z-40 bg-black/50 hidden lg:hidden" aria-hidden="true"></div>
+
+<!-- Mobile sidebar drawer -->
+<aside id="docs-sidebar-mobile" class="fixed top-16 left-0 bottom-0 z-50 w-72 bg-surface-container-lowest border-r border-outline-variant transform -translate-x-full transition-transform duration-200 lg:hidden overflow-y-auto">
+  <nav class="py-6 px-4" aria-label="Documentation sidebar mobile">
+    {docsNav.map((group) => (
+      <div class="mb-6">
+        <h4 class="text-[11px] font-semibold uppercase tracking-widest text-on-surface-variant mb-2 px-3">
+          {group.title}
+        </h4>
+        <ul class="space-y-0.5">
+          {group.items.map((item) => {
+            const isActive = currentPath === item.href || currentPath === item.href + '/';
+            return (
+              <li>
+                <a
+                  href={item.href}
+                  class:list={[
+                    'block px-3 py-1.5 text-sm transition-colors rounded-sm',
+                    isActive
+                      ? 'text-primary border-l-2 border-primary bg-primary/5 font-medium'
+                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high border-l-2 border-transparent',
+                  ]}
+                >
+                  {item.title}
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    ))}
+  </nav>
+</aside>
+
+<script>
+  const toggleBtn = document.getElementById('sidebar-toggle');
+  const mobileSidebar = document.getElementById('docs-sidebar-mobile');
+  const overlay = document.getElementById('sidebar-overlay');
+
+  function openSidebar() {
+    mobileSidebar?.classList.remove('-translate-x-full');
+    overlay?.classList.remove('hidden');
+  }
+
+  function closeSidebar() {
+    mobileSidebar?.classList.add('-translate-x-full');
+    overlay?.classList.add('hidden');
+  }
+
+  toggleBtn?.addEventListener('click', () => {
+    const isOpen = !mobileSidebar?.classList.contains('-translate-x-full');
+    if (isOpen) closeSidebar();
+    else openSidebar();
+  });
+
+  overlay?.addEventListener('click', closeSidebar);
+
+  // Close on nav link click (mobile)
+  mobileSidebar?.querySelectorAll('a').forEach((a) => {
+    a.addEventListener('click', closeSidebar);
+  });
+</script>

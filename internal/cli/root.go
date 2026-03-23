@@ -10,7 +10,12 @@ func NewRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "mantle",
 		Short:        "Headless AI workflow automation platform",
-		Long:         "Mantle is a headless AI workflow automation platform — BYOK, IaC-first, enterprise-grade, open source.",
+		Long: `Mantle is a headless AI workflow automation platform.
+BYOK, IaC-first, enterprise-grade, source-available.
+
+  validate → plan → apply → run
+
+Full documentation: https://mantle.dev/docs`,
 		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.Load(cmd)

@@ -360,7 +360,7 @@ func listExecutions(cmd *cobra.Command) error {
 	}
 
 	if len(executions) == 0 {
-		fmt.Fprintln(out, "No executions found.")
+		fmt.Fprintln(out, "No executions found. Run a workflow with: mantle run <workflow>")
 	} else {
 		fmt.Fprintf(out, "\n%d execution(s) shown.\n", len(executions))
 	}
@@ -377,7 +377,7 @@ func statusIcon(status string) string {
 	case "running":
 		return "▶"
 	case "skipped":
-		return "○"
+		return "⊘"
 	case "cancelled":
 		return "■"
 	default:

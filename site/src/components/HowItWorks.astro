@@ -1,0 +1,58 @@
+---
+const steps = [
+  { number: '01', title: 'Write', desc: 'Define your workflow as a YAML file' },
+  { number: '02', title: 'Validate', desc: 'Check structure offline, run in CI' },
+  { number: '03', title: 'Apply', desc: 'Store an immutable version in Postgres' },
+  { number: '04', title: 'Run', desc: 'Execute with checkpoint-and-resume' },
+];
+---
+<section id="how-it-works" class="py-24 lg:py-32 border-t border-outline-variant">
+  <div class="mx-auto max-w-[1200px] px-6">
+    <h2 class="font-headline text-3xl sm:text-4xl font-bold tracking-tight mb-16" data-animate>How It Works</h2>
+
+    <!-- Step flow -->
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-16" data-animate>
+      {steps.map((step, i) => (
+        <div class="relative flex flex-col gap-3 p-6 border border-outline-variant bg-surface-container-low">
+          <span class="font-mono text-xs text-primary">{step.number}</span>
+          <h3 class="font-headline text-xl font-semibold">{step.title}</h3>
+          <p class="text-sm text-on-surface-variant">{step.desc}</p>
+          {i < 3 && (
+            <div class="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 text-outline-variant">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+
+    <!-- Terminal -->
+    <div class="terminal-block border border-outline-variant bg-surface-container-low overflow-hidden" data-animate data-terminal-typing>
+      <div class="flex items-center gap-2 px-4 py-3 border-b border-outline-variant bg-surface-container-highest">
+        <div class="flex gap-1.5">
+          <div class="w-3 h-3 rounded-full bg-[#ff5f57]"></div>
+          <div class="w-3 h-3 rounded-full bg-[#febc2e]"></div>
+          <div class="w-3 h-3 rounded-full bg-[#28c840]"></div>
+        </div>
+        <span class="text-xs text-on-surface-variant font-mono ml-2">Terminal</span>
+        <button class="copy-btn ml-auto text-xs text-on-surface-variant hover:text-primary font-mono transition-colors" type="button">copy</button>
+      </div>
+      <div class="p-4 overflow-x-auto">
+        <pre class="text-sm font-mono leading-loose"><code><span data-terminal-line><span class="text-on-surface-variant">$</span> <span class="text-primary">mantle validate</span> examples/fetch-and-summarize.yaml</span>
+<span data-terminal-line><span class="text-on-surface-variant">fetch-and-summarize.yaml: valid</span></span>
+<span data-terminal-line>&nbsp;</span>
+<span data-terminal-line><span class="text-on-surface-variant">$</span> <span class="text-primary">mantle plan</span> examples/fetch-and-summarize.yaml</span>
+<span data-terminal-line><span class="text-primary">+</span> fetch-and-summarize (new workflow, version 1)</span>
+<span data-terminal-line>&nbsp;</span>
+<span data-terminal-line><span class="text-on-surface-variant">$</span> <span class="text-primary">mantle apply</span> examples/fetch-and-summarize.yaml</span>
+<span data-terminal-line><span class="text-on-surface-variant">Applied fetch-and-summarize version 1</span></span>
+<span data-terminal-line>&nbsp;</span>
+<span data-terminal-line><span class="text-on-surface-variant">$</span> <span class="text-primary">mantle run</span> fetch-and-summarize --input url=https://api.example.com/data</span>
+<span data-terminal-line><span class="text-on-surface-variant">Running fetch-and-summarize (version 1)...</span></span>
+<span data-terminal-line><span class="text-on-surface-variant">Execution a1b2c3d4: completed</span></span>
+<span data-terminal-line><span class="text-on-surface-variant">  fetch-data: completed (0.8s)</span></span>
+<span data-terminal-line><span class="text-on-surface-variant">  summarize:  completed (2.1s)</span></span></code></pre>
+      </div>
+    </div>
+  </div>
+</section>
