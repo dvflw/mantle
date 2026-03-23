@@ -32,9 +32,10 @@ func newSecretsCreateCommand() *cobra.Command {
 	var fields []string
 
 	cmd := &cobra.Command{
-		Use:   "create",
-		Short: "Create a new credential",
-		Long:  "Creates a new encrypted credential with the specified type and field values.",
+		Use:     "create",
+		Short:   "Create a new credential",
+		Long:    "Creates a new encrypted credential with the specified type and field values.",
+		Example: "  mantle secrets create --name openai --type openai --field api_key=sk-...",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, cleanup, err := newSecretStore(cmd)
 			if err != nil {

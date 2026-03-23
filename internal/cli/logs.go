@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -20,6 +21,10 @@ func newLogsCommand() *cobra.Command {
 
 When called with an execution ID, shows detailed step information.
 When called without arguments, lists recent executions with optional filters.`,
+		Example: `  mantle logs abc123
+  mantle logs --workflow my-workflow --status failed
+  mantle logs --since 24h --limit 10
+  mantle logs abc123 --output json`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
@@ -64,20 +69,6 @@ func showExecutionDetail(cmd *cobra.Command, execID string) error {
 		return fmt.Errorf("execution %q not found", execID)
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Execution: %s\n", execID)
-	fmt.Fprintf(cmd.OutOrStdout(), "Workflow:  %s (version %d)\n", workflowName, version)
-	fmt.Fprintf(cmd.OutOrStdout(), "Status:    %s\n", status)
-	if startedAt != nil {
-		fmt.Fprintf(cmd.OutOrStdout(), "Started:   %s\n", startedAt.Format(time.RFC3339))
-	}
-	if completedAt != nil {
-		fmt.Fprintf(cmd.OutOrStdout(), "Completed: %s\n", completedAt.Format(time.RFC3339))
-		if startedAt != nil {
-			fmt.Fprintf(cmd.OutOrStdout(), "Duration:  %s\n", completedAt.Sub(*startedAt).Round(time.Millisecond))
-		}
-	}
-	fmt.Fprintln(cmd.OutOrStdout())
-
 	// Fetch top-level step executions.
 	rows, err := database.QueryContext(cmd.Context(),
 		`SELECT id, step_name, status, error, started_at, completed_at
@@ -91,10 +82,10 @@ func showExecutionDetail(cmd *cobra.Command, execID string) error {
 
 	// Fetch sub-steps grouped by parent.
 	type subStep struct {
-		StepName  string
-		Status    string
-		Started   *time.Time
-		Completed *time.Time
+		StepName  string     `json:"step_name"`
+		Status    string     `json:"status"`
+		Started   *time.Time `json:"started_at,omitempty"`
+		Completed *time.Time `json:"completed_at,omitempty"`
 	}
 	subStepsByParent := make(map[string][]subStep)
 	subRows, err := database.QueryContext(cmd.Context(),
@@ -113,7 +104,18 @@ func showExecutionDetail(cmd *cobra.Command, execID string) error {
 		}
 	}
 
-	fmt.Fprintln(cmd.OutOrStdout(), "Steps:")
+	// Collect step data.
+	type stepInfo struct {
+		ID        string    `json:"id"`
+		Name      string    `json:"name"`
+		Status    string    `json:"status"`
+		Error     string    `json:"error,omitempty"`
+		StartedAt *time.Time `json:"started_at,omitempty"`
+		CompletedAt *time.Time `json:"completed_at,omitempty"`
+		SubSteps  []subStep  `json:"sub_steps,omitempty"`
+	}
+
+	var stepsData []stepInfo
 	for rows.Next() {
 		var stepID, stepName, stepStatus string
 		var stepError *string
@@ -122,23 +124,74 @@ func showExecutionDetail(cmd *cobra.Command, execID string) error {
 			return fmt.Errorf("scanning step: %w", err)
 		}
 
-		icon := statusIcon(stepStatus)
+		si := stepInfo{
+			ID:          stepID,
+			Name:        stepName,
+			Status:      stepStatus,
+			StartedAt:   stepStarted,
+			CompletedAt: stepCompleted,
+		}
+		if stepError != nil && *stepError != "" {
+			si.Error = *stepError
+		}
+		if subs, ok := subStepsByParent[stepID]; ok {
+			si.SubSteps = subs
+		}
+		stepsData = append(stepsData, si)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterating steps: %w", err)
+	}
+
+	// JSON output mode.
+	outputFormat, _ := cmd.Flags().GetString("output")
+	if outputFormat == "json" {
+		detail := map[string]any{
+			"execution_id": execID,
+			"workflow":     workflowName,
+			"version":      version,
+			"status":       status,
+			"started_at":   startedAt,
+			"completed_at": completedAt,
+			"steps":        stepsData,
+		}
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(detail)
+	}
+
+	// Text output.
+	fmt.Fprintf(cmd.OutOrStdout(), "Execution: %s\n", execID)
+	fmt.Fprintf(cmd.OutOrStdout(), "Workflow:  %s (version %d)\n", workflowName, version)
+	fmt.Fprintf(cmd.OutOrStdout(), "Status:    %s\n", status)
+	if startedAt != nil {
+		fmt.Fprintf(cmd.OutOrStdout(), "Started:   %s\n", startedAt.Format(time.RFC3339))
+	}
+	if completedAt != nil {
+		fmt.Fprintf(cmd.OutOrStdout(), "Completed: %s\n", completedAt.Format(time.RFC3339))
+		if startedAt != nil {
+			fmt.Fprintf(cmd.OutOrStdout(), "Duration:  %s\n", completedAt.Sub(*startedAt).Round(time.Millisecond))
+		}
+	}
+	fmt.Fprintln(cmd.OutOrStdout())
+
+	fmt.Fprintln(cmd.OutOrStdout(), "Steps:")
+	for _, si := range stepsData {
+		icon := statusIcon(si.Status)
 		duration := ""
-		if stepStarted != nil && stepCompleted != nil {
-			duration = fmt.Sprintf(" %s", stepCompleted.Sub(*stepStarted).Round(time.Millisecond))
+		if si.StartedAt != nil && si.CompletedAt != nil {
+			duration = fmt.Sprintf(" %s", si.CompletedAt.Sub(*si.StartedAt).Round(time.Millisecond))
 		}
 
-		fmt.Fprintf(cmd.OutOrStdout(), "  %s %-20s %s%s\n", icon, stepName, stepStatus, duration)
-		if stepError != nil && *stepError != "" {
-			fmt.Fprintf(cmd.OutOrStdout(), "      error: %s\n", *stepError)
+		fmt.Fprintf(cmd.OutOrStdout(), "  %s %-20s %s%s\n", icon, si.Name, si.Status, duration)
+		if si.Error != "" {
+			fmt.Fprintf(cmd.OutOrStdout(), "      error: %s\n", si.Error)
 		}
 
 		// Render sub-steps (tool calls) as indented tree.
-		if subs, ok := subStepsByParent[stepID]; ok && len(subs) > 0 {
+		if len(si.SubSteps) > 0 {
 			// Group by round (last segment of step name: parent/tool/name/round).
 			rounds := make(map[string][]subStep)
 			var roundOrder []string
-			for _, s := range subs {
+			for _, s := range si.SubSteps {
 				parts := strings.Split(s.StepName, "/")
 				round := "0"
 				if len(parts) >= 4 {
@@ -182,7 +235,7 @@ func showExecutionDetail(cmd *cobra.Command, execID string) error {
 		}
 	}
 
-	return rows.Err()
+	return nil
 }
 
 // listExecutions lists recent executions with optional filters.
@@ -258,42 +311,57 @@ func listExecutions(cmd *cobra.Command) error {
 	}
 	defer rows.Close()
 
+	type execRow struct {
+		ID          string     `json:"id"`
+		Workflow    string     `json:"workflow"`
+		Version     int        `json:"version"`
+		Status      string     `json:"status"`
+		StartedAt   *time.Time `json:"started_at,omitempty"`
+		CompletedAt *time.Time `json:"completed_at,omitempty"`
+	}
+
+	var executions []execRow
+	for rows.Next() {
+		var r execRow
+		if err := rows.Scan(&r.ID, &r.Workflow, &r.Version, &r.Status, &r.StartedAt, &r.CompletedAt); err != nil {
+			return fmt.Errorf("scanning execution: %w", err)
+		}
+		executions = append(executions, r)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterating executions: %w", err)
+	}
+
+	// JSON output mode.
+	outputFormat, _ := cmd.Flags().GetString("output")
+	if outputFormat == "json" {
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(executions)
+	}
+
+	// Text output mode.
 	out := cmd.OutOrStdout()
 	fmt.Fprintf(out, "%-38s %-20s %7s %-10s %-20s %-20s\n",
 		"ID", "WORKFLOW", "VERSION", "STATUS", "STARTED", "COMPLETED")
 	fmt.Fprintln(out, strings.Repeat("-", 120))
 
-	count := 0
-	for rows.Next() {
-		var id, wfName, wfStatus string
-		var version int
-		var startedAt, completedAt *time.Time
-		if err := rows.Scan(&id, &wfName, &version, &wfStatus, &startedAt, &completedAt); err != nil {
-			return fmt.Errorf("scanning execution: %w", err)
-		}
-
+	for _, r := range executions {
 		started := "-"
-		if startedAt != nil {
-			started = startedAt.Format("2006-01-02 15:04:05")
+		if r.StartedAt != nil {
+			started = r.StartedAt.Format("2006-01-02 15:04:05")
 		}
 		completed := "-"
-		if completedAt != nil {
-			completed = completedAt.Format("2006-01-02 15:04:05")
+		if r.CompletedAt != nil {
+			completed = r.CompletedAt.Format("2006-01-02 15:04:05")
 		}
 
 		fmt.Fprintf(out, "%-38s %-20s %7d %-10s %-20s %-20s\n",
-			id, wfName, version, wfStatus, started, completed)
-		count++
+			r.ID, r.Workflow, r.Version, r.Status, started, completed)
 	}
 
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterating executions: %w", err)
-	}
-
-	if count == 0 {
+	if len(executions) == 0 {
 		fmt.Fprintln(out, "No executions found.")
 	} else {
-		fmt.Fprintf(out, "\n%d execution(s) shown.\n", count)
+		fmt.Fprintf(out, "\n%d execution(s) shown.\n", len(executions))
 	}
 
 	return nil

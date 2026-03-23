@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
+	"strconv"
 	"sync"
 	"time"
 
@@ -73,6 +75,39 @@ func New(db *sql.DB, eng *engine.Engine, address string) *Server {
 	s.cron = NewCronScheduler(s)
 	s.webhooks = NewWebhookHandler(s)
 	return s
+}
+
+// statusWriter wraps http.ResponseWriter to capture the status code.
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (sw *statusWriter) WriteHeader(code int) {
+	sw.status = code
+	sw.ResponseWriter.WriteHeader(code)
+}
+
+// uuidPattern matches UUID-like path segments.
+var uuidPattern = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
+
+// normalizePath collapses UUID segments to {id} to prevent metric cardinality explosion.
+func normalizePath(p string) string {
+	return uuidPattern.ReplaceAllString(p, "{id}")
+}
+
+// metricsMiddleware records HTTP request duration and total count.
+func metricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		sw := &statusWriter{ResponseWriter: w, status: 200}
+		next.ServeHTTP(sw, r)
+		duration := time.Since(start).Seconds()
+		path := normalizePath(r.URL.Path)
+		status := strconv.Itoa(sw.status)
+		metrics.HTTPRequestDuration.WithLabelValues(r.Method, path, status).Observe(duration)
+		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, path, status).Inc()
+	})
 }
 
 // Start starts the HTTP server, cron scheduler, and webhook handler.
@@ -170,13 +205,13 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.Handle("/healthz", health.HealthzHandler())
 	mux.Handle("/readyz", health.ReadyzHandler(s.DB, livenessCheckers...))
 
-	// Wrap with auth middleware if AuthStore is configured.
-	var handler http.Handler = mux
+	// Wrap with metrics middleware (innermost, runs for every request).
+	var handler http.Handler = metricsMiddleware(mux)
 	if s.AuthStore != nil {
 		if s.Auditor != nil {
-			handler = auth.AuthMiddleware(s.AuthStore, s.OIDCValidator, mux, s.Auditor)
+			handler = auth.AuthMiddleware(s.AuthStore, s.OIDCValidator, handler, s.Auditor)
 		} else {
-			handler = auth.AuthMiddleware(s.AuthStore, s.OIDCValidator, mux)
+			handler = auth.AuthMiddleware(s.AuthStore, s.OIDCValidator, handler)
 		}
 	}
 

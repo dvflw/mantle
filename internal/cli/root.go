@@ -27,28 +27,65 @@ func NewRootCommand() *cobra.Command {
 	cmd.PersistentFlags().String("api-address", "", "API listen address")
 	cmd.PersistentFlags().String("log-level", "", "log level (debug, info, warn, error)")
 	cmd.PersistentFlags().String("api-key", "", "API key for authentication (overrides cached credentials)")
+	cmd.PersistentFlags().StringP("output", "o", "text", "Output format: text or json")
 
-	cmd.AddCommand(newVersionCommand())
-	cmd.AddCommand(newInitCommand())
-	cmd.AddCommand(newMigrateCommand())
-	cmd.AddCommand(newValidateCommand())
-	cmd.AddCommand(newPlanCommand())
-	cmd.AddCommand(newApplyCommand())
-	cmd.AddCommand(newRunCommand())
-	cmd.AddCommand(newCancelCommand())
-	cmd.AddCommand(newLogsCommand())
-	cmd.AddCommand(newStatusCommand())
-	cmd.AddCommand(newSecretsCommand())
-	cmd.AddCommand(newServeCommand())
-	cmd.AddCommand(newAuditCommand())
-	cmd.AddCommand(newTeamsCommand())
-	cmd.AddCommand(newUsersCommand())
-	cmd.AddCommand(newRolesCommand())
-	cmd.AddCommand(newPluginsCommand())
-	cmd.AddCommand(newLibraryCommand())
-	cmd.AddCommand(newLoginCommand())
-	cmd.AddCommand(newLogoutCommand())
-	cmd.AddCommand(newCleanupCommand())
+	// Command groups for organized help output.
+	cmd.AddGroup(
+		&cobra.Group{ID: "workflow", Title: "Workflow Lifecycle:"},
+		&cobra.Group{ID: "server", Title: "Server & Triggers:"},
+		&cobra.Group{ID: "auth", Title: "Authentication & Secrets:"},
+		&cobra.Group{ID: "admin", Title: "Administration:"},
+		&cobra.Group{ID: "info", Title: "Info:"},
+	)
+
+	// Workflow lifecycle commands.
+	addToGroup(cmd, "workflow",
+		newValidateCommand(),
+		newPlanCommand(),
+		newApplyCommand(),
+		newRunCommand(),
+		newCancelCommand(),
+		newLogsCommand(),
+		newStatusCommand(),
+	)
+
+	// Server & triggers.
+	addToGroup(cmd, "server",
+		newServeCommand(),
+	)
+
+	// Authentication & secrets.
+	addToGroup(cmd, "auth",
+		newSecretsCommand(),
+		newLoginCommand(),
+		newLogoutCommand(),
+	)
+
+	// Administration.
+	addToGroup(cmd, "admin",
+		newInitCommand(),
+		newMigrateCommand(),
+		newTeamsCommand(),
+		newUsersCommand(),
+		newRolesCommand(),
+		newAuditCommand(),
+		newPluginsCommand(),
+		newLibraryCommand(),
+		newCleanupCommand(),
+	)
+
+	// Info.
+	addToGroup(cmd, "info",
+		newVersionCommand(),
+	)
 
 	return cmd
+}
+
+// addToGroup sets GroupID on each command and adds it to the parent.
+func addToGroup(parent *cobra.Command, groupID string, cmds ...*cobra.Command) {
+	for _, c := range cmds {
+		c.GroupID = groupID
+		parent.AddCommand(c)
+	}
 }
