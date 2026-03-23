@@ -50,7 +50,7 @@ steps:
 - **Checkpoint and Resume** -- Steps checkpoint to Postgres after completion. Crash mid-workflow? Restart picks up from the last completed step.
 - **Secrets as Opaque Handles** -- Credentials are AES-256-GCM encrypted at rest and resolved at connector invocation time. Never exposed in expressions, logs, or step outputs.
 
-[How Mantle compares to Temporal, n8n, LangChain, Airflow, and others.](/docs/comparison)
+[How Mantle compares to Temporal, n8n, LangChain, Airflow, and others.](https://mantle.dvflw.co/docs/comparison)
 
 ## Quick Start
 
@@ -69,7 +69,7 @@ mantle apply examples/hello-world.yaml
 mantle run hello-world
 ```
 
-17 example workflows are included in [`examples/`](examples/). See the [Getting Started guide](/docs/getting-started) for a full walkthrough.
+17 example workflows are included in [`examples/`](examples/). See the [Getting Started guide](https://mantle.dvflw.co/docs/getting-started) for a full walkthrough.
 
 ## Connectors
 
@@ -85,7 +85,7 @@ mantle run hello-world
 | Postgres | `postgres/query` | Parameterized SQL against external databases |
 | S3 | `s3/put`, `s3/get`, `s3/list` | Put, get, list objects (S3-compatible) |
 
-Need something else? Write a [plugin](/docs/plugins). Any executable that reads JSON from stdin and writes JSON to stdout -- Python, Rust, Node, Bash.
+Need something else? Write a [plugin](https://mantle.dvflw.co/docs/plugins). Any executable that reads JSON from stdin and writes JSON to stdout -- Python, Rust, Node, Bash.
 
 ## CLI Reference
 
@@ -132,7 +132,7 @@ Need something else? Write a [plugin](/docs/plugins). Any executable that reads 
 | `mantle cleanup` | Clean up old executions and artifacts |
 | `mantle version` | Print version info |
 
-See the [CLI Reference](/docs/cli-reference) for full usage and flags.
+See the [CLI Reference](https://mantle.dvflw.co/docs/cli-reference) for full usage and flags.
 
 ## Configuration
 
@@ -204,7 +204,7 @@ make clean      # Remove built binary
 
 ## Contributing
 
-Contributions are welcome. Please open an issue first to discuss what you want to change. See the [Contributing guide](/docs/contributing) for details.
+Contributions are welcome. Please open an issue first to discuss what you want to change. See the [Contributing guide](https://mantle.dvflw.co/docs/contributing) for details.
 
 ## License
 
