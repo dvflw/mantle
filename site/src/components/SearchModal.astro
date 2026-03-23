@@ -1,0 +1,166 @@
+---
+// Single search modal rendered once in Base.astro.
+// Multiple DocsSearch trigger buttons open this shared modal.
+---
+<div id="search-modal" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true" aria-label="Search documentation">
+  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" data-search-backdrop></div>
+  <div class="fixed top-[15%] left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-xl bg-surface-container border border-outline-variant shadow-2xl max-h-[60vh] flex flex-col">
+    <div class="flex items-center gap-3 px-4 py-3 border-b border-outline-variant">
+      <svg class="w-4 h-4 text-on-surface-variant shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+      <input
+        data-search-input
+        type="text"
+        placeholder="Search documentation..."
+        class="flex-1 bg-transparent text-on-surface text-sm outline-none placeholder:text-on-surface-variant/50 font-body"
+        autocomplete="off"
+      />
+      <kbd class="text-[10px] text-on-surface-variant/60 border border-outline-variant/50 px-1.5 py-0.5 rounded-sm">Esc</kbd>
+    </div>
+    <div data-search-results class="overflow-y-auto p-2 text-sm">
+      <p class="px-3 py-4 text-on-surface-variant/60 text-center text-xs">Type to search...</p>
+    </div>
+  </div>
+</div>
+
+<script is:inline>
+(function() {
+  if (window.__searchInitialized) return;
+  window.__searchInitialized = true;
+
+  var pagefind = null;
+
+  function loadPagefind() {
+    if (pagefind) return Promise.resolve(pagefind);
+    return import('/pagefind/pagefind.js').then(function(pf) {
+      pagefind = pf;
+      return pf.init().then(function() { return pf; });
+    }).catch(function() { pagefind = null; return null; });
+  }
+
+  function getModal() { return document.getElementById('search-modal'); }
+  function getInput() { return document.querySelector('[data-search-input]'); }
+  function getResults() { return document.querySelector('[data-search-results]'); }
+
+  function setResultsText(msg) {
+    var r = getResults();
+    if (!r) return;
+    while (r.firstChild) r.removeChild(r.firstChild);
+    var p = document.createElement('p');
+    p.className = 'px-3 py-4 text-on-surface-variant/60 text-center text-xs';
+    p.textContent = msg;
+    r.appendChild(p);
+  }
+
+  function openSearch() {
+    var modal = getModal();
+    var input = getInput();
+    if (!modal || !input) return;
+    modal.classList.remove('hidden');
+    input.value = '';
+    input.focus();
+    setResultsText('Type to search...');
+  }
+
+  function closeSearch() {
+    var modal = getModal();
+    if (modal) modal.classList.add('hidden');
+  }
+
+  // Sanitize Pagefind excerpt: strip all HTML except <mark> tags
+  function sanitizeExcerpt(html) {
+    var tmp = document.createElement('div');
+    tmp.textContent = '';
+    // Parse into a temporary element to strip tags
+    var parser = new DOMParser();
+    var doc = parser.parseFromString(html, 'text/html');
+    var walker = doc.body.childNodes;
+    for (var i = 0; i < walker.length; i++) {
+      var node = walker[i];
+      if (node.nodeType === 3) {
+        tmp.appendChild(document.createTextNode(node.textContent));
+      } else if (node.nodeType === 1 && node.tagName === 'MARK') {
+        var mark = document.createElement('mark');
+        mark.setAttribute('data-pagefind-highlight', '');
+        mark.textContent = node.textContent;
+        tmp.appendChild(mark);
+      } else {
+        tmp.appendChild(document.createTextNode(node.textContent || ''));
+      }
+    }
+    return tmp;
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault();
+      var modal = getModal();
+      if (!modal) return;
+      if (modal.classList.contains('hidden')) openSearch();
+      else closeSearch();
+    }
+    if (e.key === 'Escape') closeSearch();
+  });
+
+  document.addEventListener('click', function(e) {
+    if (e.target && e.target.hasAttribute('data-search-backdrop')) closeSearch();
+    if (e.target && e.target.closest('[data-search-trigger]')) openSearch();
+  });
+
+  var debounceTimer;
+  document.addEventListener('input', function(e) {
+    if (!e.target || !e.target.hasAttribute('data-search-input')) return;
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(function() {
+      var input = e.target;
+      var results = getResults();
+      if (!results) return;
+
+      var query = input.value.trim();
+      if (!query) {
+        setResultsText('Type to search...');
+        return;
+      }
+
+      loadPagefind().then(function(pf) {
+        if (!pf) {
+          setResultsText('Search unavailable (build required)');
+          return;
+        }
+
+        pf.search(query).then(function(search) {
+          if (search.results.length === 0) {
+            setResultsText('No results for "' + query + '"');
+            return;
+          }
+
+          Promise.all(search.results.slice(0, 8).map(function(r) { return r.data(); }))
+            .then(function(items) {
+              while (results.firstChild) results.removeChild(results.firstChild);
+              items.forEach(function(item) {
+                var link = document.createElement('a');
+                link.href = item.url;
+                link.className = 'block px-3 py-2 hover:bg-surface-container-high transition-colors group';
+
+                var title = document.createElement('div');
+                title.className = 'font-medium text-on-surface text-sm group-hover:text-primary transition-colors';
+                title.textContent = (item.meta && item.meta.title) || item.url;
+                link.appendChild(title);
+
+                if (item.excerpt) {
+                  var excerptEl = sanitizeExcerpt(item.excerpt);
+                  excerptEl.className = 'text-xs text-on-surface-variant mt-0.5 line-clamp-2';
+                  link.appendChild(excerptEl);
+                }
+
+                link.addEventListener('click', closeSearch);
+                results.appendChild(link);
+              });
+            });
+        });
+      });
+    }, 200);
+  });
+})();
+</script>

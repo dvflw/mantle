@@ -324,19 +324,13 @@ mark[data-pagefind-highlight] {
   margin-top: 0;
 }
 
-/* Tables — horizontally scrollable on small screens */
-.prose .table-wrapper {
+
+/* Tables — display:block enables horizontal scroll when content overflows */
+.prose table {
+  display: block;
+  width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  margin-top: 1.5em;
-}
-
-.prose .table-wrapper table {
-  margin-top: 0;
-}
-
-.prose table {
-  width: 100%;
   border-collapse: collapse;
   margin-top: 1.5em;
   font-size: 0.875rem;

@@ -187,21 +187,20 @@ function isParentActive(item: NavItem): boolean {
 
 <script is:inline>
 function initSidebar() {
-  const mobileSidebar = document.getElementById('docs-sidebar-mobile');
-  const overlay = document.getElementById('sidebar-overlay');
-  if (!mobileSidebar || !overlay) return;
+  var mobileSidebar = document.getElementById('docs-sidebar-mobile');
+  if (!mobileSidebar) return;
 
   function closeSidebar() {
     mobileSidebar.classList.add('-translate-x-full');
-    overlay.classList.add('hidden');
+    var overlay = document.getElementById('sidebar-overlay');
+    if (overlay) overlay.classList.add('hidden');
   }
 
-  const newOverlay = overlay.cloneNode(true);
-  overlay.parentNode?.replaceChild(newOverlay, overlay);
-  newOverlay.addEventListener('click', closeSidebar);
+  var overlay = document.getElementById('sidebar-overlay');
+  if (overlay) overlay.onclick = closeSidebar;
 
-  mobileSidebar.querySelectorAll('a').forEach((a) => {
-    a.addEventListener('click', closeSidebar);
+  mobileSidebar.querySelectorAll('a').forEach(function(a) {
+    a.onclick = closeSidebar;
   });
 }
 initSidebar();
