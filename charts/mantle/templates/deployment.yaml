@@ -11,6 +11,10 @@ spec:
       {{- include "mantle.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
       labels:
         {{- include "mantle.selectorLabels" . | nindent 8 }}
     spec:
