@@ -29,6 +29,11 @@ const (
 	ActionCredentialDeleted Action = "credential.deleted"
 	ActionCredentialRotated Action = "credential.rotated"
 	ActionAuthFailed        Action = "auth.failed"
+
+	// Budget operations.
+	ActionBudgetExceeded Action = "budget.exceeded"
+	ActionBudgetWarning  Action = "budget.warning"
+	ActionBudgetUpdated  Action = "budget.updated"
 )
 
 // Resource identifies the target of an audit event.
