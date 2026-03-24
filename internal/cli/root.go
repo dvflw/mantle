@@ -77,6 +77,7 @@ Full documentation: https://mantle.dev/docs`,
 		newPluginsCommand(),
 		newLibraryCommand(),
 		newCleanupCommand(),
+		newBudgetCommand(),
 	)
 
 	// Info.
