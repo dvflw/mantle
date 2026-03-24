@@ -66,12 +66,12 @@ steps:
 
   - name: alert-on-failure
     action: http/request
-    if: "steps['check-api'].output.status_code != 200"
+    if: "steps['check-api'].output.status != 200"
     params:
       method: POST
       url: https://hooks.slack.com/services/T00/B00/xxx
       body:
-        text: "API health check failed with status {{ steps.check-api.output.status_code }}"
+        text: "API health check failed with status {{ steps['check-api'].output.status }}"
 ```
 
 Apply the workflow and start the server:

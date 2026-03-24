@@ -13,7 +13,7 @@ Generate a single-page marketing website for the v0.1.0 launch of Mantle, a head
 **Positioning:** Terraform for workflow automation, with native AI.
 **License:** BSL 1.1 (source-available). Do NOT call this "open source" anywhere on the page. Use "source-available" when referencing the license model.
 **GitHub:** https://github.com/dvflw/mantle
-**Docs:** https://mantle.dev/docs (placeholder)
+**Docs:** https://mantle.dvflw.co/docs (placeholder)
 
 ### Tone and Voice
 - Technical, confident, developer-first
@@ -64,7 +64,7 @@ Single binary. Postgres state. Bring your own keys.
 
 **CTA buttons:**
 - Primary (green accent, solid): "View on GitHub" -> https://github.com/dvflw/mantle
-- Secondary (outlined): "Get Started" -> https://mantle.dev/docs/getting-started
+- Secondary (outlined): "Get Started" -> https://mantle.dvflw.co/docs/getting-started
 
 **Code block** (right side, in a faux terminal window with traffic-light dots and title bar showing "fetch-and-summarize.yaml"):
 
@@ -362,7 +362,7 @@ mantle run hello-world
 execution, cron triggers, webhooks, and multi-turn tool use.
 ```
 
-**CTA button:** "Read the full Getting Started guide" -> https://mantle.dev/docs/getting-started
+**CTA button:** "Read the full Getting Started guide" -> https://mantle.dvflw.co/docs/getting-started
 
 ---
 
@@ -372,7 +372,7 @@ execution, cron triggers, webhooks, and multi-turn tool use.
 
 **Column 1: Product**
 - GitHub (https://github.com/dvflw/mantle)
-- Documentation (https://mantle.dev/docs)
+- Documentation (https://mantle.dvflw.co/docs)
 - Examples (https://github.com/dvflw/mantle/tree/main/examples)
 - Changelog (https://github.com/dvflw/mantle/blob/main/CHANGELOG.md)
 

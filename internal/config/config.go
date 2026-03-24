@@ -5,7 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log"
+	"net"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -138,7 +142,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	v := viper.New()
 
 	// Defaults
-	v.SetDefault("database.url", "postgres://mantle:mantle@localhost:5432/mantle?sslmode=require")
+	v.SetDefault("database.url", "postgres://mantle:mantle@localhost:5432/mantle?sslmode=prefer")
 	v.SetDefault("database.max_open_conns", 25)
 	v.SetDefault("database.max_idle_conns", 25)
 	v.SetDefault("database.conn_max_lifetime", 5*time.Minute)
@@ -259,6 +263,21 @@ func Load(cmd *cobra.Command) (*Config, error) {
 		}
 		// For calendar mode, reset_day is ignored, so just clamp it silently.
 		cfg.Engine.Budget.ResetDay = 1
+	}
+
+	// Warn if database URL uses sslmode=prefer on a non-loopback host.
+	if dbURL := cfg.Database.URL; dbURL != "" {
+		if parsed, err := url.Parse(dbURL); err == nil {
+			host := parsed.Hostname()
+			ip := net.ParseIP(host)
+			isLoopback := host != "" && (strings.EqualFold(host, "localhost") || (ip != nil && ip.IsLoopback()))
+			if !isLoopback {
+				q := parsed.Query()
+				if q.Get("sslmode") == "prefer" {
+					log.Printf("WARNING: database URL uses sslmode=prefer for non-loopback host %q; consider sslmode=require for production", host)
+				}
+			}
+		}
 	}
 
 	// Generate default NodeID if not set.

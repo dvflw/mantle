@@ -44,7 +44,7 @@ Execution b2c3d4e5-f6a7-8901-bcde-f12345678901: completed
 
 ## CEL Expression Syntax
 
-Mantle uses [CEL (Common Expression Language)](https://github.com/google/cel-go) for data passing and conditional logic. The essentials:
+Mantle uses [CEL (Common Expression Language)](https://cel.dev) for data passing and conditional logic. See the [Expressions guide](/docs/concepts/expressions) for the full reference. The essentials:
 
 - **Access step output:** `steps['step-name'].output.json.field`
 - **Access inputs:** `inputs.field_name`

@@ -16,7 +16,7 @@ Mantle's YAML format is its most underrated growth asset. Unlike Python-based to
 
 **Actions:**
 
-- **Example gallery on the website.** Ship 17 example workflows (already in `examples/`) as a browsable gallery at `mantle.dev/examples`. Each example gets its own page with the YAML, a plain-English description, and a one-line `mantle apply` command. This is the single highest-leverage content investment because each example page becomes an SEO landing page.
+- **Example gallery on the website.** Ship 17 example workflows (already in `examples/`) as a browsable gallery at `mantle.dvflw.co/examples`. Each example gets its own page with the YAML, a plain-English description, and a one-line `mantle apply` command. This is the single highest-leverage content investment because each example page becomes an SEO landing page.
 - **`mantle init --template` command.** Let users scaffold from templates: `mantle init --template=slack-summarizer`. Templates live in a public GitHub repo. Community members can submit templates via PR, creating a contribution flywheel.
 - **Workflow-of-the-week series.** Publish one practical workflow every week for the first 12 weeks on the blog and cross-post to dev.to, Hashnode, and r/devops. Each post walks through a real problem, shows the YAML, and ends with `mantle apply`. Topics:
   1. Summarize Slack channels daily with GPT-4o
@@ -262,14 +262,14 @@ Too early for a formal program at v0.1.0. Instead, identify and cultivate organi
 Create a simple badge that users can add to their README files:
 
 ```markdown
-[![Built with Mantle](https://img.shields.io/badge/built%20with-Mantle-00ff88)](https://mantle.dev)
+[![Built with Mantle](https://img.shields.io/badge/built%20with-Mantle-00ff88)](https://mantle.dvflw.co)
 ```
 
 This serves two purposes: it signals adoption (social proof for the project) and it creates discovery events (anyone reading that README sees Mantle). Mention the badge in the "Getting Started" docs and in the post-quickstart success message.
 
 ### Example Workflow Gallery
 
-Host at `mantle.dev/examples` with:
+Host at `mantle.dvflw.co/examples` with:
 - All 17 built-in examples, categorized (AI, HTTP, Slack, Data, DevOps)
 - A "Community" section for user-submitted workflows
 - Each workflow page has: description, full YAML, required connectors/credentials, one-line apply command
@@ -375,7 +375,7 @@ Sorted by expected impact relative to effort. Run 2-3 experiments concurrently.
 ### Experiment 4: GitHub Action for CI Validation
 
 - **Hypothesis:** A `mantle-action` GitHub Action will create organic visibility in adopters' CI pipelines and generate 50+ new discovery events per month.
-- **Metric:** GitHub Action installs, referral traffic from GitHub to mantle.dev.
+- **Metric:** GitHub Action installs, referral traffic from GitHub to mantle.dvflw.co.
 - **Effort:** Medium (4-6 hours to build and publish the action).
 - **Expected impact:** Medium. Slow burn but compounds over time.
 - **How to measure:** GitHub Marketplace install count, referral analytics.
@@ -395,7 +395,7 @@ Sorted by expected impact relative to effort. Run 2-3 experiments concurrently.
 ### Experiment 6: Dev.to / Hashnode Cross-Posting
 
 - **Hypothesis:** Cross-posting technical blog content to dev.to and Hashnode will generate 2000+ additional impressions per post with near-zero marginal effort.
-- **Metric:** Dev.to views, reactions, and referral traffic to mantle.dev.
+- **Metric:** Dev.to views, reactions, and referral traffic to mantle.dvflw.co.
 - **Effort:** Low (30 minutes per post to cross-post with canonical URL).
 - **Expected impact:** Low-medium per post, but compounds over 12 weeks of content.
 - **How to measure:** Dev.to analytics, Hashnode analytics, Cloudflare referrals.

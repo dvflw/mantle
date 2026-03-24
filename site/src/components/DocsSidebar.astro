@@ -93,7 +93,7 @@ function isParentActive(item: NavItem): boolean {
 <div id="sidebar-overlay" class="fixed inset-0 z-40 bg-black/50 hidden lg:hidden" aria-hidden="true"></div>
 
 <!-- Mobile sidebar drawer -->
-<aside id="docs-sidebar-mobile" class="fixed top-16 left-0 bottom-14 md:bottom-0 z-50 w-72 bg-surface-container-lowest border-r border-outline-variant transform -translate-x-full transition-transform duration-200 lg:hidden overflow-y-auto">
+<aside id="docs-sidebar-mobile" aria-hidden="true" inert class="fixed top-16 left-0 bottom-0 z-50 w-72 bg-surface-container-lowest border-r border-outline-variant transform -translate-x-full transition-transform duration-200 lg:hidden overflow-y-auto sidebar-mobile-bottom">
   <nav class="py-6 px-4" aria-label="Documentation sidebar mobile">
     {docsNav.map((group) => (
       <div class="mb-8">
@@ -172,7 +172,7 @@ function isParentActive(item: NavItem): boolean {
           </a>
         </li>
         <li>
-          <a href="https://github.com/dvflw/mantle" class="flex items-center gap-2 px-3 py-2 text-sm text-on-surface-variant hover:text-on-surface transition-colors">
+          <a href="https://github.com/dvflw/mantle" target="_blank" rel="noopener" class="flex items-center gap-2 px-3 py-2 text-sm text-on-surface-variant hover:text-on-surface transition-colors">
             GitHub
           </a>
         </li>
@@ -189,15 +189,17 @@ function initSidebar() {
 
   function closeSidebar() {
     mobileSidebar.classList.add('-translate-x-full');
+    mobileSidebar.setAttribute('aria-hidden', 'true');
+    mobileSidebar.inert = true;
     overlay.classList.add('hidden');
+    overlay.setAttribute('aria-hidden', 'true');
+    var menuBtn = document.getElementById('bottom-nav-docs-btn');
+    if (menuBtn) menuBtn.setAttribute('aria-expanded', 'false');
   }
 
-  const newOverlay = overlay.cloneNode(true);
-  overlay.parentNode?.replaceChild(newOverlay, overlay);
-  newOverlay.addEventListener('click', closeSidebar);
-
+  overlay.onclick = closeSidebar;
   mobileSidebar.querySelectorAll('a').forEach((a) => {
-    a.addEventListener('click', closeSidebar);
+    a.onclick = closeSidebar;
   });
 }
 initSidebar();
