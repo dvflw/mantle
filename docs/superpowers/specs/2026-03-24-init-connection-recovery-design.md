@@ -99,6 +99,35 @@ Follow the existing pattern from `login.go`: use `fmt.Fscanln(cmd.InOrStdin(), &
 
 When stdin is not a terminal (piped input, CI), skip all interactive prompts and return the connection error directly. Detect with `os.Stdin.Stat()` checking for `ModeCharDevice`.
 
+## Constant Extraction
+
+Before implementing the new init flow, extract shared constants that are currently duplicated across the codebase. This keeps the new code referencing a single source of truth.
+
+### `internal/dbdefaults/dbdefaults.go` — shared database & Docker defaults
+
+| Constant | Value | Current duplication |
+|----------|-------|---------------------|
+| `PostgresImage` | `"postgres:16-alpine"` | 7 test files + docker-compose.yml |
+| `TestUser` | `"mantle"` | 6 testcontainers setups |
+| `TestPassword` | `"mantle"` | 6 testcontainers setups |
+| `TestDatabase` | `"mantle_test"` | 6 testcontainers setups |
+| `ContainerName` | `"mantle-postgres"` | new (Docker provisioning) |
+
+### `internal/netutil/loopback.go` — loopback detection
+
+| Function/Const | Purpose | Current duplication |
+|----------------|---------|---------------------|
+| `IsLoopback(host string) bool` | Returns true for localhost, 127.0.0.1, ::1 | config.go SSL warning + new init.go recovery |
+
+### `internal/budget/budget.go` — reset mode constants
+
+| Constant | Value | Current duplication |
+|----------|-------|---------------------|
+| `ResetModeCalendar` | `"calendar"` | config.go validation + budget logic + tests |
+| `ResetModeRolling` | `"rolling"` | config.go validation + budget logic + tests |
+
+These already live in the budget package conceptually; just promote the string literals to exported constants.
+
 ## Files Changed
 
 ### Modified
@@ -106,6 +135,15 @@ When stdin is not a terminal (piped input, CI), skip all interactive prompts and
 | File | Change |
 |------|--------|
 | `internal/cli/init.go` | Add connection recovery flow, Docker provisioning, interactive prompts |
+| `internal/config/config.go` | Use `netutil.IsLoopback` for SSL warning, use `budget.ResetMode*` constants |
+| `internal/budget/budget.go` | Add `ResetModeCalendar` / `ResetModeRolling` constants, use them in existing logic |
+| `internal/auth/auth_test.go` | Use `dbdefaults` constants for testcontainers setup |
+| `internal/workflow/store_test.go` | Use `dbdefaults` constants |
+| `internal/db/migrate_test.go` | Use `dbdefaults` constants |
+| `internal/secret/store_test.go` | Use `dbdefaults` constants |
+| `internal/engine/test_helpers_test.go` | Use `dbdefaults` constants |
+| `internal/budget/store_test.go` | Use `dbdefaults` constants |
+| `internal/connector/postgres_test.go` | Use `dbdefaults.PostgresImage` |
 | `site/src/components/GetStarted.astro` | Remove `docker compose up -d` from step 2, simplify to just `mantle init` |
 | `site/src/content/docs/getting-started/index.md` | Update quickstart to remove Docker prerequisite, explain `mantle init` handles DB setup |
 
@@ -113,8 +151,11 @@ When stdin is not a terminal (piped input, CI), skip all interactive prompts and
 
 | File | Purpose |
 |------|---------|
-| `internal/cli/docker.go` | Docker availability check, container start, readiness polling — keeps init.go focused |
-| `internal/cli/init_test.go` | Tests for loopback detection, non-interactive fallback, prompt flow (mocked stdin/exec) |
+| `internal/dbdefaults/dbdefaults.go` | Shared Postgres image, test credentials, container name constants |
+| `internal/netutil/loopback.go` | `IsLoopback` function for host classification |
+| `internal/netutil/loopback_test.go` | Tests for loopback detection |
+| `internal/cli/docker.go` | Docker availability check, container start, readiness polling |
+| `internal/cli/init_test.go` | Tests for connection recovery flow, non-interactive fallback |
 | `internal/cli/docker_test.go` | Tests for Docker command construction, container name conflict handling |
 
 ## Non-Goals
