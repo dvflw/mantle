@@ -7,8 +7,8 @@ const steps = [
   },
   {
     number: '2',
-    title: 'Start Postgres and initialize',
-    code: 'docker compose up -d\nmantle init',
+    title: 'Initialize',
+    code: 'mantle init\n# Starts Postgres via Docker if needed, then runs migrations',
   },
   {
     number: '3',
