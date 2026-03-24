@@ -92,6 +92,14 @@ type LogConfig struct {
 	Level string `mapstructure:"level"`
 }
 
+// BudgetConfig holds AI cost control settings.
+type BudgetConfig struct {
+	ResetMode                    string `mapstructure:"reset_mode"`                       // "calendar" or "rolling"
+	ResetDay                     int    `mapstructure:"reset_day"`                        // 1-28, used when reset_mode is "rolling"
+	GlobalMonthlyTokenLimit      int64  `mapstructure:"global_monthly_token_limit"`       // 0 = unlimited, hard block
+	DefaultTeamMonthlyTokenLimit int64  `mapstructure:"default_team_monthly_token_limit"` // 0 = unlimited, applies to teams without explicit budget
+}
+
 // EngineConfig holds distributed engine settings.
 type EngineConfig struct {
 	NodeID                      string        `mapstructure:"node_id"`
@@ -108,6 +116,7 @@ type EngineConfig struct {
 	AllowedBaseURLs             []string      `mapstructure:"allowed_base_urls"`
 	AllowedModels               []string      `mapstructure:"allowed_models"`       // empty = all allowed
 	MaxToolRoundsLimit          int           `mapstructure:"max_tool_rounds_limit"` // 0 = no limit
+	Budget                      BudgetConfig  `mapstructure:"budget"`
 }
 
 type contextKey struct{}
@@ -147,6 +156,12 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	v.SetDefault("engine.step_output_max_bytes", 1048576)
 	v.SetDefault("engine.default_max_tool_rounds", 10)
 	v.SetDefault("engine.default_max_tool_calls_per_round", 10)
+
+	// Budget defaults
+	v.SetDefault("engine.budget.reset_mode", "calendar")
+	v.SetDefault("engine.budget.reset_day", 1)
+	v.SetDefault("engine.budget.global_monthly_token_limit", 0)
+	v.SetDefault("engine.budget.default_team_monthly_token_limit", 0)
 
 	// Config file
 	configPath, _ := cmd.Flags().GetString("config")
@@ -214,6 +229,12 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	_ = v.BindEnv("engine.allowed_base_urls", "MANTLE_ENGINE_ALLOWED_BASE_URLS")
 	_ = v.BindEnv("engine.allowed_models", "MANTLE_ENGINE_ALLOWED_MODELS")
 	_ = v.BindEnv("engine.max_tool_rounds_limit", "MANTLE_ENGINE_MAX_TOOL_ROUNDS_LIMIT")
+
+	// Budget env var bindings
+	_ = v.BindEnv("engine.budget.reset_mode", "MANTLE_ENGINE_BUDGET_RESET_MODE")
+	_ = v.BindEnv("engine.budget.reset_day", "MANTLE_ENGINE_BUDGET_RESET_DAY")
+	_ = v.BindEnv("engine.budget.global_monthly_token_limit", "MANTLE_ENGINE_BUDGET_GLOBAL_MONTHLY_TOKEN_LIMIT")
+	_ = v.BindEnv("engine.budget.default_team_monthly_token_limit", "MANTLE_ENGINE_BUDGET_DEFAULT_TEAM_MONTHLY_TOKEN_LIMIT")
 
 	// CLI flag binding
 	if f := cmd.Flags().Lookup("database-url"); f != nil {

@@ -194,3 +194,15 @@ log:
 		t.Errorf("Log.Level = %q, want error (flag override)", cfg.Log.Level)
 	}
 }
+
+func TestLoad_BudgetDefaults(t *testing.T) {
+	cmd := newTestCommand()
+
+	cfg, err := Load(cmd)
+	require.NoError(t, err)
+
+	assert.Equal(t, "calendar", cfg.Engine.Budget.ResetMode)
+	assert.Equal(t, 1, cfg.Engine.Budget.ResetDay)
+	assert.Equal(t, int64(0), cfg.Engine.Budget.GlobalMonthlyTokenLimit)
+	assert.Equal(t, int64(0), cfg.Engine.Budget.DefaultTeamMonthlyTokenLimit)
+}
