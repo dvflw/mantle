@@ -89,8 +89,8 @@ func newServeCommand() *cobra.Command {
 				DefaultTeamMonthlyTokenLimit: cfg.Engine.Budget.DefaultTeamMonthlyTokenLimit,
 				ResetMode:                    cfg.Engine.Budget.ResetMode,
 				ResetDay:                     cfg.Engine.Budget.ResetDay,
-				GetTotalUsage: func(ctx context.Context, teamID string, period time.Time) (int64, error) {
-					u, err := budgetStore.GetTotalUsage(ctx, teamID, period)
+				GetTotalUsage: func(ctx context.Context, period time.Time) (int64, error) {
+					u, err := budgetStore.GetGlobalTotalUsage(ctx, period)
 					if err != nil {
 						return 0, err
 					}

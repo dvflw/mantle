@@ -10,6 +10,7 @@ import (
 // For "calendar" mode: first day of the current month.
 // For "rolling" mode: the most recent occurrence of resetDay (1-28).
 func CurrentPeriodStart(now time.Time, mode string, resetDay int) time.Time {
+	now = now.UTC()
 	if mode == "rolling" && resetDay >= 1 && resetDay <= 28 {
 		if now.Day() >= resetDay {
 			return time.Date(now.Year(), now.Month(), resetDay, 0, 0, 0, 0, time.UTC)
@@ -42,7 +43,7 @@ type Checker struct {
 	ResetMode                    string
 	ResetDay                     int
 
-	GetTotalUsage    func(ctx context.Context, teamID string, period time.Time) (int64, error)
+	GetTotalUsage    func(ctx context.Context, period time.Time) (int64, error)
 	GetProviderUsage func(ctx context.Context, teamID, provider string, period time.Time) (int64, error)
 	GetTeamBudget    func(ctx context.Context, teamID, provider string) (*TeamBudget, error)
 }
@@ -55,7 +56,7 @@ func (c *Checker) Check(ctx context.Context, input CheckInput) CheckResult {
 
 	// 1. Global budget — hard block only
 	if c.GlobalMonthlyTokenLimit > 0 && c.GetTotalUsage != nil {
-		total, err := c.GetTotalUsage(ctx, input.TeamID, period)
+		total, err := c.GetTotalUsage(ctx, period)
 		if err == nil && total >= c.GlobalMonthlyTokenLimit {
 			return CheckResult{
 				Blocked:   true,
@@ -68,6 +69,9 @@ func (c *Checker) Check(ctx context.Context, input CheckInput) CheckResult {
 	// 2. Team+provider budget — configurable enforcement
 	if c.GetTeamBudget != nil && c.GetProviderUsage != nil {
 		tb, err := c.GetTeamBudget(ctx, input.TeamID, input.Provider)
+		if err == nil && tb == nil {
+			tb, err = c.GetTeamBudget(ctx, input.TeamID, "*")
+		}
 		if err == nil && tb == nil && c.DefaultTeamMonthlyTokenLimit > 0 {
 			tb = &TeamBudget{
 				MonthlyTokenLimit: c.DefaultTeamMonthlyTokenLimit,

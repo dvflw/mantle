@@ -40,7 +40,7 @@ func TestChecker_Check_GlobalHardBlock(t *testing.T) {
 		GlobalMonthlyTokenLimit: 1000,
 		ResetMode:               "calendar",
 		ResetDay:                1,
-		GetTotalUsage: func(ctx context.Context, teamID string, period time.Time) (int64, error) {
+		GetTotalUsage: func(ctx context.Context, period time.Time) (int64, error) {
 			return 1001, nil
 		},
 	}
@@ -59,7 +59,7 @@ func TestChecker_Check_TeamWarnOnly(t *testing.T) {
 	checker := &budget.Checker{
 		ResetMode: "calendar",
 		ResetDay:  1,
-		GetTotalUsage: func(ctx context.Context, teamID string, period time.Time) (int64, error) {
+		GetTotalUsage: func(ctx context.Context, period time.Time) (int64, error) {
 			return 0, nil
 		},
 		GetProviderUsage: func(ctx context.Context, teamID, provider string, period time.Time) (int64, error) {
@@ -85,7 +85,7 @@ func TestChecker_Check_AllPass(t *testing.T) {
 		GlobalMonthlyTokenLimit: 100000,
 		ResetMode:               "calendar",
 		ResetDay:                1,
-		GetTotalUsage: func(ctx context.Context, teamID string, period time.Time) (int64, error) {
+		GetTotalUsage: func(ctx context.Context, period time.Time) (int64, error) {
 			return 500, nil
 		},
 		GetProviderUsage: func(ctx context.Context, teamID, provider string, period time.Time) (int64, error) {

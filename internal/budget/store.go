@@ -84,6 +84,24 @@ func (s *Store) GetTotalUsage(ctx context.Context, teamID string, periodStart ti
 	return &u, nil
 }
 
+// GetGlobalTotalUsage returns aggregated token usage across ALL teams in a period.
+func (s *Store) GetGlobalTotalUsage(ctx context.Context, periodStart time.Time) (*ProviderUsage, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(prompt_tokens), 0),
+		       COALESCE(SUM(completion_tokens), 0),
+		       COALESCE(SUM(total_tokens), 0)
+		FROM ai_token_usage
+		WHERE period_start = $1
+	`, periodStart)
+
+	var u ProviderUsage
+	u.Provider = "*"
+	if err := row.Scan(&u.PromptTokens, &u.CompletionTokens, &u.TotalTokens); err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
 // GetTeamBudget returns the budget for a team+provider. Returns nil if no explicit budget is set.
 func (s *Store) GetTeamBudget(ctx context.Context, teamID, provider string) (*TeamBudget, error) {
 	row := s.db.QueryRowContext(ctx, `
