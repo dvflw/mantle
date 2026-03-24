@@ -100,13 +100,6 @@ body {
   color: var(--color-on-primary);
 }
 
-/* Bottom padding for fixed mobile nav — applied globally so all pages clear it */
-@media (max-width: 1023px) {
-  body {
-    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
-  }
-}
-
 /* Blinking cursor animation */
 @keyframes blink {
   0%, 50% { opacity: 1; }
@@ -144,6 +137,16 @@ body {
   }
 }
 
+/* Mobile sidebar clears the bottom nav; at lg+ bottom nav is hidden so reset to 0 */
+.sidebar-mobile-bottom {
+  bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 1024px) {
+  .sidebar-mobile-bottom {
+    bottom: 0;
+  }
+}
+
 /* Feature card hover glow */
 .feature-card {
   transition: border-color 0.2s, box-shadow 0.2s;
@@ -162,13 +165,6 @@ body {
 
 .js [data-terminal-line].line-visible {
   opacity: 1;
-}
-
-/* Pagefind search result highlights */
-mark[data-pagefind-highlight] {
-  background-color: var(--color-primary);
-  color: var(--color-on-primary);
-  padding: 0 2px;
 }
 
 /* Scrollbar styling */
@@ -331,16 +327,20 @@ mark[data-pagefind-highlight] {
   margin-top: 0;
 }
 
-
-/* Tables — display:block enables horizontal scroll when content overflows */
+/* Tables — preserve table layout for border-collapse, scroll via parent */
 .prose table {
-  display: block;
   width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
   border-collapse: collapse;
   margin-top: 1.5em;
   font-size: 0.875rem;
+}
+
+/* Make prose scrollable when it contains a wide table */
+@supports selector(:has(*)) {
+  .prose:has(table) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 .prose thead th {
@@ -404,6 +404,7 @@ mark[data-pagefind-highlight] {
 
   .prose code {
     overflow-wrap: anywhere;
+    word-break: normal;
   }
 }
 

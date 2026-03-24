@@ -1,7 +1,6 @@
 ---
 import { docsNav } from '../data/docs-nav';
 import type { NavItem } from '../data/docs-nav';
-import DocsSearch from './DocsSearch.astro';
 
 interface Props {
   currentPath: string;
@@ -21,9 +20,6 @@ function isParentActive(item: NavItem): boolean {
 
 <aside id="docs-sidebar" class="docs-sidebar hidden lg:block w-60 shrink-0">
   <div class="sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto py-8 pr-4 pl-2">
-    <div class="mb-6">
-      <DocsSearch />
-    </div>
     <nav aria-label="Documentation sidebar">
       {docsNav.map((group) => (
         <div class="mb-8">
@@ -97,7 +93,7 @@ function isParentActive(item: NavItem): boolean {
 <div id="sidebar-overlay" class="fixed inset-0 z-40 bg-black/50 hidden lg:hidden" aria-hidden="true"></div>
 
 <!-- Mobile sidebar drawer -->
-<aside id="docs-sidebar-mobile" class="fixed top-16 left-0 bottom-14 md:bottom-0 z-50 w-72 bg-surface-container-lowest border-r border-outline-variant transform -translate-x-full transition-transform duration-200 lg:hidden overflow-y-auto">
+<aside id="docs-sidebar-mobile" aria-hidden="true" inert class="fixed top-16 left-0 bottom-0 z-50 w-72 bg-surface-container-lowest border-r border-outline-variant transform -translate-x-full transition-transform duration-200 lg:hidden overflow-y-auto sidebar-mobile-bottom">
   <nav class="py-6 px-4" aria-label="Documentation sidebar mobile">
     {docsNav.map((group) => (
       <div class="mb-8">
@@ -187,19 +183,22 @@ function isParentActive(item: NavItem): boolean {
 
 <script is:inline>
 function initSidebar() {
-  var mobileSidebar = document.getElementById('docs-sidebar-mobile');
-  if (!mobileSidebar) return;
+  const mobileSidebar = document.getElementById('docs-sidebar-mobile');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (!mobileSidebar || !overlay) return;
 
   function closeSidebar() {
     mobileSidebar.classList.add('-translate-x-full');
-    var overlay = document.getElementById('sidebar-overlay');
-    if (overlay) overlay.classList.add('hidden');
+    mobileSidebar.setAttribute('aria-hidden', 'true');
+    mobileSidebar.inert = true;
+    overlay.classList.add('hidden');
+    overlay.setAttribute('aria-hidden', 'true');
+    var menuBtn = document.getElementById('bottom-nav-docs-btn');
+    if (menuBtn) menuBtn.setAttribute('aria-expanded', 'false');
   }
 
-  var overlay = document.getElementById('sidebar-overlay');
-  if (overlay) overlay.onclick = closeSidebar;
-
-  mobileSidebar.querySelectorAll('a').forEach(function(a) {
+  overlay.onclick = closeSidebar;
+  mobileSidebar.querySelectorAll('a').forEach((a) => {
     a.onclick = closeSidebar;
   });
 }

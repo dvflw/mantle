@@ -460,7 +460,7 @@ Would love feedback on the design, the YAML format, the connector
 model, or anything else.
 
 GitHub: https://github.com/dvflw/mantle
-Docs: https://mantle.dev/docs
+Docs: https://mantle.dvflw.co/docs
 ```
 
 ### Timing
@@ -620,7 +620,7 @@ that fits your existing practices -- git, code review, CI/CD,
 IaC -- give Mantle a look.
 
 GitHub: github.com/dvflw/mantle
-Docs: mantle.dev/docs
+Docs: mantle.dvflw.co/docs
 
 Feedback, issues, and contributions are welcome.
 ```
@@ -1032,7 +1032,7 @@ The target audience respects technical depth and authenticity. Every post should
 Prepare these before launch day:
 
 - [ ] GitHub repo public with polished README, CHANGELOG, examples/, docs/
-- [ ] Marketing website live at mantle.dev
+- [ ] Marketing website live at mantle.dvflw.co
 - [ ] Twitter/X account created and profile optimized
 - [ ] LinkedIn company page created
 - [ ] Dev.to account created

@@ -1,14 +1,12 @@
 ---
-import DocsSearch from './DocsSearch.astro';
-
 interface Props {
   isHome?: boolean;
 }
 const { isHome = false } = Astro.props;
 const prefix = isHome ? '' : '/';
-const isDocs = Astro.url.pathname.startsWith('/docs');
+const isDocs = Astro.url.pathname === '/docs' || Astro.url.pathname.startsWith('/docs/');
 ---
-<nav class="fixed top-0 left-0 right-0 z-50 border-b border-outline-variant bg-surface/80 backdrop-blur-md">
+<nav aria-label="Main navigation" class="fixed top-0 left-0 right-0 z-50 border-b border-outline-variant bg-surface/80 backdrop-blur-md">
   <div class={`nav-inner mx-auto px-6 flex items-center justify-between h-16 ${isHome ? 'max-w-[1200px]' : 'max-w-[1280px]'}`}>
     <!-- Logo -->
     <a href="/" class="font-mono text-lg font-bold text-on-surface tracking-tight">
@@ -23,16 +21,9 @@ const isDocs = Astro.url.pathname.startsWith('/docs');
       <a href="/docs/getting-started" class:list={["text-sm transition-colors", isDocs ? "text-primary font-medium" : "text-on-surface-variant hover:text-on-surface"]}>Docs</a>
     </div>
 
-    <!-- Search (desktop, docs pages only) -->
-    {isDocs && (
-      <div class="hidden md:block">
-        <DocsSearch />
-      </div>
-    )}
-
     <!-- Right side -->
     <div class="flex items-center gap-4">
-      <a href="https://github.com/dvflw/mantle" class="text-on-surface-variant hover:text-on-surface transition-colors" aria-label="GitHub">
+      <a href="https://github.com/dvflw/mantle" target="_blank" rel="noopener" class="text-on-surface-variant hover:text-on-surface transition-colors" aria-label="GitHub">
         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
       </a>
       <a href={`${prefix}#get-started`} class="hidden sm:inline-flex px-4 py-2 bg-primary text-on-primary text-sm font-medium hover:bg-primary-dim transition-colors">
@@ -44,14 +35,14 @@ const isDocs = Astro.url.pathname.startsWith('/docs');
 </nav>
 
 <!-- Mobile bottom navigation bar -->
-<nav id="mobile-bottom-nav" aria-label="Mobile bottom navigation" class="fixed bottom-0 left-0 right-0 z-50 md:hidden border-t border-outline-variant bg-surface/95 backdrop-blur-md">
+<nav id="mobile-bottom-nav" aria-label="Mobile navigation" class="fixed bottom-0 left-0 right-0 z-50 lg:hidden border-t border-outline-variant bg-surface/95 backdrop-blur-md">
   <div class="flex items-center justify-around h-14 px-2">
     <a href="/" class:list={["bottom-nav-item flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] transition-colors", isHome ? "text-primary" : "text-on-surface-variant hover:text-on-surface"]}>
       <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955a1.126 1.126 0 011.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"/></svg>
       <span>Home</span>
     </a>
     {isDocs && (
-      <button id="bottom-nav-docs-btn" class="bottom-nav-item flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] text-on-surface-variant hover:text-on-surface transition-colors" aria-label="Documentation menu" aria-controls="docs-sidebar-mobile" aria-expanded="false">
+      <button id="bottom-nav-docs-btn" class="bottom-nav-item flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] text-on-surface-variant hover:text-on-surface transition-colors" aria-label="Documentation menu">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
         <span>Menu</span>
       </button>
@@ -60,7 +51,7 @@ const isDocs = Astro.url.pathname.startsWith('/docs');
       <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>
       <span>Docs</span>
     </a>
-    <a href="https://github.com/dvflw/mantle" class="bottom-nav-item flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] text-on-surface-variant hover:text-on-surface transition-colors" aria-label="GitHub">
+    <a href="https://github.com/dvflw/mantle" target="_blank" rel="noopener" class="bottom-nav-item flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] text-on-surface-variant hover:text-on-surface transition-colors" aria-label="GitHub">
       <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
       <span>GitHub</span>
     </a>
@@ -85,33 +76,47 @@ const isDocs = Astro.url.pathname.startsWith('/docs');
 
 <script is:inline>
 function initNav() {
-  var btn = document.getElementById('bottom-nav-docs-btn');
-  var docsSidebar = document.getElementById('docs-sidebar-mobile');
-  if (!btn || !docsSidebar) return;
+  const btn = document.getElementById('bottom-nav-docs-btn');
+  const docsSidebar = document.getElementById('docs-sidebar-mobile');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (!btn || !docsSidebar || !overlay) return;
 
-  // Sync initial aria state to match sidebar visibility
-  var isInitiallyOpen = !docsSidebar.classList.contains('-translate-x-full');
-  btn.setAttribute('aria-expanded', isInitiallyOpen ? 'true' : 'false');
-  var initOverlay = document.getElementById('sidebar-overlay');
-  if (initOverlay) {
-    if (isInitiallyOpen) { initOverlay.classList.remove('hidden'); initOverlay.setAttribute('aria-hidden', 'false'); }
-    else { initOverlay.classList.add('hidden'); initOverlay.setAttribute('aria-hidden', 'true'); }
-  }
+  btn.setAttribute('aria-expanded', 'false');
 
-  btn.onclick = function() {
-    var overlay = document.getElementById('sidebar-overlay');
-    var isOpen = !docsSidebar.classList.contains('-translate-x-full');
+  btn.onclick = () => {
+    const isOpen = !docsSidebar.classList.contains('-translate-x-full');
     if (isOpen) {
       docsSidebar.classList.add('-translate-x-full');
+      docsSidebar.setAttribute('aria-hidden', 'true');
+      docsSidebar.inert = true;
       if (overlay) { overlay.classList.add('hidden'); overlay.setAttribute('aria-hidden', 'true'); }
       btn.setAttribute('aria-expanded', 'false');
     } else {
       docsSidebar.classList.remove('-translate-x-full');
+      docsSidebar.setAttribute('aria-hidden', 'false');
+      docsSidebar.inert = false;
       if (overlay) { overlay.classList.remove('hidden'); overlay.setAttribute('aria-hidden', 'false'); }
       btn.setAttribute('aria-expanded', 'true');
     }
   };
 }
-initNav();
-document.addEventListener('astro:after-swap', initNav);
+// Defer init until sidebar DOM exists (Nav renders before DocsSidebar).
+// Bail after a few frames if sidebar never appears (non-docs pages).
+var _mantleNavRetries = 0;
+var _mantleNavMaxRetries = 10;
+function _mantleDeferInitNav() {
+  if (document.getElementById('docs-sidebar-mobile')) {
+    initNav();
+  } else if (_mantleNavRetries < _mantleNavMaxRetries) {
+    _mantleNavRetries++;
+    requestAnimationFrame(_mantleDeferInitNav);
+  }
+  // else: sidebar doesn't exist on this page — stop trying
+}
+_mantleNavRetries = 0;
+_mantleDeferInitNav();
+document.addEventListener('astro:after-swap', function() {
+  _mantleNavRetries = 0;
+  _mantleDeferInitNav();
+});
 </script>
