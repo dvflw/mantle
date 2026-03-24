@@ -150,6 +150,55 @@ func TestChecker_Check_FailOpenOnGetTeamBudgetError(t *testing.T) {
 	assert.False(t, result.Warning)
 }
 
+func TestChecker_Check_FailOpenOnGetProviderUsageError(t *testing.T) {
+	checker := &budget.Checker{
+		ResetMode: "calendar",
+		ResetDay:  1,
+		GetTotalUsage: func(ctx context.Context, period time.Time) (int64, error) {
+			return 0, nil
+		},
+		GetProviderUsage: func(ctx context.Context, teamID, provider string, period time.Time) (int64, error) {
+			return 0, fmt.Errorf("provider usage query failed")
+		},
+		GetTeamBudget: func(ctx context.Context, teamID, provider string) (*budget.TeamBudget, error) {
+			return &budget.TeamBudget{MonthlyTokenLimit: 5000, Enforcement: "hard"}, nil
+		},
+	}
+
+	result := checker.Check(context.Background(), budget.CheckInput{
+		TeamID:   "team-1",
+		Provider: "openai",
+	})
+
+	assert.False(t, result.Blocked)
+	assert.False(t, result.Warning)
+}
+
+func TestChecker_Check_TeamHardBlock(t *testing.T) {
+	checker := &budget.Checker{
+		ResetMode: "calendar",
+		ResetDay:  1,
+		GetTotalUsage: func(ctx context.Context, period time.Time) (int64, error) {
+			return 0, nil
+		},
+		GetProviderUsage: func(ctx context.Context, teamID, provider string, period time.Time) (int64, error) {
+			return 5001, nil
+		},
+		GetTeamBudget: func(ctx context.Context, teamID, provider string) (*budget.TeamBudget, error) {
+			return &budget.TeamBudget{MonthlyTokenLimit: 5000, Enforcement: "hard"}, nil
+		},
+	}
+
+	result := checker.Check(context.Background(), budget.CheckInput{
+		TeamID:   "team-1",
+		Provider: "openai",
+	})
+
+	assert.True(t, result.Blocked)
+	assert.Equal(t, "team", result.BlockedBy)
+	assert.Contains(t, result.Message, "team budget exceeded")
+}
+
 func TestChecker_CheckExecutionBudget(t *testing.T) {
 	result := budget.CheckExecutionBudget(50000, 50001)
 	assert.True(t, result.Blocked)

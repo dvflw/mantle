@@ -226,9 +226,21 @@ func TestLoad_BudgetResetDay_RollingInvalid(t *testing.T) {
 }
 
 func TestLoad_BudgetResetDay_CalendarClamps(t *testing.T) {
-	// Invalid ResetDay with calendar mode should silently clamp to 1
+	// Invalid ResetDay with calendar mode should silently clamp to 1 (lower bound)
 	t.Setenv("MANTLE_ENGINE_BUDGET_RESET_MODE", "calendar")
 	t.Setenv("MANTLE_ENGINE_BUDGET_RESET_DAY", "0")
+
+	cmd := newTestCommand()
+	cfg, err := Load(cmd)
+	require.NoError(t, err)
+	assert.Equal(t, 1, cfg.Engine.Budget.ResetDay)
+}
+
+func TestLoad_BudgetResetDay_CalendarClampsUpperBound(t *testing.T) {
+	// ResetDay >28 with calendar mode should silently clamp to 1
+	// (calendar mode ignores reset_day entirely, so any invalid value is safe to clamp)
+	t.Setenv("MANTLE_ENGINE_BUDGET_RESET_MODE", "calendar")
+	t.Setenv("MANTLE_ENGINE_BUDGET_RESET_DAY", "100")
 
 	cmd := newTestCommand()
 	cfg, err := Load(cmd)
