@@ -137,6 +137,16 @@ body {
   }
 }
 
+/* Mobile sidebar clears the bottom nav; at lg+ bottom nav is hidden so reset to 0 */
+.sidebar-mobile-bottom {
+  bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 1024px) {
+  .sidebar-mobile-bottom {
+    bottom: 0;
+  }
+}
+
 /* Feature card hover glow */
 .feature-card {
   transition: border-color 0.2s, box-shadow 0.2s;
@@ -317,12 +327,20 @@ body {
   margin-top: 0;
 }
 
-/* Tables */
+/* Tables — preserve table layout for border-collapse, scroll via parent */
 .prose table {
   width: 100%;
   border-collapse: collapse;
   margin-top: 1.5em;
   font-size: 0.875rem;
+}
+
+/* Make prose scrollable when it contains a wide table */
+@supports selector(:has(*)) {
+  .prose:has(table) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 .prose thead th {
@@ -363,6 +381,31 @@ body {
   height: auto;
   margin-top: 1.5em;
   border: 1px solid var(--color-outline-variant);
+}
+
+/* Mobile prose adjustments */
+@media (max-width: 640px) {
+  .prose h1 {
+    font-size: 1.5rem;
+  }
+
+  .prose h2 {
+    font-size: 1.25rem;
+  }
+
+  .prose h3 {
+    font-size: 1.1rem;
+  }
+
+  .prose pre {
+    font-size: 0.8125rem;
+    padding: 0.75em 1em;
+  }
+
+  .prose code {
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
 }
 
 /* Definition lists (used in some docs) */

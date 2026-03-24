@@ -25,19 +25,7 @@ const { prev, next } = getPrevNext(currentPath);
 <Base title={`${title} - Mantle Docs`}>
   <Nav />
   <div class="mx-auto max-w-[1280px] px-4 sm:px-6">
-    <div class="flex min-h-screen pt-16">
-      <!-- Mobile sidebar toggle -->
-      <button
-        id="sidebar-toggle"
-        class="lg:hidden fixed bottom-6 left-6 z-50 flex items-center gap-2 px-4 py-2.5 bg-surface-container-high border border-outline-variant text-on-surface text-sm font-medium shadow-lg"
-        aria-label="Toggle sidebar"
-      >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-        Menu
-      </button>
-
+    <div class="flex min-h-screen pt-16 pb-20 lg:pb-0">
       <DocsSidebar currentPath={currentPath} />
 
       <!-- Main content -->

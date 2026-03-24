@@ -15,7 +15,7 @@ BYOK, IaC-first, enterprise-grade, source-available.
 
   validate → plan → apply → run
 
-Full documentation: https://mantle.dev/docs`,
+Full documentation: https://mantle.dvflw.co/docs`,
 		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.Load(cmd)
