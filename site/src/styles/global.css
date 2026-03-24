@@ -403,8 +403,7 @@ body {
   }
 
   .prose code {
-    overflow-wrap: anywhere;
-    word-break: normal;
+    overflow-wrap: break-word;
   }
 }
 

@@ -78,27 +78,31 @@ const isDocs = Astro.url.pathname === '/docs' || Astro.url.pathname.startsWith('
 function initNav() {
   const btn = document.getElementById('bottom-nav-docs-btn');
   const docsSidebar = document.getElementById('docs-sidebar-mobile');
-  const overlay = document.getElementById('sidebar-overlay');
-  if (!btn || !docsSidebar || !overlay) return;
+  if (!btn || !docsSidebar) return;
 
-  btn.setAttribute('aria-expanded', 'false');
+  // Remove old listeners by cloning
+  const newBtn = btn.cloneNode(true);
+  btn.parentNode?.replaceChild(newBtn, btn);
 
-  btn.onclick = () => {
+  newBtn.setAttribute('aria-expanded', 'false');
+
+  newBtn.addEventListener('click', () => {
+    const liveOverlay = document.getElementById('sidebar-overlay');
     const isOpen = !docsSidebar.classList.contains('-translate-x-full');
     if (isOpen) {
       docsSidebar.classList.add('-translate-x-full');
       docsSidebar.setAttribute('aria-hidden', 'true');
       docsSidebar.inert = true;
-      if (overlay) { overlay.classList.add('hidden'); overlay.setAttribute('aria-hidden', 'true'); }
-      btn.setAttribute('aria-expanded', 'false');
+      if (liveOverlay) { liveOverlay.classList.add('hidden'); liveOverlay.setAttribute('aria-hidden', 'true'); }
+      newBtn.setAttribute('aria-expanded', 'false');
     } else {
       docsSidebar.classList.remove('-translate-x-full');
       docsSidebar.setAttribute('aria-hidden', 'false');
       docsSidebar.inert = false;
-      if (overlay) { overlay.classList.remove('hidden'); overlay.setAttribute('aria-hidden', 'false'); }
-      btn.setAttribute('aria-expanded', 'true');
+      if (liveOverlay) { liveOverlay.classList.remove('hidden'); liveOverlay.setAttribute('aria-hidden', 'false'); }
+      newBtn.setAttribute('aria-expanded', 'true');
     }
-  };
+  });
 }
 // Defer init until sidebar DOM exists (Nav renders before DocsSidebar).
 // Bail after a few frames if sidebar never appears (non-docs pages).

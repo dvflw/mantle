@@ -187,17 +187,20 @@ function initSidebar() {
   const overlay = document.getElementById('sidebar-overlay');
   if (!mobileSidebar || !overlay) return;
 
+  const newOverlay = overlay.cloneNode(true);
+  overlay.parentNode?.replaceChild(newOverlay, overlay);
+
   function closeSidebar() {
     mobileSidebar.classList.add('-translate-x-full');
     mobileSidebar.setAttribute('aria-hidden', 'true');
     mobileSidebar.inert = true;
-    overlay.classList.add('hidden');
-    overlay.setAttribute('aria-hidden', 'true');
+    newOverlay.classList.add('hidden');
+    newOverlay.setAttribute('aria-hidden', 'true');
     var menuBtn = document.getElementById('bottom-nav-docs-btn');
     if (menuBtn) menuBtn.setAttribute('aria-expanded', 'false');
   }
 
-  overlay.onclick = closeSidebar;
+  newOverlay.addEventListener('click', closeSidebar);
   mobileSidebar.querySelectorAll('a').forEach((a) => {
     a.onclick = closeSidebar;
   });
