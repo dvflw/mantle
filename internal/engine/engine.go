@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -318,6 +319,17 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 			}
 			result := budget.CheckExecutionBudget(sc.WorkflowTokenBudget, usedTokens)
 			if result.Blocked {
+				e.Auditor.Emit(ctx, audit.Event{
+					Timestamp: time.Now(),
+					Actor:     "engine",
+					Action:    audit.ActionBudgetExceeded,
+					Resource:  audit.Resource{Type: "workflow_execution", ID: execID},
+					Metadata: map[string]string{
+						"blocked_by": result.BlockedBy,
+						"message":    result.Message,
+					},
+					TeamID: sc.TeamID,
+				})
 				return nil, fmt.Errorf("%s", result.Message)
 			}
 		}
@@ -454,7 +466,10 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 				resetDay = e.BudgetChecker.ResetDay
 			}
 			period := budget.CurrentPeriodStart(time.Now(), resetMode, resetDay)
-			_ = e.BudgetStore.IncrementUsage(ctx, sc.TeamID, provider, model, period, promptTok, completionTok)
+			if err := e.BudgetStore.IncrementUsage(ctx, sc.TeamID, provider, model, period, promptTok, completionTok); err != nil {
+				// Log but don't fail the step — token recording is best-effort.
+				log.Printf("budget: failed to record token usage: %v", err)
+			}
 		}
 	}
 
@@ -743,6 +758,11 @@ func toInt64(v any) int64 {
 		return n
 	case float64:
 		return int64(n)
+	case json.Number:
+		if i, err := n.Int64(); err == nil {
+			return i
+		}
+		return 0
 	default:
 		return 0
 	}

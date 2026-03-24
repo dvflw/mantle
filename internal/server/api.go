@@ -432,6 +432,23 @@ func (s *Server) handleDeleteBudget(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	actor := "api"
+	if u := auth.UserFromContext(r.Context()); u != nil {
+		actor = u.ID
+	}
+	s.Auditor.Emit(r.Context(), audit.Event{
+		Timestamp: time.Now(),
+		Actor:     actor,
+		Action:    audit.ActionBudgetUpdated,
+		Resource:  audit.Resource{Type: "team_budget", ID: teamID},
+		Metadata: map[string]string{
+			"provider": provider,
+			"action":   "deleted",
+		},
+		TeamID: teamID,
+	})
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
