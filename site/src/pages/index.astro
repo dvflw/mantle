@@ -11,6 +11,7 @@ import GetStarted from '../components/GetStarted.astro';
 import Footer from '../components/Footer.astro';
 ---
 <Base title="Mantle — Headless AI Workflow Automation">
+  <div data-pagefind-ignore>
   <Nav isHome={true} />
   <main id="main-content" class="pb-20 lg:pb-0">
     <Hero />
@@ -22,4 +23,5 @@ import Footer from '../components/Footer.astro';
     <GetStarted />
   </main>
   <Footer />
+  </div>
 </Base>
