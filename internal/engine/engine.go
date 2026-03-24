@@ -440,7 +440,7 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 	}
 
 	// Record token usage for budget tracking.
-	if lastErr == nil && strings.HasPrefix(step.Action, "ai/") && e.BudgetStore != nil && e.BudgetChecker != nil && sc.TeamID != "" && output != nil {
+	if lastErr == nil && strings.HasPrefix(step.Action, "ai/") && e.BudgetStore != nil && sc.TeamID != "" && output != nil {
 		promptTok, completionTok := extractTokenCounts(output)
 		if promptTok > 0 || completionTok > 0 {
 			provider := "openai"
@@ -448,7 +448,12 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 				provider = p
 			}
 			model, _ := output["model"].(string)
-			period := budget.CurrentPeriodStart(time.Now(), e.BudgetChecker.ResetMode, e.BudgetChecker.ResetDay)
+			resetMode, resetDay := "calendar", 1
+			if e.BudgetChecker != nil {
+				resetMode = e.BudgetChecker.ResetMode
+				resetDay = e.BudgetChecker.ResetDay
+			}
+			period := budget.CurrentPeriodStart(time.Now(), resetMode, resetDay)
 			_ = e.BudgetStore.IncrementUsage(ctx, sc.TeamID, provider, model, period, promptTok, completionTok)
 		}
 	}
