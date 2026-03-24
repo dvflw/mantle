@@ -2,6 +2,7 @@ package budget_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -93,6 +94,50 @@ func TestChecker_Check_AllPass(t *testing.T) {
 		},
 		GetTeamBudget: func(ctx context.Context, teamID, provider string) (*budget.TeamBudget, error) {
 			return &budget.TeamBudget{MonthlyTokenLimit: 10000, Enforcement: "hard"}, nil
+		},
+	}
+
+	result := checker.Check(context.Background(), budget.CheckInput{
+		TeamID:   "team-1",
+		Provider: "openai",
+	})
+
+	assert.False(t, result.Blocked)
+	assert.False(t, result.Warning)
+}
+
+func TestChecker_Check_FailOpenOnGetTotalUsageError(t *testing.T) {
+	checker := &budget.Checker{
+		GlobalMonthlyTokenLimit: 1000,
+		ResetMode:               "calendar",
+		ResetDay:                1,
+		GetTotalUsage: func(ctx context.Context, period time.Time) (int64, error) {
+			return 0, fmt.Errorf("db connection lost")
+		},
+	}
+
+	result := checker.Check(context.Background(), budget.CheckInput{
+		TeamID:   "team-1",
+		Provider: "openai",
+	})
+
+	// Intentional fail-open: DB errors should not block AI steps.
+	assert.False(t, result.Blocked)
+	assert.False(t, result.Warning)
+}
+
+func TestChecker_Check_FailOpenOnGetTeamBudgetError(t *testing.T) {
+	checker := &budget.Checker{
+		ResetMode: "calendar",
+		ResetDay:  1,
+		GetTotalUsage: func(ctx context.Context, period time.Time) (int64, error) {
+			return 0, nil
+		},
+		GetProviderUsage: func(ctx context.Context, teamID, provider string, period time.Time) (int64, error) {
+			return 0, nil
+		},
+		GetTeamBudget: func(ctx context.Context, teamID, provider string) (*budget.TeamBudget, error) {
+			return nil, fmt.Errorf("db timeout")
 		},
 	}
 

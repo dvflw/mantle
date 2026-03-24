@@ -206,3 +206,32 @@ func TestLoad_BudgetDefaults(t *testing.T) {
 	assert.Equal(t, int64(0), cfg.Engine.Budget.GlobalMonthlyTokenLimit)
 	assert.Equal(t, int64(0), cfg.Engine.Budget.DefaultTeamMonthlyTokenLimit)
 }
+
+func TestLoad_BudgetResetDay_RollingInvalid(t *testing.T) {
+	// ResetDay 0 with rolling mode should error
+	t.Setenv("MANTLE_ENGINE_BUDGET_RESET_MODE", "rolling")
+	t.Setenv("MANTLE_ENGINE_BUDGET_RESET_DAY", "0")
+
+	cmd := newTestCommand()
+	_, err := Load(cmd)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "reset_day must be between 1 and 28")
+
+	// ResetDay 29 with rolling mode should error
+	t.Setenv("MANTLE_ENGINE_BUDGET_RESET_DAY", "29")
+	cmd = newTestCommand()
+	_, err = Load(cmd)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "reset_day must be between 1 and 28")
+}
+
+func TestLoad_BudgetResetDay_CalendarClamps(t *testing.T) {
+	// Invalid ResetDay with calendar mode should silently clamp to 1
+	t.Setenv("MANTLE_ENGINE_BUDGET_RESET_MODE", "calendar")
+	t.Setenv("MANTLE_ENGINE_BUDGET_RESET_DAY", "0")
+
+	cmd := newTestCommand()
+	cfg, err := Load(cmd)
+	require.NoError(t, err)
+	assert.Equal(t, 1, cfg.Engine.Budget.ResetDay)
+}
