@@ -7,6 +7,7 @@ import (
 
 	"github.com/dvflw/mantle/internal/audit"
 	"github.com/dvflw/mantle/internal/auth"
+	"github.com/dvflw/mantle/internal/budget"
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/connector"
 	"github.com/dvflw/mantle/internal/db"
@@ -83,6 +84,7 @@ func newServeCommand() *cobra.Command {
 			srv.TLSCertFile = cfg.API.TLS.CertFile
 			srv.TLSKeyFile = cfg.API.TLS.KeyFile
 			srv.AuthStore = &auth.Store{DB: database}
+			srv.BudgetStore = budget.NewStore(database)
 
 			// Wire up OIDC validator if configured.
 			if cfg.Auth.OIDC.IssuerURL != "" {

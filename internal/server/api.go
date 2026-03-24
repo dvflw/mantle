@@ -8,7 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dvflw/mantle/internal/audit"
 	"github.com/dvflw/mantle/internal/auth"
+	"github.com/dvflw/mantle/internal/budget"
+	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/workflow"
 )
 
@@ -362,5 +365,100 @@ func (s *Server) handleGetWorkflowVersion(w http.ResponseWriter, r *http.Request
 		"name":       name,
 		"version":    version,
 		"definition": def,
+	})
+}
+
+func (s *Server) handleListBudgets(w http.ResponseWriter, r *http.Request) {
+	teamID := auth.TeamIDFromContext(r.Context())
+	budgets, err := s.BudgetStore.ListTeamBudgets(r.Context(), teamID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, budgets)
+}
+
+func (s *Server) handleSetBudget(w http.ResponseWriter, r *http.Request) {
+	teamID := auth.TeamIDFromContext(r.Context())
+	provider := r.PathValue("provider")
+
+	var body struct {
+		MonthlyTokenLimit int64  `json:"monthly_token_limit"`
+		Enforcement       string `json:"enforcement"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if body.Enforcement == "" {
+		body.Enforcement = "hard"
+	}
+	if body.Enforcement != "hard" && body.Enforcement != "warn" {
+		http.Error(w, "enforcement must be 'hard' or 'warn'", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.BudgetStore.SetTeamBudget(r.Context(), teamID, provider, body.MonthlyTokenLimit, body.Enforcement); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	actor := "api"
+	if u := auth.UserFromContext(r.Context()); u != nil {
+		actor = u.ID
+	}
+
+	s.Auditor.Emit(r.Context(), audit.Event{
+		Timestamp: time.Now(),
+		Actor:     actor,
+		Action:    audit.ActionBudgetUpdated,
+		Resource:  audit.Resource{Type: "team_budget", ID: teamID},
+		Metadata: map[string]string{
+			"provider":    provider,
+			"limit":       fmt.Sprintf("%d", body.MonthlyTokenLimit),
+			"enforcement": body.Enforcement,
+		},
+		TeamID: teamID,
+	})
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleDeleteBudget(w http.ResponseWriter, r *http.Request) {
+	teamID := auth.TeamIDFromContext(r.Context())
+	provider := r.PathValue("provider")
+
+	if err := s.BudgetStore.DeleteTeamBudget(r.Context(), teamID, provider); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleGetUsage(w http.ResponseWriter, r *http.Request) {
+	teamID := auth.TeamIDFromContext(r.Context())
+	cfg := config.FromContext(r.Context())
+
+	period := budget.CurrentPeriodStart(time.Now(), cfg.Engine.Budget.ResetMode, cfg.Engine.Budget.ResetDay)
+
+	provider := r.URL.Query().Get("provider")
+	var usage *budget.ProviderUsage
+	var err error
+	if provider != "" {
+		usage, err = s.BudgetStore.GetUsage(r.Context(), teamID, provider, period)
+	} else {
+		usage, err = s.BudgetStore.GetTotalUsage(r.Context(), teamID, period)
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"period_start":      period.Format("2006-01-02"),
+		"provider":          usage.Provider,
+		"prompt_tokens":     usage.PromptTokens,
+		"completion_tokens": usage.CompletionTokens,
+		"total_tokens":      usage.TotalTokens,
 	})
 }
