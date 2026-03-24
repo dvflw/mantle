@@ -6,8 +6,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"net"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
