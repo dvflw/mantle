@@ -68,7 +68,7 @@ func dockerStartPostgres(cfg config.DatabaseConfig) error {
 	case "running":
 		// Already running — just wait for readiness.
 		return waitForPostgres(cfg)
-	case "exited", "created", "dead":
+	case "exited", "created", "dead", "paused":
 		_ = dockerRemoveContainer()
 	}
 

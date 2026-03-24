@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dvflw/mantle/internal/budget"
+	"github.com/dvflw/mantle/internal/dbdefaults"
 	"github.com/dvflw/mantle/internal/netutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -142,7 +143,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	v := viper.New()
 
 	// Defaults
-	v.SetDefault("database.url", "postgres://mantle:mantle@localhost:5432/mantle?sslmode=prefer")
+	v.SetDefault("database.url", fmt.Sprintf("postgres://%s:%s@localhost:5432/%s?sslmode=prefer", dbdefaults.User, dbdefaults.Password, dbdefaults.Database))
 	v.SetDefault("database.max_open_conns", 25)
 	v.SetDefault("database.max_idle_conns", 25)
 	v.SetDefault("database.conn_max_lifetime", 5*time.Minute)

@@ -139,6 +139,11 @@ func promptConnectionString(cmd *cobra.Command, cfg *config.Config) (*sql.DB, er
 			continue
 		}
 
+		lower := strings.ToLower(connStr)
+		if lower == "q" || lower == "quit" || lower == "back" {
+			return nil, fmt.Errorf("connection string entry cancelled")
+		}
+
 		cfg.Database.URL = connStr
 		database, err := db.Open(cfg.Database)
 		if err != nil {
