@@ -10,6 +10,7 @@ type Workflow struct {
 	Triggers    []Trigger        `yaml:"triggers"`
 	Steps       []Step           `yaml:"steps"`
 	Timeout     string           `yaml:"timeout"` // Go duration string, e.g., "30m"
+	TokenBudget int64            `yaml:"token_budget"` // 0 = unlimited
 }
 
 // Trigger defines an automatic execution trigger for a workflow.
