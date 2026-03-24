@@ -18,7 +18,7 @@ The landing page quickstart tells users to run `docker compose up -d` after inst
 mantle init
   ├─ db.Open succeeds → run migrations → done
   └─ db.Open fails
-       ├─ host is NOT loopback → print error with details, suggest --database-url / env var, exit 1
+       ├─ host is NOT loopback → print error with details, offer [R]etry or [Q]uit
        └─ host IS loopback → offer Docker auto-provisioning
             ├─ user accepts
             │    ├─ docker available → start container, wait for ready, run migrations → done
@@ -82,11 +82,16 @@ Failed to connect to database at db.example.com:5432
 
   Error: connection refused
 
-Check that the database is running and accessible.
-Override with --database-url or MANTLE_DATABASE_URL.
+  [R] Retry (fix the issue and try again)
+  [Q] Quit
+
+Choice [R/q]:
 ```
 
 Include the underlying error from `db.Open` (timeout, auth failure, TLS, DNS resolution, etc.) so the user can diagnose without guessing.
+
+- **Retry**: re-reads the config (picks up env var or config file changes made while waiting) and retries `db.Open`. This lets the user fix a typo, adjust a firewall rule, or start their database without restarting `mantle init`.
+- **Quit**: exit 1
 
 ### Interactive Input
 
