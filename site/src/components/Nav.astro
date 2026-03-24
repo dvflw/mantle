@@ -78,8 +78,7 @@ const isDocs = Astro.url.pathname === '/docs' || Astro.url.pathname.startsWith('
 function initNav() {
   const btn = document.getElementById('bottom-nav-docs-btn');
   const docsSidebar = document.getElementById('docs-sidebar-mobile');
-  const overlay = document.getElementById('sidebar-overlay');
-  if (!btn || !docsSidebar || !overlay) return;
+  if (!btn || !docsSidebar) return;
 
   // Remove old listeners by cloning
   const newBtn = btn.cloneNode(true);
@@ -88,20 +87,19 @@ function initNav() {
   newBtn.setAttribute('aria-expanded', 'false');
 
   newBtn.addEventListener('click', () => {
+    const liveOverlay = document.getElementById('sidebar-overlay');
     const isOpen = !docsSidebar.classList.contains('-translate-x-full');
     if (isOpen) {
       docsSidebar.classList.add('-translate-x-full');
       docsSidebar.setAttribute('aria-hidden', 'true');
       docsSidebar.inert = true;
-      overlay.classList.add('hidden');
-      overlay.setAttribute('aria-hidden', 'true');
+      if (liveOverlay) { liveOverlay.classList.add('hidden'); liveOverlay.setAttribute('aria-hidden', 'true'); }
       newBtn.setAttribute('aria-expanded', 'false');
     } else {
       docsSidebar.classList.remove('-translate-x-full');
       docsSidebar.setAttribute('aria-hidden', 'false');
       docsSidebar.inert = false;
-      overlay.classList.remove('hidden');
-      overlay.setAttribute('aria-hidden', 'false');
+      if (liveOverlay) { liveOverlay.classList.remove('hidden'); liveOverlay.setAttribute('aria-hidden', 'false'); }
       newBtn.setAttribute('aria-expanded', 'true');
     }
   });
