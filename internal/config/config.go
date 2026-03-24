@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log"
+	"net/url"
 	"os"
 	"time"
 
@@ -229,6 +231,19 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, err
+	}
+
+	// Warn if database URL uses sslmode=prefer on a non-loopback host.
+	if dbURL := cfg.Database.URL; dbURL != "" {
+		if parsed, err := url.Parse(dbURL); err == nil {
+			host := parsed.Hostname()
+			if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+				q := parsed.Query()
+				if q.Get("sslmode") == "prefer" {
+					log.Printf("WARNING: database URL uses sslmode=prefer for non-loopback host %q; consider sslmode=require for production", host)
+				}
+			}
+		}
 	}
 
 	// Generate default NodeID if not set.

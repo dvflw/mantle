@@ -102,21 +102,21 @@ function initNav() {
 }
 // Defer init until sidebar DOM exists (Nav renders before DocsSidebar).
 // Bail after a few frames if sidebar never appears (non-docs pages).
-var _navRetries = 0;
-var _navMaxRetries = 10;
-function deferInitNav() {
+var _mantleNavRetries = 0;
+var _mantleNavMaxRetries = 10;
+function _mantleDeferInitNav() {
   if (document.getElementById('docs-sidebar-mobile')) {
     initNav();
-  } else if (_navRetries < _navMaxRetries) {
-    _navRetries++;
-    requestAnimationFrame(deferInitNav);
+  } else if (_mantleNavRetries < _mantleNavMaxRetries) {
+    _mantleNavRetries++;
+    requestAnimationFrame(_mantleDeferInitNav);
   }
   // else: sidebar doesn't exist on this page — stop trying
 }
-_navRetries = 0;
-deferInitNav();
+_mantleNavRetries = 0;
+_mantleDeferInitNav();
 document.addEventListener('astro:after-swap', function() {
-  _navRetries = 0;
-  deferInitNav();
+  _mantleNavRetries = 0;
+  _mantleDeferInitNav();
 });
 </script>
