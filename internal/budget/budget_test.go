@@ -30,6 +30,12 @@ func TestCurrentPeriodStart_Rolling(t *testing.T) {
 	assert.Equal(t, time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC), start)
 }
 
+func TestCurrentPeriodStart_RollingYearBoundary(t *testing.T) {
+	now := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
+	start := budget.CurrentPeriodStart(now, "rolling", 15)
+	assert.Equal(t, time.Date(2025, 12, 15, 0, 0, 0, 0, time.UTC), start)
+}
+
 func TestCurrentPeriodStart_RollingDay28_February(t *testing.T) {
 	now := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
 	start := budget.CurrentPeriodStart(now, "rolling", 28)
