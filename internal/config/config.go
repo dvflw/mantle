@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dvflw/mantle/internal/budget"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -162,7 +163,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	v.SetDefault("engine.default_max_tool_calls_per_round", 10)
 
 	// Budget defaults
-	v.SetDefault("engine.budget.reset_mode", "calendar")
+	v.SetDefault("engine.budget.reset_mode", budget.ResetModeCalendar)
 	v.SetDefault("engine.budget.reset_day", 1)
 	v.SetDefault("engine.budget.global_monthly_token_limit", 0)
 	v.SetDefault("engine.budget.default_team_monthly_token_limit", 0)
@@ -258,7 +259,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 
 	// Validate budget reset_day range.
 	if cfg.Engine.Budget.ResetDay < 1 || cfg.Engine.Budget.ResetDay > 28 {
-		if cfg.Engine.Budget.ResetMode == "rolling" {
+		if cfg.Engine.Budget.ResetMode == budget.ResetModeRolling {
 			return nil, fmt.Errorf("engine.budget.reset_day must be between 1 and 28, got %d", cfg.Engine.Budget.ResetDay)
 		}
 		// For calendar mode, reset_day is ignored, so just clamp it silently.
