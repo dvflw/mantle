@@ -6,13 +6,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
-	"net"
 	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/dvflw/mantle/internal/budget"
+	"github.com/dvflw/mantle/internal/netutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -270,9 +269,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	if dbURL := cfg.Database.URL; dbURL != "" {
 		if parsed, err := url.Parse(dbURL); err == nil {
 			host := parsed.Hostname()
-			ip := net.ParseIP(host)
-			isLoopback := host != "" && (strings.EqualFold(host, "localhost") || (ip != nil && ip.IsLoopback()))
-			if !isLoopback {
+			if !netutil.IsLoopback(host) {
 				q := parsed.Query()
 				if q.Get("sslmode") == "prefer" {
 					log.Printf("WARNING: database URL uses sslmode=prefer for non-loopback host %q; consider sslmode=require for production", host)
