@@ -5,10 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/dvflw/mantle/internal/audit"
 	"github.com/dvflw/mantle/internal/auth"
+	"github.com/dvflw/mantle/internal/budget"
 	mantleCEL "github.com/dvflw/mantle/internal/cel"
 	"github.com/dvflw/mantle/internal/connector"
 	"github.com/dvflw/mantle/internal/metrics"
@@ -23,7 +26,16 @@ type Engine struct {
 	Auditor            audit.Emitter
 	CEL                *mantleCEL.Evaluator
 	Resolver           *secret.Resolver
-	MaxToolRoundsLimit int // admin ceiling for max_rounds; 0 = no limit
+	MaxToolRoundsLimit int            // admin ceiling for max_rounds; 0 = no limit
+	BudgetChecker      *budget.Checker // nil = budget enforcement disabled
+	BudgetStore        *budget.Store   // nil = token usage recording disabled
+}
+
+// StepContext carries workflow-level metadata needed by step execution.
+type StepContext struct {
+	WorkflowTokenBudget int64
+	CompletedSteps      map[string]map[string]any
+	TeamID              string
 }
 
 // New creates an Engine with sensible defaults.
@@ -137,6 +149,13 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 		return nil, fmt.Errorf("checkpoint: %w", err)
 	}
 
+	// Build StepContext for budget enforcement.
+	sc := StepContext{
+		WorkflowTokenBudget: wf.TokenBudget,
+		CompletedSteps:      completedSteps,
+		TeamID:              auth.TeamIDFromContext(ctx),
+	}
+
 	// Execute steps sequentially.
 	for _, step := range wf.Steps {
 		// Skip already-completed steps (checkpoint recovery).
@@ -149,12 +168,13 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 		}
 
 		stepStart := time.Now()
-		stepResult := e.executeStep(ctx, execID, workflowName, step, celCtx)
+		stepResult := e.executeStep(ctx, execID, workflowName, step, celCtx, sc)
 		stepResult.Duration = time.Since(stepStart)
 		result.Steps[step.Name] = stepResult
 
 		if stepResult.Status == "completed" {
 			celCtx.Steps[step.Name] = map[string]any{"output": stepResult.Output}
+			sc.CompletedSteps[step.Name] = stepResult.Output
 		} else if stepResult.Status == "skipped" {
 			celCtx.Steps[step.Name] = map[string]any{"output": map[string]any{}}
 		} else if stepResult.Status == "failed" {
@@ -194,7 +214,7 @@ func checkOutputSize(output map[string]any, maxBytes int) error {
 	return nil
 }
 
-func (e *Engine) executeStep(ctx context.Context, execID string, workflowName string, step workflow.Step, celCtx *mantleCEL.Context) StepResult {
+func (e *Engine) executeStep(ctx context.Context, execID string, workflowName string, step workflow.Step, celCtx *mantleCEL.Context, sc StepContext) StepResult {
 	// Evaluate conditional.
 	if step.If != "" {
 		shouldRun, err := e.CEL.EvalBool(step.If, celCtx)
@@ -232,7 +252,7 @@ func (e *Engine) executeStep(ctx context.Context, execID string, workflowName st
 	})
 
 	// Delegate to the shared step logic (connector lookup, CEL resolution, retry).
-	output, lastErr := e.executeStepLogic(ctx, execID, step, celCtx, workflowName)
+	output, lastErr := e.executeStepLogic(ctx, execID, step, celCtx, workflowName, sc)
 
 	if lastErr != nil {
 		errMsg := lastErr.Error()
@@ -283,7 +303,78 @@ func (e *Engine) executeStep(ctx context.Context, execID string, workflowName st
 // executeStepLogic contains the core connector invocation logic: CEL param resolution,
 // credential resolution, connector lookup, and retry/timeout handling. It is used by
 // both the sequential executeStep path and the distributed MakeStepExecutor bridge.
-func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workflow.Step, celCtx *mantleCEL.Context, workflowName string) (map[string]any, error) {
+func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workflow.Step, celCtx *mantleCEL.Context, workflowName string, sc StepContext) (map[string]any, error) {
+	// Budget enforcement — check before dispatching AI steps.
+	if strings.HasPrefix(step.Action, "ai/") {
+		provider := "openai"
+		if p, ok := step.Params["provider"].(string); ok && p != "" {
+			provider = p
+		}
+
+		// 1. Workflow execution budget
+		if sc.WorkflowTokenBudget > 0 {
+			var usedTokens int64
+			for _, stepOutput := range sc.CompletedSteps {
+				usedTokens += extractTotalTokens(stepOutput)
+			}
+			result := budget.CheckExecutionBudget(sc.WorkflowTokenBudget, usedTokens)
+			if result.Blocked {
+				e.Auditor.Emit(ctx, audit.Event{
+					Timestamp: time.Now(),
+					Actor:     "engine",
+					Action:    audit.ActionBudgetExceeded,
+					Resource:  audit.Resource{Type: "workflow_execution", ID: execID},
+					Metadata: map[string]string{
+						"blocked_by": result.BlockedBy,
+						"message":    result.Message,
+					},
+					TeamID: sc.TeamID,
+				})
+				return nil, fmt.Errorf("%s", result.Message)
+			}
+		}
+
+		// 2. Team+provider and global budget
+		if e.BudgetChecker != nil && sc.TeamID != "" {
+			result := e.BudgetChecker.Check(ctx, budget.CheckInput{
+				TeamID:   sc.TeamID,
+				Provider: provider,
+			})
+			if result.Blocked {
+				e.Auditor.Emit(ctx, audit.Event{
+					Timestamp: time.Now(),
+					Actor:     "engine",
+					Action:    audit.ActionBudgetExceeded,
+					Resource:  audit.Resource{Type: "workflow_execution", ID: execID},
+					Metadata: map[string]string{
+						"blocked_by": result.BlockedBy,
+						"message":    result.Message,
+						"provider":   provider,
+					},
+					TeamID: sc.TeamID,
+				})
+				metrics.BudgetCheckTotal.WithLabelValues(sc.TeamID, provider, "blocked").Inc()
+				return nil, fmt.Errorf("%s", result.Message)
+			}
+			if result.Warning {
+				e.Auditor.Emit(ctx, audit.Event{
+					Timestamp: time.Now(),
+					Actor:     "engine",
+					Action:    audit.ActionBudgetWarning,
+					Resource:  audit.Resource{Type: "workflow_execution", ID: execID},
+					Metadata: map[string]string{
+						"message":  result.Message,
+						"provider": provider,
+					},
+					TeamID: sc.TeamID,
+				})
+				metrics.BudgetCheckTotal.WithLabelValues(sc.TeamID, provider, "warning").Inc()
+			} else {
+				metrics.BudgetCheckTotal.WithLabelValues(sc.TeamID, provider, "pass").Inc()
+			}
+		}
+	}
+
 	// Resolve CEL expressions in params.
 	resolvedParams, err := e.CEL.ResolveParams(step.Params, celCtx)
 	if err != nil {
@@ -360,6 +451,28 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 		}
 	}
 
+	// Record token usage for budget tracking.
+	if lastErr == nil && strings.HasPrefix(step.Action, "ai/") && e.BudgetStore != nil && sc.TeamID != "" && output != nil {
+		promptTok, completionTok := extractTokenCounts(output)
+		if promptTok > 0 || completionTok > 0 {
+			provider := "openai"
+			if p, ok := step.Params["provider"].(string); ok && p != "" {
+				provider = p
+			}
+			model, _ := output["model"].(string)
+			resetMode, resetDay := "calendar", 1
+			if e.BudgetChecker != nil {
+				resetMode = e.BudgetChecker.ResetMode
+				resetDay = e.BudgetChecker.ResetDay
+			}
+			period := budget.CurrentPeriodStart(time.Now(), resetMode, resetDay)
+			if err := e.BudgetStore.IncrementUsage(ctx, sc.TeamID, provider, model, period, promptTok, completionTok); err != nil {
+				// Log but don't fail the step — token recording is best-effort.
+				log.Printf("budget: failed to record token usage: %v", err)
+			}
+		}
+	}
+
 	return output, lastErr
 }
 
@@ -374,7 +487,17 @@ func (e *Engine) MakeStepExecutor(wf *workflow.Workflow, execID string, celCtx *
 		if step == nil {
 			return nil, fmt.Errorf("step %q not found in workflow", stepName)
 		}
-		output, err := e.executeStepLogic(ctx, execID, *step, celCtx, wf.Name)
+		sc := StepContext{
+			WorkflowTokenBudget: wf.TokenBudget,
+			TeamID:              auth.TeamIDFromContext(ctx),
+			CompletedSteps:      make(map[string]map[string]any),
+		}
+		for name, stepData := range celCtx.Steps {
+			if out, ok := stepData["output"].(map[string]any); ok {
+				sc.CompletedSteps[name] = out
+			}
+		}
+		output, err := e.executeStepLogic(ctx, execID, *step, celCtx, wf.Name, sc)
 		if err != nil {
 			return output, err
 		}
@@ -445,7 +568,12 @@ func (e *Engine) MakeGlobalStepExecutor() StepExecutor {
 			celCtx.Steps[name] = map[string]any{"output": output}
 		}
 
-		output, err := e.executeStepLogic(ctx, execID, *step, celCtx, workflowName)
+		sc := StepContext{
+			WorkflowTokenBudget: wf.TokenBudget,
+			CompletedSteps:      completedSteps,
+			TeamID:              teamID,
+		}
+		output, err := e.executeStepLogic(ctx, execID, *step, celCtx, workflowName, sc)
 		if err != nil {
 			return output, err
 		}
@@ -598,4 +726,44 @@ func (e *Engine) loadCompletedSteps(ctx context.Context, execID string) (map[str
 		result[name] = output
 	}
 	return result, rows.Err()
+}
+
+func extractTokenCounts(output map[string]any) (prompt, completion int64) {
+	usage, ok := output["usage"].(map[string]any)
+	if !ok {
+		return 0, 0
+	}
+	if v, ok := usage["prompt_tokens"]; ok {
+		prompt = toInt64(v)
+	}
+	if v, ok := usage["completion_tokens"]; ok {
+		completion = toInt64(v)
+	}
+	return prompt, completion
+}
+
+func extractTotalTokens(output map[string]any) int64 {
+	usage, ok := output["usage"].(map[string]any)
+	if !ok {
+		return 0
+	}
+	return toInt64(usage["total_tokens"])
+}
+
+func toInt64(v any) int64 {
+	switch n := v.(type) {
+	case int:
+		return int64(n)
+	case int64:
+		return n
+	case float64:
+		return int64(n)
+	case json.Number:
+		if i, err := n.Int64(); err == nil {
+			return i
+		}
+		return 0
+	default:
+		return 0
+	}
 }

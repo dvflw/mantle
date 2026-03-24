@@ -194,3 +194,56 @@ log:
 		t.Errorf("Log.Level = %q, want error (flag override)", cfg.Log.Level)
 	}
 }
+
+func TestLoad_BudgetDefaults(t *testing.T) {
+	cmd := newTestCommand()
+
+	cfg, err := Load(cmd)
+	require.NoError(t, err)
+
+	assert.Equal(t, "calendar", cfg.Engine.Budget.ResetMode)
+	assert.Equal(t, 1, cfg.Engine.Budget.ResetDay)
+	assert.Equal(t, int64(0), cfg.Engine.Budget.GlobalMonthlyTokenLimit)
+	assert.Equal(t, int64(0), cfg.Engine.Budget.DefaultTeamMonthlyTokenLimit)
+}
+
+func TestLoad_BudgetResetDay_RollingInvalid(t *testing.T) {
+	// ResetDay 0 with rolling mode should error
+	t.Setenv("MANTLE_ENGINE_BUDGET_RESET_MODE", "rolling")
+	t.Setenv("MANTLE_ENGINE_BUDGET_RESET_DAY", "0")
+
+	cmd := newTestCommand()
+	_, err := Load(cmd)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reset_day must be between 1 and 28")
+
+	// ResetDay 29 with rolling mode should error
+	t.Setenv("MANTLE_ENGINE_BUDGET_RESET_DAY", "29")
+	cmd = newTestCommand()
+	_, err = Load(cmd)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reset_day must be between 1 and 28")
+}
+
+func TestLoad_BudgetResetDay_CalendarClamps(t *testing.T) {
+	// Invalid ResetDay with calendar mode should silently clamp to 1 (lower bound)
+	t.Setenv("MANTLE_ENGINE_BUDGET_RESET_MODE", "calendar")
+	t.Setenv("MANTLE_ENGINE_BUDGET_RESET_DAY", "0")
+
+	cmd := newTestCommand()
+	cfg, err := Load(cmd)
+	require.NoError(t, err)
+	assert.Equal(t, 1, cfg.Engine.Budget.ResetDay)
+}
+
+func TestLoad_BudgetResetDay_CalendarClampsUpperBound(t *testing.T) {
+	// ResetDay >28 with calendar mode should silently clamp to 1
+	// (calendar mode ignores reset_day entirely, so any invalid value is safe to clamp)
+	t.Setenv("MANTLE_ENGINE_BUDGET_RESET_MODE", "calendar")
+	t.Setenv("MANTLE_ENGINE_BUDGET_RESET_DAY", "100")
+
+	cmd := newTestCommand()
+	cfg, err := Load(cmd)
+	require.NoError(t, err)
+	assert.Equal(t, 1, cfg.Engine.Budget.ResetDay)
+}

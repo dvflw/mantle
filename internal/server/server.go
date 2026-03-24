@@ -14,6 +14,7 @@ import (
 	"github.com/dvflw/mantle/internal/api/health"
 	"github.com/dvflw/mantle/internal/audit"
 	"github.com/dvflw/mantle/internal/auth"
+	"github.com/dvflw/mantle/internal/budget"
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/engine"
 	"github.com/dvflw/mantle/internal/metrics"
@@ -28,6 +29,7 @@ type Server struct {
 	AuthStore     *auth.Store
 	OIDCValidator *auth.OIDCValidator
 	Auditor       audit.Emitter
+	BudgetStore   *budget.Store
 	Address       string
 	TLSCertFile   string
 	TLSKeyFile    string
@@ -135,6 +137,12 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("GET /api/v1/workflows/{name}", s.handleGetWorkflow)
 	mux.HandleFunc("GET /api/v1/workflows/{name}/versions", s.handleListWorkflowVersions)
 	mux.HandleFunc("GET /api/v1/workflows/{name}/versions/{version}", s.handleGetWorkflowVersion)
+
+	// Budget endpoints.
+	mux.HandleFunc("GET /api/v1/budgets", s.handleListBudgets)
+	mux.HandleFunc("PUT /api/v1/budgets/{provider}", s.handleSetBudget)
+	mux.HandleFunc("DELETE /api/v1/budgets/{provider}", s.handleDeleteBudget)
+	mux.HandleFunc("GET /api/v1/budgets/usage", s.handleGetUsage)
 
 	// Start distributed engine components (worker + reaper).
 	if cfg := config.FromContext(ctx); cfg != nil {

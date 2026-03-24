@@ -77,6 +77,7 @@ Full documentation: https://mantle.dvflw.co/docs`,
 		newPluginsCommand(),
 		newLibraryCommand(),
 		newCleanupCommand(),
+		newBudgetCommand(),
 	)
 
 	// Info.

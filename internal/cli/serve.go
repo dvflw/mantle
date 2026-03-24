@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/dvflw/mantle/internal/audit"
 	"github.com/dvflw/mantle/internal/auth"
+	"github.com/dvflw/mantle/internal/budget"
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/connector"
 	"github.com/dvflw/mantle/internal/db"
@@ -78,11 +81,39 @@ func newServeCommand() *cobra.Command {
 				}
 			}
 
+			// Wire budget enforcement into the engine.
+			budgetStore := budget.NewStore(database)
+			eng.BudgetStore = budgetStore
+			eng.BudgetChecker = &budget.Checker{
+				GlobalMonthlyTokenLimit:      cfg.Engine.Budget.GlobalMonthlyTokenLimit,
+				DefaultTeamMonthlyTokenLimit: cfg.Engine.Budget.DefaultTeamMonthlyTokenLimit,
+				ResetMode:                    cfg.Engine.Budget.ResetMode,
+				ResetDay:                     cfg.Engine.Budget.ResetDay,
+				GetTotalUsage: func(ctx context.Context, period time.Time) (int64, error) {
+					u, err := budgetStore.GetGlobalTotalUsage(ctx, period)
+					if err != nil {
+						return 0, err
+					}
+					return u.TotalTokens, nil
+				},
+				GetProviderUsage: func(ctx context.Context, teamID, provider string, period time.Time) (int64, error) {
+					u, err := budgetStore.GetUsage(ctx, teamID, provider, period)
+					if err != nil {
+						return 0, err
+					}
+					return u.TotalTokens, nil
+				},
+				GetTeamBudget: func(ctx context.Context, teamID, provider string) (*budget.TeamBudget, error) {
+					return budgetStore.GetTeamBudget(ctx, teamID, provider)
+				},
+			}
+
 			srv := server.New(database, eng, cfg.API.Address)
 			srv.Auditor = auditor
 			srv.TLSCertFile = cfg.API.TLS.CertFile
 			srv.TLSKeyFile = cfg.API.TLS.KeyFile
 			srv.AuthStore = &auth.Store{DB: database}
+			srv.BudgetStore = budgetStore
 
 			// Wire up OIDC validator if configured.
 			if cfg.Auth.OIDC.IssuerURL != "" {

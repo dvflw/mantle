@@ -60,3 +60,40 @@ func TestWorkflowStructTags(t *testing.T) {
 		t.Errorf("expected max_attempts 3, got %d", w.Steps[0].Retry.MaxAttempts)
 	}
 }
+
+func TestParse_TokenBudget(t *testing.T) {
+	input := []byte(`
+name: test-workflow
+token_budget: 500000
+steps:
+  - name: step1
+    action: http/request
+    params:
+      url: "https://example.com"
+`)
+	result, err := ParseBytes(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Workflow.TokenBudget != int64(500000) {
+		t.Errorf("token_budget: got %d, want 500000", result.Workflow.TokenBudget)
+	}
+}
+
+func TestParse_TokenBudget_Zero(t *testing.T) {
+	input := []byte(`
+name: test-workflow
+steps:
+  - name: step1
+    action: http/request
+    params:
+      url: "https://example.com"
+`)
+	result, err := ParseBytes(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Workflow.TokenBudget != int64(0) {
+		t.Errorf("token_budget: got %d, want 0", result.Workflow.TokenBudget)
+	}
+}

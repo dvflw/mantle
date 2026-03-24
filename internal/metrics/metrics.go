@@ -123,6 +123,14 @@ func RecordLeaseRenewal()                { LeaseRenewalsTotal.Inc() }
 func RecordLeaseExpiration()             { LeaseExpirationsTotal.Inc() }
 func RecordReaperReclaimed(n int)        { ReaperReclaimedTotal.Add(float64(n)) }
 
+// Budget metrics.
+var (
+	BudgetCheckTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_budget_check_total",
+		Help: "Total budget checks performed before AI step dispatch",
+	}, []string{"team_id", "provider", "result"})
+)
+
 // Tool-use helper functions.
 
 func RecordToolCall(step, tool, status string) {
