@@ -204,6 +204,10 @@ func TestChecker_CheckExecutionBudget(t *testing.T) {
 	assert.True(t, result.Blocked)
 	assert.Equal(t, "workflow", result.BlockedBy)
 
+	result = budget.CheckExecutionBudget(50000, 50000)
+	assert.True(t, result.Blocked)
+	assert.Equal(t, "workflow", result.BlockedBy)
+
 	result = budget.CheckExecutionBudget(50000, 49999)
 	assert.False(t, result.Blocked)
 

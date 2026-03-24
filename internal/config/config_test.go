@@ -214,14 +214,14 @@ func TestLoad_BudgetResetDay_RollingInvalid(t *testing.T) {
 
 	cmd := newTestCommand()
 	_, err := Load(cmd)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reset_day must be between 1 and 28")
 
 	// ResetDay 29 with rolling mode should error
 	t.Setenv("MANTLE_ENGINE_BUDGET_RESET_DAY", "29")
 	cmd = newTestCommand()
 	_, err = Load(cmd)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reset_day must be between 1 and 28")
 }
 
