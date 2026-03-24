@@ -9,6 +9,7 @@ import (
 	"github.com/dvflw/mantle/internal/budget"
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
+	"github.com/dvflw/mantle/internal/dbdefaults"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -20,10 +21,10 @@ func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	ctx := context.Background()
 	pgContainer, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("mantle_test"),
-		postgres.WithUsername("mantle"),
-		postgres.WithPassword("mantle"),
+		dbdefaults.PostgresImage,
+		postgres.WithDatabase(dbdefaults.TestDatabase),
+		postgres.WithUsername(dbdefaults.User),
+		postgres.WithPassword(dbdefaults.Password),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).

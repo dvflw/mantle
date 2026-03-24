@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dvflw/mantle/internal/dbdefaults"
 	"github.com/jackc/pgx/v5"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -17,7 +18,7 @@ func setupExternalPG(t *testing.T) string {
 	t.Helper()
 	ctx := context.Background()
 	pgContainer, err := tcpostgres.Run(ctx,
-		"postgres:16-alpine",
+		dbdefaults.PostgresImage,
 		tcpostgres.WithDatabase("ext_test"),
 		tcpostgres.WithUsername("testuser"),
 		tcpostgres.WithPassword("testpass"),
