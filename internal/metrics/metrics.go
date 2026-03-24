@@ -129,11 +129,6 @@ var (
 		Name: "mantle_budget_check_total",
 		Help: "Total budget checks performed before AI step dispatch",
 	}, []string{"team_id", "provider", "result"})
-
-	BudgetUsageGauge = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "mantle_budget_usage_tokens",
-		Help: "Current token usage within the budget period",
-	}, []string{"team_id", "provider"})
 )
 
 // Tool-use helper functions.

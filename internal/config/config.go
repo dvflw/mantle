@@ -252,6 +252,15 @@ func Load(cmd *cobra.Command) (*Config, error) {
 		return nil, err
 	}
 
+	// Validate budget reset_day range.
+	if cfg.Engine.Budget.ResetDay < 1 || cfg.Engine.Budget.ResetDay > 28 {
+		if cfg.Engine.Budget.ResetMode == "rolling" {
+			return nil, fmt.Errorf("engine.budget.reset_day must be between 1 and 28, got %d", cfg.Engine.Budget.ResetDay)
+		}
+		// For calendar mode, reset_day is ignored, so just clamp it silently.
+		cfg.Engine.Budget.ResetDay = 1
+	}
+
 	// Generate default NodeID if not set.
 	// Format: hostname:pid:random8chars — the random suffix ensures uniqueness
 	// across Kubernetes container restarts where PID 1 is common.

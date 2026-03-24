@@ -43,6 +43,15 @@ func Validate(result *ParseResult) []ValidationError {
 		})
 	}
 
+	// Validate token_budget is non-negative.
+	if w.TokenBudget < 0 {
+		line, col := findFieldPosition(root, "token_budget")
+		errs = append(errs, ValidationError{
+			Line: line, Column: col, Field: "token_budget",
+			Message: fmt.Sprintf("token_budget must be >= 0, got %d", w.TokenBudget),
+		})
+	}
+
 	// Validate steps exist and are non-empty.
 	if len(w.Steps) == 0 {
 		line, col := findFieldPosition(root, "steps")
