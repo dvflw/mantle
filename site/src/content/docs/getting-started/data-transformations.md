@@ -48,7 +48,7 @@ steps:
         records: >
           {{ steps['fetch-users'].output.json.users.map(u,
                obj(
-                 'name',       toLower(u.firstName + ' ' + u.lastName),
+                 'name',       (u.firstName + ' ' + u.lastName).toLower(),
                  'birth_date', u.dob
                )
              ) }}
@@ -58,7 +58,7 @@ What the CEL expression does:
 
 - `.map(u, ...)` -- iterates the `users` list, binding each element to `u`
 - `obj('name', ..., 'birth_date', ...)` -- constructs a new object with the renamed keys
-- `toLower(...)` -- normalizes the full name to lowercase
+- `.toLower()` -- normalizes the full name to lowercase (method call on the concatenated string)
 - String concatenation (`+`) joins first and last name with a space
 
 The output of the `map()` call is a new list of objects ready for the batch insert. Nothing left the workflow engine.
@@ -174,7 +174,7 @@ steps:
                  'id',          r.reviewId,
                  'rating',      r.starRating,
                  'reviewed_at', r.submittedAt,
-                 'text',        trim(r.body)
+                 'text',        r.body.trim()
                )
              ) }}
 
@@ -265,13 +265,13 @@ These are the Mantle CEL extensions available in workflow expressions. For full 
 
 **String**
 
-| Function | Description |
-|---|---|
-| `toLower(s)` | Convert string to lowercase |
-| `toUpper(s)` | Convert string to uppercase |
-| `trim(s)` | Remove leading and trailing whitespace |
-| `replace(s, old, new)` | Replace all occurrences of `old` with `new` |
-| `split(s, sep)` | Split string into a list on separator |
+| Function | Example | Description |
+|---|---|---|
+| `s.toLower()` | `"HELLO".toLower()` | Convert string to lowercase |
+| `s.toUpper()` | `"hello".toUpper()` | Convert string to uppercase |
+| `s.trim()` | `" a ".trim()` | Remove leading and trailing whitespace |
+| `s.replace(old, new)` | `"a-b".replace("-", "_")` | Replace all occurrences of `old` with `new` |
+| `s.split(sep)` | `"a,b".split(",")` | Split string into a list on separator |
 
 **Object construction**
 

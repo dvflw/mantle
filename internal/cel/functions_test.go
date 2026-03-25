@@ -227,6 +227,12 @@ func TestFunc_Obj(t *testing.T) {
 			expr:    `obj("key")`,
 			wantErr: true,
 		},
+		{
+			"non_string_key",
+			`obj(1, "value")`,
+			nil,
+			true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -341,7 +347,7 @@ func TestFunc_JsonDecode(t *testing.T) {
 				m, ok := result.(map[string]any)
 				require.True(t, ok)
 				assert.Equal(t, "bob", m["name"])
-				assert.Equal(t, float64(25), m["age"])
+				assert.Equal(t, int64(25), m["age"])
 			},
 		},
 		{

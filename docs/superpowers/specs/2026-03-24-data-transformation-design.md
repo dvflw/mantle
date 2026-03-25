@@ -69,7 +69,7 @@ Errors on odd number of args or non-string keys. Enables building maps for DB in
 
 | Function | Example | Result |
 |----------|---------|--------|
-| `timestamp(string)` | `timestamp("2026-03-24T19:00:00Z")` | timestamp value |
+| `parseTimestamp(string)` | `parseTimestamp("2026-03-24T19:00:00Z")` | timestamp value |
 | `formatTimestamp(ts, layout)` | `formatTimestamp(ts, "2006-01-02")` | `"2026-03-24"` |
 
 Uses Go time layout strings.
@@ -86,14 +86,15 @@ In `internal/cel/cel.go`, the `NewEvaluator` function passes function options to
 
 ```go
 func NewEvaluator() (*Evaluator, error) {
-    env, err := cel.NewEnv(
+    opts := []cel.EnvOption{
         cel.Variable("steps", cel.MapType(cel.StringType, cel.DynType)),
         cel.Variable("inputs", cel.MapType(cel.StringType, cel.DynType)),
         cel.Variable("env", cel.MapType(cel.StringType, cel.StringType)),
         cel.Variable("trigger", cel.MapType(cel.StringType, cel.DynType)),
-        // Custom functions
-        customFunctions()...,
-    )
+    }
+    opts = append(opts, customFunctions()...)
+
+    env, err := cel.NewEnv(opts...)
     // ...
 }
 ```
@@ -107,7 +108,7 @@ All errors surface through the existing `Eval` error path:
 - `obj()` with odd args → evaluation error
 - `obj()` with non-string keys → evaluation error
 - `jsonDecode()` with invalid JSON → evaluation error
-- `timestamp()` with unparseable string → evaluation error
+- `parseTimestamp()` with unparseable string → evaluation error
 
 No new error types needed.
 

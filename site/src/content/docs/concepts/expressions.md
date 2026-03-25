@@ -489,7 +489,7 @@ steps:
 
 ### `obj(key, value, ...)`
 
-Builds a map from alternating key-value arguments. Accepts any number of key-value pairs.
+Builds a map from alternating key-value arguments. Supports up to 5 key-value pairs (10 arguments) due to cel-go's fixed-arity overload requirement — CEL does not support true variadic functions without macros. For maps with more than 5 pairs, use nested `obj()` calls or construct the value with `jsonDecode`.
 
 ```yaml
 steps:

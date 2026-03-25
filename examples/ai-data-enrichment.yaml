@@ -58,7 +58,7 @@ steps:
       query: >
         INSERT INTO urgent_tickets (priority, category, products, raw_body)
         VALUES ($1, $2, $3, $4)
-      params:
+      args:
         - "{{ steps.classify.output.json.priority }}"
         - "{{ steps.classify.output.json.category }}"
         - "{{ jsonEncode(steps.classify.output.json.products) }}"

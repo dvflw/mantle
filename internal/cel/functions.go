@@ -158,6 +158,7 @@ func (l *collectionLib) CompileOptions() []cel.EnvOption {
 			cel.Overload("default_any_any",
 				[]*cel.Type{cel.DynType, cel.DynType},
 				cel.DynType,
+				cel.OverloadIsNonStrict(),
 				cel.BinaryBinding(func(lhs, rhs ref.Val) ref.Val {
 					if types.IsError(lhs) || types.IsUnknown(lhs) || lhs == types.NullValue {
 						return rhs
@@ -273,11 +274,13 @@ func (l *jsonLib) CompileOptions() []cel.EnvOption {
 				cel.DynType,
 				cel.UnaryBinding(func(val ref.Val) ref.Val {
 					s := string(val.(types.String))
+					dec := json.NewDecoder(strings.NewReader(s))
+					dec.UseNumber()
 					var result any
-					if err := json.Unmarshal([]byte(s), &result); err != nil {
+					if err := dec.Decode(&result); err != nil {
 						return types.NewErr("jsonDecode: %v", err)
 					}
-					return types.DefaultTypeAdapter.NativeToValue(result)
+					return types.DefaultTypeAdapter.NativeToValue(normalizeJSONNumbers(result))
 				}),
 			),
 		),
@@ -337,4 +340,31 @@ func (l *timeLib) CompileOptions() []cel.EnvOption {
 
 func (l *timeLib) ProgramOptions() []cel.ProgramOption {
 	return nil
+}
+
+// normalizeJSONNumbers walks a decoded JSON structure and converts json.Number
+// values to int64 (if the number is an integer) or float64.
+func normalizeJSONNumbers(v any) any {
+	switch val := v.(type) {
+	case json.Number:
+		if i, err := val.Int64(); err == nil {
+			return i
+		}
+		if f, err := val.Float64(); err == nil {
+			return f
+		}
+		return val.String()
+	case map[string]any:
+		for k, v := range val {
+			val[k] = normalizeJSONNumbers(v)
+		}
+		return val
+	case []any:
+		for i, v := range val {
+			val[i] = normalizeJSONNumbers(v)
+		}
+		return val
+	default:
+		return v
+	}
 }

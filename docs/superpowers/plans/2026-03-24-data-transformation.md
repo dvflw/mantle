@@ -12,7 +12,7 @@
 
 ---
 
-### Task 1: Test and document built-in macros
+## Task 1: Test and document built-in macros
 
 **Files:**
 - Create: `internal/cel/macros_test.go`
@@ -130,7 +130,7 @@ git commit -m "test(cel): add coverage for built-in map/filter/exists/all macros
 
 ---
 
-### Task 2: String functions — toLower, toUpper, trim
+## Task 2: String functions — toLower, toUpper, trim
 
 **Files:**
 - Create: `internal/cel/functions.go`
@@ -329,7 +329,7 @@ git commit -m "feat(cel): add toLower, toUpper, trim string functions"
 
 ---
 
-### Task 3: String functions — replace and split
+## Task 3: String functions — replace and split
 
 **Files:**
 - Modify: `internal/cel/functions.go`
@@ -441,7 +441,7 @@ git commit -m "feat(cel): add replace and split string functions"
 
 ---
 
-### Task 4: Type coercion — parseInt, parseFloat, toString
+## Task 4: Type coercion — parseInt, parseFloat, toString
 
 **Files:**
 - Modify: `internal/cel/functions.go`
@@ -621,7 +621,9 @@ git commit -m "feat(cel): add parseInt, parseFloat, toString type coercion funct
 
 ---
 
-### Task 5: Object construction — obj()
+## Task 5: Object construction — obj()
+
+> **Implementation note:** The plan originally specified a variadic `obj()` overload, but cel-go does not support true variadic functions without macros. The implementation uses fixed-arity overloads for 2, 4, 6, 8, and 10 arguments (1–5 key-value pairs), all sharing a single `objBinding` function.
 
 **Files:**
 - Modify: `internal/cel/functions.go`
@@ -755,7 +757,7 @@ git commit -m "feat(cel): add obj() map construction function"
 
 ---
 
-### Task 6: Utility functions — default, flatten
+## Task 6: Utility functions — default, flatten
 
 **Files:**
 - Modify: `internal/cel/functions.go`
@@ -881,7 +883,7 @@ git commit -m "feat(cel): add default() null coalescing and flatten() functions"
 
 ---
 
-### Task 7: JSON functions — jsonEncode, jsonDecode
+## Task 7: JSON functions — jsonEncode, jsonDecode
 
 **Files:**
 - Modify: `internal/cel/functions.go`
@@ -1015,7 +1017,7 @@ git commit -m "feat(cel): add jsonEncode and jsonDecode functions"
 
 ---
 
-### Task 8: Date/time functions — timestamp, formatTimestamp
+## Task 8: Date/time functions — parseTimestamp, formatTimestamp
 
 **Files:**
 - Modify: `internal/cel/functions.go`
@@ -1035,9 +1037,9 @@ func TestFunc_Timestamp(t *testing.T) {
 		expr    string
 		wantErr bool
 	}{
-		{"iso8601", `timestamp("2026-03-24T19:00:00Z")`, false},
-		{"with_offset", `timestamp("2026-03-24T14:00:00-05:00")`, false},
-		{"invalid", `timestamp("not a date")`, true},
+		{"iso8601", `parseTimestamp("2026-03-24T19:00:00Z")`, false},
+		{"with_offset", `parseTimestamp("2026-03-24T14:00:00-05:00")`, false},
+		{"invalid", `parseTimestamp("not a date")`, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1055,11 +1057,11 @@ func TestFunc_FormatTimestamp(t *testing.T) {
 	eval, err := NewEvaluator()
 	require.NoError(t, err)
 
-	result, err := eval.Eval(`formatTimestamp(timestamp("2026-03-24T19:00:00Z"), "2006-01-02")`, newTestContext())
+	result, err := eval.Eval(`formatTimestamp(parseTimestamp("2026-03-24T19:00:00Z"), "2006-01-02")`, newTestContext())
 	require.NoError(t, err)
 	assert.Equal(t, "2026-03-24", result)
 
-	result, err = eval.Eval(`formatTimestamp(timestamp("2026-03-24T19:30:45Z"), "15:04:05")`, newTestContext())
+	result, err = eval.Eval(`formatTimestamp(parseTimestamp("2026-03-24T19:30:45Z"), "15:04:05")`, newTestContext())
 	require.NoError(t, err)
 	assert.Equal(t, "19:30:45", result)
 }
@@ -1068,7 +1070,7 @@ func TestFunc_FormatTimestamp(t *testing.T) {
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `go test ./internal/cel/ -run "TestFunc_Timestamp|TestFunc_FormatTimestamp" -v`
-Expected: FAIL
+Expected: FAIL (functions registered as `parseTimestamp`, not `timestamp`)
 
 - [ ] **Step 3: Add date/time functions**
 
@@ -1083,15 +1085,15 @@ type timeLib struct{}
 
 func (l *timeLib) CompileOptions() []cel.EnvOption {
 	return []cel.EnvOption{
-		cel.Function("timestamp",
-			cel.Overload("timestamp_string",
+		cel.Function("parseTimestamp",
+			cel.Overload("parseTimestamp_string",
 				[]*cel.Type{cel.StringType},
 				cel.TimestampType,
 				cel.UnaryBinding(func(val ref.Val) ref.Val {
 					s := string(val.(types.String))
 					t, err := time.Parse(time.RFC3339, s)
 					if err != nil {
-						return types.NewErr("timestamp: %v", err)
+						return types.NewErr("parseTimestamp: %v", err)
 					}
 					return types.Timestamp{Time: t}
 				}),
@@ -1144,12 +1146,12 @@ Expected: PASS — all tests including existing ones
 
 ```bash
 git add internal/cel/functions.go internal/cel/functions_test.go
-git commit -m "feat(cel): add timestamp and formatTimestamp date/time functions"
+git commit -m "feat(cel): add parseTimestamp and formatTimestamp date/time functions"
 ```
 
 ---
 
-### Task 9: Update CEL expressions documentation
+## Task 9: Update CEL expressions documentation
 
 **Files:**
 - Modify: `site/src/content/docs/concepts/expressions.md`
@@ -1207,7 +1209,7 @@ git commit -m "docs: add custom CEL functions and macros to expressions referenc
 
 ---
 
-### Task 10: Create data transformations guide
+## Task 10: Create data transformations guide
 
 **Files:**
 - Create: `site/src/content/docs/getting-started/data-transformations.md`
@@ -1243,7 +1245,7 @@ git commit -m "docs: add data transformation patterns guide (#14)"
 
 ---
 
-### Task 11: Create example workflows
+## Task 11: Create example workflows
 
 **Files:**
 - Create: `examples/data-transform-api-to-db.yaml`
@@ -1360,7 +1362,7 @@ git commit -m "feat: add data transformation and AI enrichment example workflows
 
 ---
 
-### Task 12: Final validation
+## Task 12: Final validation
 
 - [ ] **Step 1: Run full test suite**
 

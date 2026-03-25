@@ -2,8 +2,7 @@ name: data-transform-api-to-db
 description: >
   Fetches a user from an API, transforms the record using CEL expressions
   to match a database schema, and inserts the normalized data into Postgres.
-  Demonstrates obj(), toLower(), and string functions without requiring
-  an AI model.
+  Demonstrates toLower() and string functions without requiring an AI model.
 
 steps:
   - name: fetch-user
