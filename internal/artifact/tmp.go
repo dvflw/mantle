@@ -48,6 +48,15 @@ func (fs *FilesystemTmpStorage) Put(ctx context.Context, key string, localPath s
 		return "", fmt.Errorf("creating artifact dir: %w", err)
 	}
 
+	// Reject symlinks and non-regular files to prevent exfiltration.
+	fi, err := os.Lstat(localPath)
+	if err != nil {
+		return "", fmt.Errorf("stat source file: %w", err)
+	}
+	if !fi.Mode().IsRegular() {
+		return "", fmt.Errorf("source file %q is not a regular file (mode: %s)", localPath, fi.Mode())
+	}
+
 	src, err := os.Open(localPath)
 	if err != nil {
 		return "", fmt.Errorf("opening source file: %w", err)

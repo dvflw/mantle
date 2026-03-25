@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
@@ -110,10 +111,19 @@ func parseDockerParams(params map[string]any) (*dockerConfig, error) {
 	// cpus
 	switch v := params["cpus"].(type) {
 	case float64:
+		if v < 0 {
+			return nil, fmt.Errorf("docker/run: cpus must be non-negative, got %v", v)
+		}
 		cfg.CPUs = v
 	case int:
+		if v < 0 {
+			return nil, fmt.Errorf("docker/run: cpus must be non-negative, got %v", v)
+		}
 		cfg.CPUs = float64(v)
 	case int64:
+		if v < 0 {
+			return nil, fmt.Errorf("docker/run: cpus must be non-negative, got %v", v)
+		}
 		cfg.CPUs = float64(v)
 	}
 
@@ -309,7 +319,11 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 	// Ensure cleanup.
 	defer func() {
 		if cfg.Remove {
-			cli.ContainerRemove(context.Background(), containerID, container.RemoveOptions{Force: true})
+			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second) // #nosec G118 -- intentional: parent ctx may be cancelled
+			defer cleanupCancel()
+			if err := cli.ContainerRemove(cleanupCtx, containerID, container.RemoveOptions{Force: true}); err != nil {
+				log.Printf("docker/run: failed to remove container %s: %v", containerID, err)
+			}
 		}
 	}()
 
@@ -343,9 +357,13 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 		select {
 		case <-ctx.Done():
 			gracePeriod := 10
-			cli.ContainerStop(context.Background(), containerID, container.StopOptions{
+			stopCtx, stopCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer stopCancel()
+			if err := cli.ContainerStop(stopCtx, containerID, container.StopOptions{
 				Timeout: &gracePeriod,
-			})
+			}); err != nil {
+				log.Printf("docker/run: failed to stop container %s: %v", containerID, err)
+			}
 		case <-doneCh:
 		}
 	}()

@@ -408,21 +408,12 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 		resolvedParams["_registry_credential"] = regCredData
 	}
 
-	// Create artifacts scratch dir if step declares artifacts.
+	// Validate artifact subsystem is configured if step declares artifacts.
 	var artifactsDir string
 	if len(step.Artifacts) > 0 {
 		if e.TmpStorage == nil || e.ArtifactStore == nil {
 			return nil, fmt.Errorf("step %q declares artifacts but artifact subsystem is not configured (set tmp storage in mantle.yaml)", step.Name)
 		}
-	}
-	if len(step.Artifacts) > 0 && e.TmpStorage != nil {
-		var tmpErr error
-		artifactsDir, tmpErr = os.MkdirTemp("", "mantle-artifacts-*")
-		if tmpErr != nil {
-			return nil, fmt.Errorf("creating artifacts dir: %v", tmpErr)
-		}
-		defer os.RemoveAll(artifactsDir) // clean local scratch after persisting to tmp storage
-		ctx = artifact.WithArtifactsDir(ctx, artifactsDir)
 	}
 
 	// Inject workflow/step context for AI observability metrics.
@@ -453,6 +444,20 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 	var lastErr error
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		// Create a fresh artifacts scratch dir per attempt.
+		if len(step.Artifacts) > 0 && e.TmpStorage != nil {
+			if artifactsDir != "" {
+				os.RemoveAll(artifactsDir) // clean previous attempt's scratch
+			}
+			var tmpErr error
+			artifactsDir, tmpErr = os.MkdirTemp("", "mantle-artifacts-*")
+			if tmpErr != nil {
+				return nil, fmt.Errorf("creating artifacts dir: %v", tmpErr)
+			}
+			defer os.RemoveAll(artifactsDir)
+			ctx = artifact.WithArtifactsDir(ctx, artifactsDir)
+		}
+
 		// Apply per-step timeout.
 		execCtx := ctx
 		var cancel context.CancelFunc
