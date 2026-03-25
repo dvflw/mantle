@@ -170,6 +170,7 @@ func (lw *limitWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
+// Execute runs a Docker container to completion and returns its exit code, stdout, and stderr.
 func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
 	cfg, err := parseDockerParams(params)
 	if err != nil {

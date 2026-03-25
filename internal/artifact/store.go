@@ -23,6 +23,7 @@ type Store struct {
 	DB *sql.DB
 }
 
+// Create inserts artifact metadata into the database.
 func (s *Store) Create(ctx context.Context, a *Artifact) error {
 	_, err := s.DB.ExecContext(ctx, `
 		INSERT INTO execution_artifacts (execution_id, step_name, name, url, size)
@@ -34,6 +35,7 @@ func (s *Store) Create(ctx context.Context, a *Artifact) error {
 	return nil
 }
 
+// GetByName retrieves a single artifact by execution ID and artifact name.
 func (s *Store) GetByName(ctx context.Context, executionID, name string) (*Artifact, error) {
 	var a Artifact
 	err := s.DB.QueryRowContext(ctx, `
@@ -50,6 +52,7 @@ func (s *Store) GetByName(ctx context.Context, executionID, name string) (*Artif
 	return &a, nil
 }
 
+// ListByExecution returns all artifacts associated with the given execution, ordered by creation time.
 func (s *Store) ListByExecution(ctx context.Context, executionID string) ([]Artifact, error) {
 	rows, err := s.DB.QueryContext(ctx, `
 		SELECT id, execution_id, step_name, name, url, size, created_at

@@ -24,6 +24,7 @@ type FilesystemTmpStorage struct {
 	BasePath string
 }
 
+// Put copies the file at localPath to the storage location identified by key and returns its path.
 func (fs *FilesystemTmpStorage) Put(ctx context.Context, key string, localPath string) (string, error) {
 	destPath := filepath.Join(fs.BasePath, key)
 	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
@@ -49,6 +50,7 @@ func (fs *FilesystemTmpStorage) Put(ctx context.Context, key string, localPath s
 	return destPath, nil
 }
 
+// DeleteByPrefix removes all files stored under the given key prefix.
 func (fs *FilesystemTmpStorage) DeleteByPrefix(ctx context.Context, prefix string) error {
 	target := filepath.Join(fs.BasePath, prefix)
 	absBase, err := filepath.Abs(fs.BasePath)
