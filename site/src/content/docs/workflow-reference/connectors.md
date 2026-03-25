@@ -328,10 +328,9 @@ Reads messages from an email mailbox. Supports filtering by folder and read stat
 | Param | Type | Required | Description |
 |---|---|---|---|
 | `folder` | string | No | Folder to read from (e.g., `INBOX`, `Archive`, `[Gmail]/Sent Mail`). Default: `INBOX`. |
-| `filter` | string | No | Filter messages by status: `all`, `unseen`, `seen`, `flagged`. Default: `all`. |
+| `filter` | string | No | Filter messages by status: `all`, `unseen`, `recent`, `flagged`. Default: `unseen`. |
 | `limit` | number | No | Maximum number of messages to return. Default: `10`. |
 | `mark_seen` | boolean | No | Mark retrieved messages as seen. Default: `false`. |
-| `_credential` | string | Yes | Email account credential (IMAP-compatible). |
 
 **Output:**
 
@@ -339,6 +338,8 @@ Reads messages from an email mailbox. Supports filtering by folder and read stat
 |---|---|---|
 | `message_count` | number | Number of messages returned. |
 | `messages` | array | Array of message objects. Each message contains: `message_id` (string), `from` (string), `to` (string), `cc` (string), `subject` (string), `body` (string), `date` (RFC 3339 timestamp), `headers` (map), `flags` (array of strings), `uid` (number, IMAP UID). |
+
+**Authentication:** Credentials are provided via the step-level `credential` field. The email connector reads `username`, `password`, `host`, and `port` from the credential (IMAP-compatible).
 
 **Example:**
 
@@ -364,15 +365,16 @@ Moves an email message to a different folder.
 | `uid` | number | Yes | IMAP UID of the message. |
 | `source_folder` | string | No | Source folder (for reference). Default: `INBOX`. |
 | `target_folder` | string | Yes | Destination folder path (e.g., `Archive`, `[Gmail]/All Mail`). |
-| `_credential` | string | Yes | Email account credential. |
 
 **Output:**
 
 | Field | Type | Description |
 |---|---|---|
-| `success` | boolean | `true` if the move was successful. |
+| `moved` | boolean | `true` if the move was successful. |
 | `uid` | number | The IMAP UID of the moved message. |
 | `target_folder` | string | The folder the message was moved to. |
+
+**Authentication:** Credentials are provided via the step-level `credential` field.
 
 **Note:** Gmail's "archive" action is implemented as a move to `[Gmail]/All Mail`.
 
@@ -398,14 +400,15 @@ Deletes an email message.
 |---|---|---|---|
 | `uid` | number | Yes | IMAP UID of the message. |
 | `folder` | string | No | Folder containing the message. Default: `INBOX`. |
-| `_credential` | string | Yes | Email account credential. |
 
 **Output:**
 
 | Field | Type | Description |
 |---|---|---|
-| `success` | boolean | `true` if the deletion was successful. |
+| `deleted` | boolean | `true` if the deletion was successful. |
 | `uid` | number | The IMAP UID of the deleted message. |
+
+**Authentication:** Credentials are provided via the step-level `credential` field.
 
 **Example:**
 
@@ -430,7 +433,6 @@ Adds or removes flags (labels) on an email message.
 | `flags` | array | Yes | List of flag names to modify (e.g., `["flagged", "important"]`). |
 | `action` | string | Yes | `add` to set flags, `remove` to unset flags. |
 | `folder` | string | No | Folder containing the message. Default: `INBOX`. |
-| `_credential` | string | Yes | Email account credential. |
 
 **Standard IMAP Flags:**
 
@@ -448,9 +450,12 @@ Adds or removes flags (labels) on an email message.
 
 | Field | Type | Description |
 |---|---|---|
-| `success` | boolean | `true` if the flag operation was successful. |
+| `updated` | boolean | `true` if the flag operation was successful. |
+| `action` | string | The operation performed: `add` or `remove`. |
 | `uid` | number | The IMAP UID of the message. |
 | `flags` | array | The flags that were modified. |
+
+**Authentication:** Credentials are provided via the step-level `credential` field.
 
 **Example:**
 
@@ -739,7 +744,6 @@ Runs browser automation scripts (JavaScript, TypeScript, or Python) using Playwr
       import os
       import json
 
-      page = browser.new_page()
       page.goto('https://example.com/report')
       page.pdf(path='/mantle/artifacts/report.pdf')
 

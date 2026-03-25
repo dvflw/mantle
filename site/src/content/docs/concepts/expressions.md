@@ -54,7 +54,7 @@ Every step exposes an `error` field:
 - **`null`** — The step succeeded or was skipped (its `if` condition was false).
 - **String message** — The step failed. The error message is populated from the connector.
 
-The error field is available regardless of whether the step has `continue_on_error` enabled. Use it to implement conditional error handling:
+The `error` field is always present in the CEL context for any step. However, it is only practically useful when the referenced step has `continue_on_error: true`. Without that flag, a step failure halts the entire workflow before any downstream step can run — so there is no opportunity to check the error. Use `continue_on_error: true` on any step whose failure you want to handle in subsequent steps:
 
 ```yaml
 steps:

@@ -253,7 +253,7 @@ steps:
 
 ### Available Error Fields
 
-- **`steps['name'].error`** — `null` for successful or skipped steps; a string error message for failed steps. Available for all steps regardless of `continue_on_error`.
+- **`steps['name'].error`** — `null` for successful or skipped steps; a string error message for failed steps. The field is always present in the CEL context, but is only practically reachable on a step that has `continue_on_error: true` — without that flag, a step failure halts the workflow before any downstream step can inspect the error.
 - **`steps['name'].output`** — Partial output available from the failed step if the connector provided it. Structure depends on the connector.
 
 ### Example: Fallback Pattern
@@ -355,9 +355,13 @@ Triggers are optional. Without them, the workflow can still be executed manually
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `type` | string | Yes | Trigger type. One of: `cron`, `webhook`. |
+| `type` | string | Yes | Trigger type. One of: `cron`, `webhook`, `email`. |
 | `schedule` | string | Cron only | Cron expression defining the schedule. Required when `type` is `cron`. |
 | `path` | string | Webhook only | URL path for the webhook endpoint. Required when `type` is `webhook`. |
+| `mailbox` | string | Email only | Credential name for the email account (IMAP-compatible). Required when `type` is `email`. |
+| `folder` | string | Email only | Folder to monitor (e.g., `INBOX`). Default: `INBOX`. |
+| `filter` | string | Email only | Filter messages: `all`, `unseen`, `recent`, `flagged`. Default: `unseen`. |
+| `poll_interval` | string | Email only | How often to check for new messages (e.g., `30s`, `5m`). Default: `60s`. |
 
 ### Trigger Lifecycle
 

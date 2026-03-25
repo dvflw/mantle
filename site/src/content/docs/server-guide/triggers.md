@@ -201,7 +201,7 @@ The `email` trigger type polls a mailbox for messages matching a filter and exec
 | `type` | string | Yes | Must be `email`. |
 | `mailbox` | string | Yes | Credential name for the email account (IMAP-compatible). |
 | `folder` | string | No | Folder to monitor (e.g., `INBOX`, `Archive`). Default: `INBOX`. |
-| `filter` | string | No | Filter messages: `all`, `unseen`, `seen`, `flagged`. Default: `unseen`. |
+| `filter` | string | No | Filter messages: `all`, `unseen`, `recent`, `flagged`. Default: `unseen`. |
 | `poll_interval` | string | No | How often to check for new messages (e.g., `30s`, `5m`). Default: `60s`. |
 
 ### Trigger Context Variables
@@ -242,19 +242,31 @@ steps:
       text: "New email from {{ trigger.from }}: {{ trigger.subject }}"
 ```
 
-### Connection Management
+### At-Least-Once Delivery
 
-Email triggers maintain persistent IMAP connections to reduce authentication overhead. By default, Mantle pools up to 5 concurrent connections per mailbox credential.
+The email trigger marks messages as seen **after** firing the workflow for each message. If the Mantle process crashes or is restarted mid-poll, messages that were fetched but not yet marked may be re-triggered on the next poll cycle. This means email-triggered workflows may receive the same message more than once.
 
-**Configuring connection limits in `mantle.yaml`:**
+Design email-triggered workflows to be idempotent. A reliable approach is to deduplicate on `trigger.message_id`:
 
 ```yaml
-engine:
-  email:
-    max_connections: 10  # Default: 5
-    connection_timeout: 30s  # Default: 30s
-    idle_timeout: 5m  # Default: 5m
+steps:
+  - name: check-duplicate
+    action: postgres/query
+    credential: my-database
+    params:
+      query: "INSERT INTO processed_emails (message_id) VALUES ($1) ON CONFLICT DO NOTHING"
+      args:
+        - "{{ trigger.message_id }}"
+
+  - name: process-email
+    action: ai/completion
+    if: "steps['check-duplicate'].output.rows_affected > 0"
+    # ... rest of workflow
 ```
+
+### Connection Management
+
+Email triggers maintain persistent IMAP connections to reduce authentication overhead. By default, Mantle pools up to 5 concurrent connections per mailbox credential. This limit is a compile-time default in v0.3.0 and is not runtime-configurable via `mantle.yaml`.
 
 ### Provider Limits
 
@@ -293,4 +305,4 @@ triggers:
     poll_interval: 60s
 ```
 
-Each workflow gets its own connection, but they share the pool. If latency is a concern, stagger poll intervals or increase `max_connections` in `mantle.yaml`.
+Each workflow gets its own connection, but they share the pool. If latency is a concern, stagger poll intervals.
