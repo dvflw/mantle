@@ -534,3 +534,135 @@ steps:
 		t.Errorf("step-2 status = %q, want %q", result.Steps["step-2"].Status, "completed")
 	}
 }
+
+func TestEngine_ContinueOnError(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Step 1: always returns 500 (will fail after retries).
+	step1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		w.Write([]byte("internal server error"))
+	}))
+	defer step1Server.Close()
+
+	// Step 2: should be called because step-1 has continue_on_error: true.
+	step2Called := false
+	step2Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		step2Called = true
+		w.WriteHeader(200)
+		json.NewEncoder(w).Encode(map[string]any{"recovered": true})
+	}))
+	defer step2Server.Close()
+
+	wfYAML := []byte(`name: test-continue-on-error
+description: Test continue_on_error behavior
+steps:
+  - name: step-1
+    action: http/request
+    continue_on_error: true
+    params:
+      method: GET
+      url: "` + step1Server.URL + `"
+  - name: step-2
+    action: http/request
+    if: "steps['step-1'].error != null"
+    params:
+      method: GET
+      url: "` + step2Server.URL + `"
+`)
+	version := applyWorkflow(t, database, wfYAML)
+
+	eng, err := New(database)
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	result, err := eng.Execute(context.Background(), "test-continue-on-error", version, nil)
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+
+	// Overall workflow should complete, not fail.
+	if result.Status != "completed" {
+		t.Errorf("workflow status = %q, want %q (error: %s)", result.Status, "completed", result.Error)
+	}
+
+	// Step 1 should be marked as failed.
+	if result.Steps["step-1"].Status != "failed" {
+		t.Errorf("step-1 status = %q, want %q", result.Steps["step-1"].Status, "failed")
+	}
+
+	// Step 1 error should be non-empty.
+	if result.Steps["step-1"].Error == "" {
+		t.Error("step-1 error should be non-empty")
+	}
+
+	// Step 2 should have been called (error exposed via CEL).
+	if !step2Called {
+		t.Error("step-2 should have been called because steps['step-1'].error != null, but it was not called")
+	}
+	if result.Steps["step-2"].Status != "completed" {
+		t.Errorf("step-2 status = %q, want %q", result.Steps["step-2"].Status, "completed")
+	}
+}
+
+func TestEngine_ContinueOnError_PreservesExistingBehavior(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Step 1: always returns 500 (will fail), without continue_on_error.
+	step1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		w.Write([]byte("internal server error"))
+	}))
+	defer step1Server.Close()
+
+	// Step 2: should NOT be called because step-1 fails without continue_on_error.
+	step2Called := false
+	step2Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		step2Called = true
+		w.WriteHeader(200)
+		json.NewEncoder(w).Encode(map[string]any{"done": true})
+	}))
+	defer step2Server.Close()
+
+	wfYAML := []byte(`name: test-no-continue-on-error
+description: Test that step failure without continue_on_error halts workflow
+steps:
+  - name: step-1
+    action: http/request
+    params:
+      method: GET
+      url: "` + step1Server.URL + `"
+  - name: step-2
+    action: http/request
+    params:
+      method: GET
+      url: "` + step2Server.URL + `"
+`)
+	version := applyWorkflow(t, database, wfYAML)
+
+	eng, err := New(database)
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	result, err := eng.Execute(context.Background(), "test-no-continue-on-error", version, nil)
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+
+	// Overall workflow should fail.
+	if result.Status != "failed" {
+		t.Errorf("workflow status = %q, want %q", result.Status, "failed")
+	}
+
+	// Step 1 should be marked as failed.
+	if result.Steps["step-1"].Status != "failed" {
+		t.Errorf("step-1 status = %q, want %q", result.Steps["step-1"].Status, "failed")
+	}
+
+	// Step 2 should NOT have been called.
+	if step2Called {
+		t.Error("step-2 should NOT have been called because step-1 failed without continue_on_error")
+	}
+}

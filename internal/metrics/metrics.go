@@ -38,6 +38,11 @@ var (
 		Name: "mantle_steps_total",
 		Help: "Total step executions by status",
 	}, []string{"workflow", "step", "status"})
+
+	StepsContinuedOnErrorTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_steps_continued_on_error_total",
+		Help: "Total steps that failed but continued due to continue_on_error",
+	}, []string{"workflow", "step"})
 )
 
 // Queue and distribution metrics.
