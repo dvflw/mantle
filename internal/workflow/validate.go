@@ -101,6 +101,56 @@ func Validate(result *ParseResult) []ValidationError {
 		}
 	}
 
+	// Validate triggers.
+	validTriggerTypes := map[string]bool{"cron": true, "webhook": true, "email": true}
+	validEmailFilters := map[string]bool{"unseen": true, "all": true, "flagged": true, "recent": true}
+	for i, trig := range w.Triggers {
+		trigPrefix := fmt.Sprintf("triggers[%d]", i)
+		if trig.Type == "" {
+			errs = append(errs, ValidationError{
+				Field:   trigPrefix + ".type",
+				Message: "trigger type is required",
+			})
+			continue
+		}
+		if !validTriggerTypes[trig.Type] {
+			errs = append(errs, ValidationError{
+				Field:   trigPrefix + ".type",
+				Message: fmt.Sprintf("trigger type must be one of: cron, webhook, email (got %q)", trig.Type),
+			})
+			continue
+		}
+		switch trig.Type {
+		case "email":
+			if trig.Mailbox == "" {
+				errs = append(errs, ValidationError{
+					Field:   trigPrefix + ".mailbox",
+					Message: "mailbox is required for email triggers",
+				})
+			}
+			if trig.Filter != "" && !validEmailFilters[trig.Filter] {
+				errs = append(errs, ValidationError{
+					Field:   trigPrefix + ".filter",
+					Message: fmt.Sprintf("filter must be one of: unseen, all, flagged, recent (got %q)", trig.Filter),
+				})
+			}
+			if trig.PollInterval != "" {
+				d, err := time.ParseDuration(trig.PollInterval)
+				if err != nil {
+					errs = append(errs, ValidationError{
+						Field:   trigPrefix + ".poll_interval",
+						Message: fmt.Sprintf("invalid duration: %v", err),
+					})
+				} else if d <= 0 {
+					errs = append(errs, ValidationError{
+						Field:   trigPrefix + ".poll_interval",
+						Message: "poll_interval must be a positive duration",
+					})
+				}
+			}
+		}
+	}
+
 	// Validate individual steps.
 	seen := make(map[string]bool)
 	for i, step := range w.Steps {

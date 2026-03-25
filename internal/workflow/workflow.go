@@ -15,10 +15,14 @@ type Workflow struct {
 
 // Trigger defines an automatic execution trigger for a workflow.
 type Trigger struct {
-	Type     string `yaml:"type"`     // "cron" or "webhook"
-	Schedule string `yaml:"schedule"` // cron expression (for type: cron)
-	Path     string `yaml:"path"`     // webhook path (for type: webhook)
-	Secret   string `yaml:"secret"`   // HMAC secret for webhook signature verification
+	Type         string `yaml:"type"`          // "cron", "webhook", or "email"
+	Schedule     string `yaml:"schedule"`      // cron expression (for type: cron)
+	Path         string `yaml:"path"`          // webhook path (for type: webhook)
+	Secret       string `yaml:"secret"`        // HMAC secret for webhook signature verification
+	Mailbox      string `yaml:"mailbox"`       // credential name (for type: email)
+	Folder       string `yaml:"folder"`        // IMAP folder (for type: email, default: INBOX)
+	Filter       string `yaml:"filter"`        // "unseen", "all", "flagged", "recent" (for type: email)
+	PollInterval string `yaml:"poll_interval"` // Go duration (for type: email, default: 60s)
 }
 
 // Input defines a workflow input parameter.

@@ -596,6 +596,107 @@ steps:
 	}
 }
 
+func TestValidate_EmailTrigger(t *testing.T) {
+	result := mustParse(t, `
+name: email-triggered
+triggers:
+  - type: email
+    mailbox: my-imap-cred
+    folder: INBOX
+    filter: unseen
+    poll_interval: 30s
+steps:
+  - name: process
+    action: http/request
+    params:
+      url: "https://example.com/process"
+`)
+	errs := Validate(result)
+	assertNoErrors(t, errs)
+	if result.Workflow.Triggers[0].Type != "email" {
+		t.Errorf("expected trigger type %q, got %q", "email", result.Workflow.Triggers[0].Type)
+	}
+	if result.Workflow.Triggers[0].Mailbox != "my-imap-cred" {
+		t.Errorf("expected mailbox %q, got %q", "my-imap-cred", result.Workflow.Triggers[0].Mailbox)
+	}
+}
+
+func TestValidate_EmailTrigger_MissingMailbox(t *testing.T) {
+	result := mustParse(t, `
+name: email-triggered
+triggers:
+  - type: email
+steps:
+  - name: process
+    action: http/request
+    params:
+      url: "https://example.com"
+`)
+	errs := Validate(result)
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors, got none")
+	}
+	assertHasError(t, errs, "triggers[0].mailbox")
+}
+
+func TestValidate_EmailTrigger_InvalidFilter(t *testing.T) {
+	result := mustParse(t, `
+name: email-triggered
+triggers:
+  - type: email
+    mailbox: my-cred
+    filter: invalid-filter
+steps:
+  - name: process
+    action: http/request
+    params:
+      url: "https://example.com"
+`)
+	errs := Validate(result)
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors, got none")
+	}
+	assertHasError(t, errs, "triggers[0].filter")
+}
+
+func TestValidate_EmailTrigger_InvalidPollInterval(t *testing.T) {
+	result := mustParse(t, `
+name: email-triggered
+triggers:
+  - type: email
+    mailbox: my-cred
+    poll_interval: not-a-duration
+steps:
+  - name: process
+    action: http/request
+    params:
+      url: "https://example.com"
+`)
+	errs := Validate(result)
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors, got none")
+	}
+	assertHasError(t, errs, "triggers[0].poll_interval")
+}
+
+func TestValidate_EmailTrigger_InvalidTriggerType(t *testing.T) {
+	result := mustParse(t, `
+name: email-triggered
+triggers:
+  - type: unknown
+steps:
+  - name: process
+    action: http/request
+    params:
+      url: "https://example.com"
+`)
+	errs := Validate(result)
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors, got none")
+	}
+	assertHasError(t, errs, "triggers[0].type")
+}
+
 func TestValidate_ContinueOnError(t *testing.T) {
 	result := mustParse(t, `
 name: test-continue
