@@ -83,7 +83,7 @@ mantle serve                  # Start persistent server (Phase 5+)
 Before pushing any PR to GitHub, run the work through these review agents (in parallel):
 
 1. **Technical Writer** — Review all changed docs, comments, CLI output, and error messages for clarity, accuracy, and consistency with existing documentation tone.
-2. **Product Owner** — Verify the changes align with the project goals, V1 phasing priorities, and architecture principles listed above. Flag scope creep or work that doesn't serve the current phase.
+2. **Product Manager** — Verify the changes align with the project goals, V1 phasing priorities, and architecture principles listed above. Flag scope creep or work that doesn't serve the current phase.
 3. **Legal Compliance Checker** — Check for license compliance (dependencies, attribution), security concerns (credential handling, injection risks), and anything that conflicts with the BSL/SSPL-style license.
 4. **Reality Checker** — Challenge claims of completeness, correctness, and production readiness. Default to "needs work" — require overwhelming evidence before approving. If tests aren't shown passing, it's not done. If edge cases aren't covered, it's not ready.
 
