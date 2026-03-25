@@ -286,6 +286,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Start email trigger poller.
 	if err := s.emailPoller.Start(ctx); err != nil {
+		s.cron.Stop()
 		return fmt.Errorf("starting email trigger poller: %w", err)
 	}
 	s.Logger.Info("email trigger poller started")

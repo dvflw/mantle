@@ -621,7 +621,7 @@ func parseRawHeaders(raw []byte) map[string]string {
 	}
 	for key, values := range mimeHeader {
 		if len(values) > 0 {
-			headers[textproto.CanonicalMIMEHeaderKey(key)] = values[0]
+			headers[key] = values[0]
 		}
 	}
 	return headers
