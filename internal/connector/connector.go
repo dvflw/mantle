@@ -39,6 +39,7 @@ func NewRegistry() *Registry {
 	r.Register("s3/get", &S3GetConnector{})
 	r.Register("s3/list", &S3ListConnector{})
 	r.Register("docker/run", &DockerRunConnector{})
+	r.Register("browser/run", &BrowserRunConnector{})
 	return r
 }
 
