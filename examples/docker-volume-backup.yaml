@@ -39,7 +39,7 @@ steps:
   - name: notify-success
     action: slack/send
     credential: slack-token
-    if: "steps['upload-to-s3'].output.size > 0"
+    if: "steps['upload-to-s3'].error == null && steps['upload-to-s3'].output.size > 0"
     params:
       channel: "#ops-alerts"
       text: "Volume backup completed — {{ artifacts['backup-archive'].size }} bytes uploaded to s3://my-backups/volumes/my-app-data/"
