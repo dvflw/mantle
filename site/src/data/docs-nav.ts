@@ -18,7 +18,9 @@ export const docsNav: NavGroup[] = [
         href: '/docs/getting-started',
         children: [
           { title: 'Data Passing', href: '/docs/getting-started/data-passing' },
+          { title: 'Data Transformations', href: '/docs/getting-started/data-transformations' },
           { title: 'AI Workflows', href: '/docs/getting-started/ai-workflows' },
+          { title: 'Docker Workflows', href: '/docs/getting-started/docker-workflows' },
           { title: 'Production', href: '/docs/getting-started/production' },
         ],
       },
@@ -33,6 +35,7 @@ export const docsNav: NavGroup[] = [
         children: [
           { title: 'Execution Model', href: '/docs/concepts/execution' },
           { title: 'CEL Expressions', href: '/docs/concepts/expressions' },
+          { title: 'Artifacts', href: '/docs/concepts/artifacts' },
           { title: 'Security Model', href: '/docs/concepts/security' },
         ],
       },
