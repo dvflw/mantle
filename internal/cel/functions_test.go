@@ -8,6 +8,59 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// ── normalizeJSONNumbers unit tests ──────────────────────────────────────────
+
+func TestNormalizeJSONNumbers_ExponentFloat(t *testing.T) {
+	result := normalizeJSONNumbers(json.Number("1e5"))
+	assert.Equal(t, float64(100000), result)
+}
+
+func TestNormalizeJSONNumbers_NegativeFloat(t *testing.T) {
+	result := normalizeJSONNumbers(json.Number("-3.14"))
+	assert.Equal(t, float64(-3.14), result)
+}
+
+func TestNormalizeJSONNumbers_IntegerMaxInt64(t *testing.T) {
+	// 9223372036854775807 is exactly math.MaxInt64 — must come back as int64.
+	result := normalizeJSONNumbers(json.Number("9223372036854775807"))
+	assert.Equal(t, int64(9223372036854775807), result)
+}
+
+func TestNormalizeJSONNumbers_OverflowInt64PreservedAsString(t *testing.T) {
+	// One past MaxInt64 — cannot fit in int64; must preserve as string.
+	result := normalizeJSONNumbers(json.Number("9223372036854775808"))
+	assert.Equal(t, "9223372036854775808", result)
+}
+
+func TestNormalizeJSONNumbers_NestedMap(t *testing.T) {
+	input := map[string]any{
+		"count": json.Number("42"),
+		"ratio": json.Number("0.5"),
+		"label": "hello",
+	}
+	result := normalizeJSONNumbers(input)
+	m := result.(map[string]any)
+	assert.Equal(t, int64(42), m["count"])
+	assert.Equal(t, float64(0.5), m["ratio"])
+	assert.Equal(t, "hello", m["label"])
+}
+
+func TestNormalizeJSONNumbers_NestedArray(t *testing.T) {
+	input := []any{json.Number("1"), json.Number("2.5"), "text"}
+	result := normalizeJSONNumbers(input)
+	arr := result.([]any)
+	assert.Equal(t, int64(1), arr[0])
+	assert.Equal(t, float64(2.5), arr[1])
+	assert.Equal(t, "text", arr[2])
+}
+
+func TestNormalizeJSONNumbers_PassthroughTypes(t *testing.T) {
+	// Non-number types should be returned unchanged.
+	assert.Equal(t, true, normalizeJSONNumbers(true))
+	assert.Equal(t, "hello", normalizeJSONNumbers("hello"))
+	assert.Nil(t, normalizeJSONNumbers(nil))
+}
+
 func TestFunc_ToLower(t *testing.T) {
 	eval, err := NewEvaluator()
 	require.NoError(t, err)
@@ -460,6 +513,16 @@ func TestFunc_FormatTimestamp(t *testing.T) {
 			expr: `formatTimestamp(parseTimestamp("2024-01-15T14:30:00Z"), "15:04")`,
 			want: "14:30",
 		},
+		{
+			name: "named month format",
+			expr: `formatTimestamp(parseTimestamp("2024-01-15T00:00:00Z"), "Jan 2, 2006")`,
+			want: "Jan 15, 2024",
+		},
+		{
+			name: "rfc3339 roundtrip",
+			expr: `formatTimestamp(parseTimestamp("2026-03-24T00:00:00Z"), "2006-01-02T15:04:05Z07:00")`,
+			want: "2026-03-24T00:00:00Z",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -468,4 +531,225 @@ func TestFunc_FormatTimestamp(t *testing.T) {
 			assert.Equal(t, tt.want, result)
 		})
 	}
+}
+
+// ── Additional boundary and regression tests ──────────────────────────────────
+
+func TestFunc_Obj_MaxArity(t *testing.T) {
+	// obj() supports up to 5 key-value pairs (10 args). Verify all registered
+	// overloads (2, 4, 6, 8, 10 args) produce the correct maps.
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+
+	t.Run("three pairs (6 args)", func(t *testing.T) {
+		result, err := eval.Eval(`obj("a", 1, "b", 2, "c", 3)`, newTestContext())
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"a": int64(1), "b": int64(2), "c": int64(3)}, result)
+	})
+
+	t.Run("four pairs (8 args)", func(t *testing.T) {
+		result, err := eval.Eval(`obj("a", 1, "b", 2, "c", 3, "d", 4)`, newTestContext())
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"a": int64(1), "b": int64(2), "c": int64(3), "d": int64(4)}, result)
+	})
+
+	t.Run("five pairs (10 args — max arity)", func(t *testing.T) {
+		result, err := eval.Eval(`obj("a", 1, "b", 2, "c", 3, "d", 4, "e", 5)`, newTestContext())
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{
+			"a": int64(1), "b": int64(2), "c": int64(3),
+			"d": int64(4), "e": int64(5),
+		}, result)
+	})
+}
+
+func TestFunc_Flatten_MixedScalarAndSublist(t *testing.T) {
+	// The flatten implementation passes non-list elements through unchanged.
+	// A list like [1, [2, 3]] should produce [1, 2, 3].
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+
+	ctx := newTestContext()
+	ctx.Inputs["mixed"] = []any{int64(1), []any{int64(2), int64(3)}}
+	result, err := eval.Eval(`flatten(inputs.mixed)`, ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []any{int64(1), int64(2), int64(3)}, result)
+}
+
+func TestFunc_Default_FalsyButNonNull(t *testing.T) {
+	// false and 0 are falsy but are NOT null — default() must return them unchanged.
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+
+	t.Run("false returns false not fallback", func(t *testing.T) {
+		result, err := eval.Eval(`default(false, true)`, newTestContext())
+		require.NoError(t, err)
+		assert.Equal(t, false, result)
+	})
+
+	t.Run("zero returns zero not fallback", func(t *testing.T) {
+		result, err := eval.Eval(`default(0, 99)`, newTestContext())
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), result)
+	})
+
+	t.Run("empty string returns empty string not fallback", func(t *testing.T) {
+		result, err := eval.Eval(`default("", "fallback")`, newTestContext())
+		require.NoError(t, err)
+		assert.Equal(t, "", result)
+	})
+}
+
+func TestFunc_Split_EmptySeparator(t *testing.T) {
+	// strings.Split("abc", "") returns ["a", "b", "c"] — each character.
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+
+	result, err := eval.Eval(`"abc".split("")`, newTestContext())
+	require.NoError(t, err)
+	assert.Equal(t, []any{"a", "b", "c"}, result)
+}
+
+func TestFunc_Replace_EmptyOldString(t *testing.T) {
+	// strings.ReplaceAll("ab", "", "X") inserts X between and around each char.
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+
+	result, err := eval.Eval(`"ab".replace("", "X")`, newTestContext())
+	require.NoError(t, err)
+	assert.Equal(t, "XaXbX", result)
+}
+
+func TestFunc_ParseInt_WhitespaceIsInvalid(t *testing.T) {
+	// strconv.ParseInt is strict — " 42" (leading space) must fail.
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+
+	_, err = eval.Eval(`parseInt(" 42")`, newTestContext())
+	require.Error(t, err)
+}
+
+func TestFunc_JsonDecode_FloatValue(t *testing.T) {
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+
+	result, err := eval.Eval(`jsonDecode("3.14")`, newTestContext())
+	require.NoError(t, err)
+	assert.Equal(t, float64(3.14), result)
+}
+
+func TestFunc_JsonDecode_BoolValue(t *testing.T) {
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+
+	result, err := eval.Eval(`jsonDecode("true")`, newTestContext())
+	require.NoError(t, err)
+	assert.Equal(t, true, result)
+}
+
+func TestFunc_JsonDecode_ArrayOfIntegers(t *testing.T) {
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+
+	result, err := eval.Eval(`jsonDecode("[1, 2, 3]")`, newTestContext())
+	require.NoError(t, err)
+
+	arr, ok := result.([]any)
+	require.True(t, ok, "expected []any, got %T", result)
+	assert.Equal(t, []any{int64(1), int64(2), int64(3)}, arr)
+}
+
+func TestFunc_JsonDecode_NestedObject(t *testing.T) {
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+
+	result, err := eval.Eval(`jsonDecode("{\"a\":{\"b\":42}}")`, newTestContext())
+	require.NoError(t, err)
+
+	m, ok := result.(map[string]any)
+	require.True(t, ok)
+	inner, ok := m["a"].(map[string]any)
+	require.True(t, ok, "expected inner map")
+	assert.Equal(t, int64(42), inner["b"])
+}
+
+func TestFunc_JsonEncode_List(t *testing.T) {
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+
+	result, err := eval.Eval(`jsonEncode(["a", "b", "c"])`, newTestContext())
+	require.NoError(t, err)
+
+	s, ok := result.(string)
+	require.True(t, ok)
+	var arr []string
+	require.NoError(t, json.Unmarshal([]byte(s), &arr))
+	assert.Equal(t, []string{"a", "b", "c"}, arr)
+}
+
+func TestFunc_JsonEncode_Primitive(t *testing.T) {
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+
+	t.Run("integer", func(t *testing.T) {
+		result, err := eval.Eval(`jsonEncode(42)`, newTestContext())
+		require.NoError(t, err)
+		assert.Equal(t, "42", result)
+	})
+
+	t.Run("boolean", func(t *testing.T) {
+		result, err := eval.Eval(`jsonEncode(true)`, newTestContext())
+		require.NoError(t, err)
+		assert.Equal(t, "true", result)
+	})
+
+	t.Run("string", func(t *testing.T) {
+		result, err := eval.Eval(`jsonEncode("hello")`, newTestContext())
+		require.NoError(t, err)
+		assert.Equal(t, `"hello"`, result)
+	})
+}
+
+func TestFunc_ParseTimestamp_NamedMonthFormat(t *testing.T) {
+	// "Jan 2, 2006" is one of the supported layouts in parseTimestamp.
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+
+	result, err := eval.Eval(`formatTimestamp(parseTimestamp("Mar 15, 2025"), "2006-01-02")`, newTestContext())
+	require.NoError(t, err)
+	assert.Equal(t, "2025-03-15", result)
+}
+
+func TestFunc_StringChaining(t *testing.T) {
+	// Verify that string methods can be chained.
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+
+	result, err := eval.Eval(`"  HELLO WORLD  ".trim().toLower()`, newTestContext())
+	require.NoError(t, err)
+	assert.Equal(t, "hello world", result)
+}
+
+func TestFunc_ResolveString_WithCustomFunction(t *testing.T) {
+	// Verify that custom functions work when embedded in {{ }} template strings.
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+
+	result, err := eval.ResolveString(`tag:{{ "PRODUCTION".toLower() }}`, newTestContext())
+	require.NoError(t, err)
+	assert.Equal(t, "tag:production", result)
+}
+
+func TestFunc_JsonRoundtrip(t *testing.T) {
+	// jsonEncode followed by jsonDecode must preserve the original value.
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+
+	result, err := eval.Eval(`jsonDecode(jsonEncode(obj("x", 1, "y", "hello")))`, newTestContext())
+	require.NoError(t, err)
+
+	m, ok := result.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, int64(1), m["x"])
+	assert.Equal(t, "hello", m["y"])
 }
