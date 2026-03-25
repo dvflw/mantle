@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
@@ -19,6 +20,7 @@ func customFunctions() []cel.EnvOption {
 		typeFunctions(),
 		collectionFunctions(),
 		jsonFunctions(),
+		timeFunctions(),
 	}
 }
 
@@ -283,5 +285,47 @@ func (l *jsonLib) CompileOptions() []cel.EnvOption {
 }
 
 func (l *jsonLib) ProgramOptions() []cel.ProgramOption {
+	return nil
+}
+
+// ── Time functions ────────────────────────────────────────────────────────────
+
+func timeFunctions() cel.EnvOption {
+	return cel.Lib(&timeLib{})
+}
+
+type timeLib struct{}
+
+func (l *timeLib) CompileOptions() []cel.EnvOption {
+	return []cel.EnvOption{
+		cel.Function("parseTimestamp",
+			cel.Overload("parseTimestamp_string",
+				[]*cel.Type{cel.StringType},
+				cel.TimestampType,
+				cel.UnaryBinding(func(val ref.Val) ref.Val {
+					s := string(val.(types.String))
+					t, err := time.Parse(time.RFC3339, s)
+					if err != nil {
+						return types.NewErr("parseTimestamp: %v", err)
+					}
+					return types.Timestamp{Time: t}
+				}),
+			),
+		),
+		cel.Function("formatTimestamp",
+			cel.Overload("formatTimestamp_timestamp_string",
+				[]*cel.Type{cel.TimestampType, cel.StringType},
+				cel.StringType,
+				cel.BinaryBinding(func(lhs, rhs ref.Val) ref.Val {
+					ts := lhs.(types.Timestamp)
+					layout := string(rhs.(types.String))
+					return types.String(ts.Time.Format(layout))
+				}),
+			),
+		),
+	}
+}
+
+func (l *timeLib) ProgramOptions() []cel.ProgramOption {
 	return nil
 }

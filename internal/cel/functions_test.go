@@ -350,3 +350,58 @@ func TestFunc_JsonDecode(t *testing.T) {
 		})
 	}
 }
+
+// Task 8: timestamp and formatTimestamp
+
+func TestFunc_Timestamp(t *testing.T) {
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+	tests := []struct {
+		name    string
+		expr    string
+		wantErr bool
+	}{
+		{"iso8601", `parseTimestamp("2024-01-15T00:00:00Z")`, false},
+		{"with_offset", `parseTimestamp("2024-06-01T12:30:00+05:30")`, false},
+		{"invalid", `parseTimestamp("not-a-date")`, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := eval.Eval(tt.expr, newTestContext())
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.NotNil(t, result)
+			}
+		})
+	}
+}
+
+func TestFunc_FormatTimestamp(t *testing.T) {
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+	tests := []struct {
+		name string
+		expr string
+		want any
+	}{
+		{
+			name: "date format",
+			expr: `formatTimestamp(parseTimestamp("2024-01-15T00:00:00Z"), "2006-01-02")`,
+			want: "2024-01-15",
+		},
+		{
+			name: "time format",
+			expr: `formatTimestamp(parseTimestamp("2024-01-15T14:30:00Z"), "15:04")`,
+			want: "14:30",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := eval.Eval(tt.expr, newTestContext())
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, result)
+		})
+	}
+}
