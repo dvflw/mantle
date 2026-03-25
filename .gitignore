@@ -42,7 +42,9 @@ coverage.html
 .worktrees/
 
 # Claude Code / AI tooling
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/agents/
 ai/
 .stitch/
 
