@@ -1,10 +1,13 @@
 package server
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
+	"net/textproto"
 	"sync"
 	"time"
 
@@ -318,11 +321,15 @@ func (e *EmailTriggerPoller) poll(ctx context.Context, t TriggerRecord, client *
 		Specifier: imap.PartSpecifierText,
 		Peek:      true, // do not auto-mark as seen during fetch
 	}
+	headerSection := &imap.FetchItemBodySection{
+		Specifier: imap.PartSpecifierHeader,
+		Peek:      true, // do not auto-mark as seen during fetch
+	}
 	fetchOptions := &imap.FetchOptions{
 		Envelope:    true,
 		Flags:       true,
 		UID:         true,
-		BodySection: []*imap.FetchItemBodySection{bodySection},
+		BodySection: []*imap.FetchItemBodySection{bodySection, headerSection},
 	}
 
 	cmd := client.Fetch(uidSet, fetchOptions)
@@ -535,6 +542,12 @@ func buildEmailTriggerInputs(buf *imapclient.FetchMessageBuffer, folder string) 
 		trigger["body"] = extractEmailBody(buf.BodySection[0].Bytes)
 	}
 
+	// Extract headers from the HEADER body section.
+	headerSection := &imap.FetchItemBodySection{Specifier: imap.PartSpecifierHeader}
+	if rawHeaders := buf.FindBodySection(headerSection); rawHeaders != nil {
+		trigger["headers"] = parseRawHeaders(rawHeaders)
+	}
+
 	return map[string]any{"trigger": trigger}
 }
 
@@ -556,6 +569,28 @@ func triggerAddressList(addrs []imap.Address) []string {
 		}
 	}
 	return out
+}
+
+// parseRawHeaders parses RFC 2822 raw header bytes into a flat map keyed by
+// canonical MIME header name (title-case, e.g. "Content-Type"). Folded header
+// lines are unfolded by the textproto reader automatically. Only the first
+// value is kept for headers that appear multiple times.
+func parseRawHeaders(raw []byte) map[string]string {
+	headers := make(map[string]string)
+	if len(raw) == 0 {
+		return headers
+	}
+	tp := textproto.NewReader(bufio.NewReader(bytes.NewReader(raw)))
+	mimeHeader, err := tp.ReadMIMEHeader()
+	if err != nil && len(mimeHeader) == 0 {
+		return headers
+	}
+	for key, values := range mimeHeader {
+		if len(values) > 0 {
+			headers[textproto.CanonicalMIMEHeaderKey(key)] = values[0]
+		}
+	}
+	return headers
 }
 
 // extractEmailBody trims trailing whitespace from a raw body byte slice.
