@@ -30,14 +30,16 @@ type Input struct {
 
 // Step defines a single step within a workflow.
 type Step struct {
-	Name       string         `yaml:"name"`
-	Action     string         `yaml:"action"`
-	Params     map[string]any `yaml:"params"`
-	If         string         `yaml:"if"`
-	Retry      *RetryPolicy   `yaml:"retry"`
-	Timeout    string         `yaml:"timeout"`
-	Credential string         `yaml:"credential"`
-	DependsOn  []string       `yaml:"depends_on"`
+	Name               string         `yaml:"name"`
+	Action             string         `yaml:"action"`
+	Params             map[string]any `yaml:"params"`
+	If                 string         `yaml:"if"`
+	Retry              *RetryPolicy   `yaml:"retry"`
+	Timeout            string         `yaml:"timeout"`
+	Credential         string         `yaml:"credential"`
+	DependsOn          []string       `yaml:"depends_on"`
+	RegistryCredential string         `yaml:"registry_credential"`
+	Artifacts          []ArtifactDecl `yaml:"artifacts"`
 }
 
 // FindStep returns a pointer to the step with the given name, or nil if not found.
@@ -63,6 +65,19 @@ type Tool struct {
 	InputSchema map[string]any `yaml:"input_schema"`
 	Action      string         `yaml:"action"`
 	Params      map[string]any `yaml:"params"`
+}
+
+// ArtifactDecl declares a file that a step will produce.
+type ArtifactDecl struct {
+	Path string `yaml:"path"` // path inside the artifacts dir
+	Name string `yaml:"name"` // unique name for CEL reference
+}
+
+// ArtifactRef is the runtime representation available in CEL expressions.
+type ArtifactRef struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`  // S3 URI or local filesystem path
+	Size int64  `json:"size"`
 }
 
 // ParseTools extracts typed Tool structs from an AI step's params["tools"].

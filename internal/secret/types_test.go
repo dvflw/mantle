@@ -51,3 +51,28 @@ func TestGetType_AllBuiltins(t *testing.T) {
 		}
 	}
 }
+
+func TestCredentialType_Docker(t *testing.T) {
+	ct, err := GetType("docker")
+	if err != nil {
+		t.Fatalf("GetType('docker'): %v", err)
+	}
+	if ct.Name != "docker" {
+		t.Errorf("name = %q, want 'docker'", ct.Name)
+	}
+
+	// All fields are optional — empty data should be valid.
+	if err := ct.Validate(map[string]string{}); err != nil {
+		t.Errorf("empty data should be valid: %v", err)
+	}
+
+	// Full TLS config should also be valid.
+	if err := ct.Validate(map[string]string{
+		"host":        "tcp://docker:2376",
+		"ca_cert":     "ca-data",
+		"client_cert": "cert-data",
+		"client_key":  "key-data",
+	}); err != nil {
+		t.Errorf("full TLS data should be valid: %v", err)
+	}
+}
