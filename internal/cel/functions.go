@@ -159,7 +159,7 @@ func (l *collectionLib) CompileOptions() []cel.EnvOption {
 				[]*cel.Type{cel.DynType, cel.DynType},
 				cel.DynType,
 				cel.BinaryBinding(func(lhs, rhs ref.Val) ref.Val {
-					if types.IsError(lhs) || types.IsUnknown(lhs) {
+					if types.IsError(lhs) || types.IsUnknown(lhs) || lhs == types.NullValue {
 						return rhs
 					}
 					return lhs
@@ -304,11 +304,20 @@ func (l *timeLib) CompileOptions() []cel.EnvOption {
 				cel.TimestampType,
 				cel.UnaryBinding(func(val ref.Val) ref.Val {
 					s := string(val.(types.String))
-					t, err := time.Parse(time.RFC3339, s)
-					if err != nil {
-						return types.NewErr("parseTimestamp: %v", err)
+					layouts := []string{
+						time.RFC3339,
+						time.RFC3339Nano,
+						"2006-01-02T15:04:05",
+						"2006-01-02",
+						"01/02/2006",
+						"Jan 2, 2006",
 					}
-					return types.Timestamp{Time: t}
+					for _, layout := range layouts {
+						if t, err := time.Parse(layout, s); err == nil {
+							return types.Timestamp{Time: t}
+						}
+					}
+					return types.NewErr("parseTimestamp: unable to parse %q (tried RFC3339, ISO 8601 date, and common formats)", s)
 				}),
 			),
 		),

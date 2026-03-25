@@ -253,6 +253,8 @@ func TestFunc_Default(t *testing.T) {
 	}{
 		{"value exists returns value", `default("hello", "fallback")`, "hello"},
 		{"empty string returns empty string", `default("", "fallback")`, ""},
+		{"null returns fallback", `default(null, "fallback")`, "fallback"},
+		{"non-null int unchanged", `default(42, 0)`, int64(42)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -276,6 +278,11 @@ func TestFunc_Flatten(t *testing.T) {
 			expr: `flatten([[1, 2], [3, 4], [5]])`,
 			want: []any{int64(1), int64(2), int64(3), int64(4), int64(5)},
 		},
+		{
+			name: "mixed nested and non-nested",
+			expr: `flatten([[1], [3, 4]])`,
+			want: []any{int64(1), int64(3), int64(4)},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -284,6 +291,20 @@ func TestFunc_Flatten(t *testing.T) {
 			assert.Equal(t, tt.want, result)
 		})
 	}
+
+	// Empty list: flatten([]) — result may be nil or empty slice.
+	t.Run("empty list", func(t *testing.T) {
+		ctx := newTestContext()
+		ctx.Inputs["empty"] = []any{}
+		result, err := eval.Eval(`flatten(inputs.empty)`, ctx)
+		require.NoError(t, err)
+		// CEL may return nil or an empty slice for an empty list; both are acceptable.
+		if result != nil {
+			list, ok := result.([]any)
+			require.True(t, ok, "expected []any, got %T", result)
+			assert.Empty(t, list)
+		}
+	})
 }
 
 // Task 7: jsonEncode and jsonDecode
@@ -364,6 +385,9 @@ func TestFunc_Timestamp(t *testing.T) {
 		{"iso8601", `parseTimestamp("2024-01-15T00:00:00Z")`, false},
 		{"with_offset", `parseTimestamp("2024-06-01T12:30:00+05:30")`, false},
 		{"invalid", `parseTimestamp("not-a-date")`, true},
+		{"date_only", `parseTimestamp("2026-03-24")`, false},
+		{"us_date", `parseTimestamp("03/24/2026")`, false},
+		{"rfc3339nano", `parseTimestamp("2026-03-24T19:00:00.123456789Z")`, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

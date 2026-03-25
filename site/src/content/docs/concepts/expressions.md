@@ -596,7 +596,7 @@ Parses an ISO 8601 / RFC 3339 string to a CEL timestamp value. Named `parseTimes
 steps:
   - name: check-expiry
     action: http/request
-    if: "parseTimestamp(steps.fetch.output.json.expires_at) < now"
+    if: "parseTimestamp(steps.fetch.output.json.expires_at) < parseTimestamp(\"2026-12-31T00:00:00Z\")"
     params:
       method: POST
       url: "https://api.example.com/renew"
@@ -619,7 +619,7 @@ steps:
         # Format as "2006-01-02" (Go layout for YYYY-MM-DD)
         report_date: "{{ formatTimestamp(parseTimestamp(steps.fetch.output.json.created_at), '2006-01-02') }}"
         # Format with time for a human-readable label
-        label: "Report for {{ formatTimestamp(now, 'Jan 2, 2006') }}"
+        label: "Report for {{ formatTimestamp(parseTimestamp(steps.fetch.output.json.created_at), 'Jan 2, 2006') }}"
 ```
 
 ## Limitations

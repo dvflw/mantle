@@ -260,6 +260,7 @@ These are the Mantle CEL extensions available in workflow expressions. For full 
 | `.map(var, expr)` | Transform each element, returning a new list |
 | `.filter(var, expr)` | Return elements where `expr` evaluates to true |
 | `.exists(var, expr)` | True if any element satisfies `expr` |
+| `.exists_one(var, expr)` | True if exactly one element satisfies `expr` |
 | `.all(var, expr)` | True if every element satisfies `expr` |
 
 **String**
