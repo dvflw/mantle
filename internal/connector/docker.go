@@ -295,7 +295,8 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 		select {
 		case <-ctx.Done():
 			gracePeriod := 10
-			cli.ContainerStop(context.Background(), containerID, container.StopOptions{
+			// Use Background because the parent ctx is already cancelled — we need a live context to stop the container.
+			cli.ContainerStop(context.Background(), containerID, container.StopOptions{ // #nosec G118 -- intentional: parent ctx is cancelled
 				Timeout: &gracePeriod,
 			})
 		case <-doneCh:
@@ -349,7 +350,7 @@ func pullImage(ctx context.Context, cli *client.Client, cfg *dockerConfig) error
 		// Always pull — fall through.
 	case "missing":
 		// Check if image exists locally.
-		_, _, err := cli.ImageInspectWithRaw(ctx, cfg.Image)
+		_, err := cli.ImageInspect(ctx, cfg.Image)
 		if err == nil {
 			return nil // already present
 		}
