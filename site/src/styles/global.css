@@ -137,11 +137,11 @@ body {
   }
 }
 
-/* Mobile sidebar clears the bottom nav; at lg+ bottom nav is hidden so reset to 0 */
+/* Mobile sidebar clears the bottom nav; at md+ bottom nav is hidden so reset to 0 */
 .sidebar-mobile-bottom {
   bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
 }
-@media (min-width: 1024px) {
+@media (min-width: 768px) {
   .sidebar-mobile-bottom {
     bottom: 0;
   }

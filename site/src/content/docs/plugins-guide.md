@@ -6,7 +6,7 @@ This guide covers what plugins are, how to write one, and how to install and man
 
 ## When to Use a Plugin
 
-Use a plugin when you need a connector action that Mantle does not provide out of the box. The built-in connectors cover HTTP, AI/LLM, Slack, Postgres, Email, and S3. For anything else -- a proprietary API, a custom data transformation, a niche SaaS integration -- write a plugin.
+Use a plugin when you need a connector action that Mantle does not provide out of the box. The built-in connectors cover HTTP, AI/LLM, Slack, Postgres, Email, S3, and Docker. For anything else -- a proprietary API, a custom data transformation, a niche SaaS integration -- write a plugin.
 
 Plugins are the right choice when:
 
