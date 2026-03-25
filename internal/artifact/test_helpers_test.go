@@ -3,6 +3,7 @@ package artifact
 import (
 	"context"
 	"database/sql"
+	"os"
 	"testing"
 	"time"
 
@@ -29,6 +30,9 @@ func setupTestDB(t *testing.T) *sql.DB {
 		),
 	)
 	if err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatalf("Could not start Postgres container (CI): %v", err)
+		}
 		t.Skipf("Could not start Postgres container: %v", err)
 	}
 	t.Cleanup(func() {

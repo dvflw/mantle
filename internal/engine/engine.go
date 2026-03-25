@@ -183,6 +183,7 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 		if stepResult.Status == "completed" {
 			celCtx.Steps[step.Name] = map[string]any{"output": stepResult.Output}
 			sc.CompletedSteps[step.Name] = stepResult.Output
+			e.loadArtifactsIntoCELContext(ctx, execID, celCtx)
 		} else if stepResult.Status == "skipped" {
 			celCtx.Steps[step.Name] = map[string]any{"output": map[string]any{}}
 		} else if stepResult.Status == "failed" {
@@ -525,7 +526,28 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 				URL:         url,
 				Size:        info.Size(),
 			}); createErr != nil {
+				// Attempt to clean up the orphaned blob.
+				if delErr := e.TmpStorage.DeleteByPrefix(ctx, key); delErr != nil {
+					log.Printf("warning: failed to clean up orphaned artifact blob %q: %v", key, delErr)
+				}
 				return nil, fmt.Errorf("recording artifact %q: %v", artDecl.Name, createErr)
+			}
+
+			// Emit audit event for artifact persistence.
+			if err := e.Auditor.Emit(ctx, audit.Event{
+				Timestamp: time.Now(),
+				Actor:     "engine",
+				Action:    audit.ActionArtifactPersisted,
+				Resource:  audit.Resource{Type: "execution_artifact", ID: execID},
+				Metadata: map[string]string{
+					"step":          step.Name,
+					"artifact_name": artDecl.Name,
+					"url":           url,
+					"size":          fmt.Sprintf("%d", info.Size()),
+				},
+				TeamID: sc.TeamID,
+			}); err != nil {
+				log.Printf("warning: failed to emit artifact audit event: %v", err)
 			}
 		}
 	}

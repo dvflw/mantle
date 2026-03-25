@@ -51,10 +51,13 @@ func TestFilesystemTmpStorage_Delete(t *testing.T) {
 	if err := os.WriteFile(srcPath, []byte("data"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	url, _ := fs.Put(ctx, key, srcPath)
+	url, err := fs.Put(ctx, key, srcPath)
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
 
 	// Delete by prefix
-	err := fs.DeleteByPrefix(ctx, "test-workflow/exec-123/")
+	err = fs.DeleteByPrefix(ctx, "test-workflow/exec-123/")
 	if err != nil {
 		t.Fatalf("DeleteByPrefix: %v", err)
 	}

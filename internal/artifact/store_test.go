@@ -131,4 +131,7 @@ func TestStore_DuplicateNameFails(t *testing.T) {
 	if !strings.Contains(err.Error(), "artifact create") {
 		t.Errorf("error = %q, want it to contain %q", err.Error(), "artifact create")
 	}
+	if !strings.Contains(err.Error(), "duplicate key") && !strings.Contains(err.Error(), "unique") {
+		t.Errorf("error = %q, want it to indicate a uniqueness violation", err.Error())
+	}
 }

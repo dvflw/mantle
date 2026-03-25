@@ -23,12 +23,13 @@ type Store struct {
 	DB *sql.DB
 }
 
-// Create inserts artifact metadata into the database.
+// Create inserts artifact metadata into the database and populates a.ID and a.CreatedAt.
 func (s *Store) Create(ctx context.Context, a *Artifact) error {
-	_, err := s.DB.ExecContext(ctx, `
+	err := s.DB.QueryRowContext(ctx, `
 		INSERT INTO execution_artifacts (execution_id, step_name, name, url, size)
 		VALUES ($1, $2, $3, $4, $5)
-	`, a.ExecutionID, a.StepName, a.Name, a.URL, a.Size)
+		RETURNING id, created_at
+	`, a.ExecutionID, a.StepName, a.Name, a.URL, a.Size).Scan(&a.ID, &a.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("artifact create: %w", err)
 	}
@@ -87,15 +88,25 @@ func (s *Store) DeleteByExecution(ctx context.Context, executionID string) error
 	return nil
 }
 
-// ListExpired returns artifacts older than the given duration.
+// DeleteByID removes a single artifact metadata row.
+func (s *Store) DeleteByID(ctx context.Context, id string) error {
+	_, err := s.DB.ExecContext(ctx, `
+		DELETE FROM execution_artifacts WHERE id = $1
+	`, id)
+	if err != nil {
+		return fmt.Errorf("artifact delete by id: %w", err)
+	}
+	return nil
+}
+
+// ListExpired returns artifacts older than the given duration, using the DB clock for comparison.
 func (s *Store) ListExpired(ctx context.Context, olderThan time.Duration) ([]Artifact, error) {
-	cutoff := time.Now().Add(-olderThan)
 	rows, err := s.DB.QueryContext(ctx, `
 		SELECT id, execution_id, step_name, name, url, size, created_at
 		FROM execution_artifacts
-		WHERE created_at < $1
+		WHERE created_at < NOW() - $1::interval
 		ORDER BY created_at ASC
-	`, cutoff)
+	`, olderThan.String())
 	if err != nil {
 		return nil, fmt.Errorf("artifact list expired: %w", err)
 	}

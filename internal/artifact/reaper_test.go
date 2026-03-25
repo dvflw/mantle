@@ -61,7 +61,10 @@ func TestReaper_CleansExpiredArtifacts(t *testing.T) {
 	}
 
 	// Metadata should be gone
-	arts, _ := store.ListByExecution(ctx, execID)
+	arts, listErr := store.ListByExecution(ctx, execID)
+	if listErr != nil {
+		t.Fatalf("ListByExecution: %v", listErr)
+	}
 	if len(arts) != 0 {
 		t.Errorf("expected 0 artifacts after sweep, got %d", len(arts))
 	}

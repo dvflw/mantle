@@ -36,38 +36,24 @@ func (r *Reaper) Sweep(ctx context.Context) (int, error) {
 		return 0, nil
 	}
 
-	// Group by execution for batch deletion.
-	byExecution := make(map[string][]Artifact)
-	for _, a := range expired {
-		byExecution[a.ExecutionID] = append(byExecution[a.ExecutionID], a)
-	}
-
 	cleaned := 0
-	for execID, arts := range byExecution {
-		// Delete files from tmp storage.
-		fileDeleteFailed := false
-		for _, a := range arts {
-			if delErr := r.TmpStorage.DeleteByPrefix(ctx, a.URL); delErr != nil {
-				logger.Error("failed to delete artifact file",
-					"artifact", a.Name, "url", a.URL, "error", delErr)
-				fileDeleteFailed = true
-			}
+	for _, a := range expired {
+		// Delete file from tmp storage.
+		if delErr := r.TmpStorage.DeleteByPrefix(ctx, a.URL); delErr != nil {
+			logger.Error("failed to delete artifact file",
+				"artifact", a.Name, "url", a.URL, "error", delErr)
+			continue // skip metadata deletion if file delete failed
 		}
 
 		// Delete metadata from database.
-		if err := r.Store.DeleteByExecution(ctx, execID); err != nil {
+		if err := r.Store.DeleteByID(ctx, a.ID); err != nil {
 			logger.Error("failed to delete artifact metadata",
-				"execution_id", execID, "error", err)
+				"artifact", a.Name, "id", a.ID, "error", err)
 			continue
 		}
-
-		if fileDeleteFailed {
-			logger.Warn("some artifact files could not be deleted",
-				"execution_id", execID)
-		}
-		cleaned += len(arts)
-		logger.Info("cleaned expired artifacts",
-			"execution_id", execID, "count", len(arts))
+		cleaned++
+		logger.Info("cleaned expired artifact",
+			"artifact", a.Name, "execution_id", a.ExecutionID)
 	}
 
 	return cleaned, nil

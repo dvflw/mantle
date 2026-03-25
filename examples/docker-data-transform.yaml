@@ -20,7 +20,7 @@ steps:
     params:
       image: giantswarm/tiny-tools
       cmd: ["jq", "[.[] | {id, name, status}]"]
-      stdin: "{{ steps['fetch-records'].output.json }}"
+      stdin: "{{ jsonEncode(steps['fetch-records'].output.rows) }}"
       memory: "128m"
 
   - name: post-results

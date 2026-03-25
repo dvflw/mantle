@@ -2,9 +2,13 @@ package connector
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
@@ -82,6 +86,9 @@ func parseDockerParams(params map[string]any) (*dockerConfig, error) {
 			dm.Source, _ = m["source"].(string)
 			dm.Target, _ = m["target"].(string)
 			dm.ReadOnly, _ = m["readonly"].(bool)
+			if dm.Source == "" || dm.Target == "" {
+				return nil, fmt.Errorf("docker/run: mount requires both source and target")
+			}
 			cfg.Mounts = append(cfg.Mounts, dm)
 		}
 	}
@@ -140,6 +147,9 @@ func parseMemoryString(s string) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("invalid memory value %q", s)
 	}
+	if n < 0 {
+		return 0, fmt.Errorf("negative memory value %q", s)
+	}
 	return n * multiplier, nil
 }
 
@@ -184,6 +194,27 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 		if host := cred["host"]; host != "" {
 			clientOpts = append(clientOpts, client.WithHost(host))
 		}
+		// TLS configuration.
+		if cred["ca_cert"] != "" && cred["client_cert"] != "" && cred["client_key"] != "" {
+			tmpDir, tmpErr := os.MkdirTemp("", "mantle-docker-tls-*")
+			if tmpErr != nil {
+				return nil, fmt.Errorf("docker/run: creating TLS temp dir: %w", tmpErr)
+			}
+			defer os.RemoveAll(tmpDir)
+			caPath := filepath.Join(tmpDir, "ca.pem")
+			certPath := filepath.Join(tmpDir, "cert.pem")
+			keyPath := filepath.Join(tmpDir, "key.pem")
+			if err := os.WriteFile(caPath, []byte(cred["ca_cert"]), 0600); err != nil {
+				return nil, fmt.Errorf("docker/run: writing CA cert: %w", err)
+			}
+			if err := os.WriteFile(certPath, []byte(cred["client_cert"]), 0600); err != nil {
+				return nil, fmt.Errorf("docker/run: writing client cert: %w", err)
+			}
+			if err := os.WriteFile(keyPath, []byte(cred["client_key"]), 0600); err != nil {
+				return nil, fmt.Errorf("docker/run: writing client key: %w", err)
+			}
+			clientOpts = append(clientOpts, client.WithTLSClientConfig(caPath, certPath, keyPath))
+		}
 	} else {
 		delete(params, "_credential")
 		clientOpts = append(clientOpts, client.FromEnv)
@@ -195,8 +226,22 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 	}
 	defer cli.Close()
 
+	// Build registry auth for private image pulls.
+	var registryAuth string
+	if regCred, ok := params["_registry_credential"].(map[string]string); ok {
+		delete(params, "_registry_credential")
+		authConfig := map[string]string{
+			"username": regCred["username"],
+			"password": regCred["password"],
+		}
+		authJSON, _ := json.Marshal(authConfig)
+		registryAuth = base64.URLEncoding.EncodeToString(authJSON)
+	} else {
+		delete(params, "_registry_credential")
+	}
+
 	// Pull image.
-	if err := pullImage(ctx, cli, cfg); err != nil {
+	if err := pullImage(ctx, cli, cfg, registryAuth); err != nil {
 		return nil, err
 	}
 
@@ -279,7 +324,9 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 		}
 		go func() {
 			defer attach.Close()
-			io.Copy(attach.Conn, strings.NewReader(cfg.Stdin))
+			if _, err := io.Copy(attach.Conn, strings.NewReader(cfg.Stdin)); err != nil {
+				log.Printf("docker/run: failed writing stdin to container: %v", err)
+			}
 			attach.CloseWrite()
 		}()
 	}
@@ -313,6 +360,14 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 		}
 	case status := <-statusCh:
 		exitCode = status.StatusCode
+		// Non-blocking check for a late error.
+		select {
+		case err := <-errCh:
+			if err != nil {
+				return nil, fmt.Errorf("docker/run: waiting for container: %w", err)
+			}
+		default:
+		}
 	}
 
 	// Capture logs (stdout + stderr).
@@ -342,7 +397,7 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 }
 
 // pullImage handles image pulling based on the pull policy.
-func pullImage(ctx context.Context, cli *client.Client, cfg *dockerConfig) error {
+func pullImage(ctx context.Context, cli *client.Client, cfg *dockerConfig, registryAuth string) error {
 	switch cfg.Pull {
 	case "never":
 		return nil
@@ -358,12 +413,16 @@ func pullImage(ctx context.Context, cli *client.Client, cfg *dockerConfig) error
 		return fmt.Errorf("docker/run: invalid pull policy %q (must be always, missing, or never)", cfg.Pull)
 	}
 
-	reader, err := cli.ImagePull(ctx, cfg.Image, image.PullOptions{})
+	reader, err := cli.ImagePull(ctx, cfg.Image, image.PullOptions{
+		RegistryAuth: registryAuth,
+	})
 	if err != nil {
 		return fmt.Errorf("docker/run: pulling image %q: %w", cfg.Image, err)
 	}
 	defer reader.Close()
 	// Drain the pull output to complete the pull.
-	io.Copy(io.Discard, reader)
+	if _, err := io.Copy(io.Discard, reader); err != nil {
+		return fmt.Errorf("docker/run: draining pull output: %w", err)
+	}
 	return nil
 }

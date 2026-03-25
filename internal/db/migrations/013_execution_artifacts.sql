@@ -5,12 +5,11 @@ CREATE TABLE execution_artifacts (
     step_name    TEXT NOT NULL,
     name         TEXT NOT NULL,
     url          TEXT NOT NULL,
-    size         BIGINT NOT NULL,
+    size         BIGINT NOT NULL CHECK (size >= 0),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (execution_id, name)
 );
 
-CREATE INDEX idx_execution_artifacts_execution_id ON execution_artifacts(execution_id);
 CREATE INDEX idx_execution_artifacts_created_at ON execution_artifacts(created_at);
 
 -- +goose Down

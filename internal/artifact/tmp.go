@@ -27,6 +27,20 @@ type FilesystemTmpStorage struct {
 // Put copies the file at localPath to the storage location identified by key and returns its path.
 func (fs *FilesystemTmpStorage) Put(ctx context.Context, key string, localPath string) (string, error) {
 	destPath := filepath.Join(fs.BasePath, key)
+	// Validate destination is within BasePath to prevent path traversal.
+	absBase, err := filepath.Abs(fs.BasePath)
+	if err != nil {
+		return "", fmt.Errorf("resolving base path: %w", err)
+	}
+	absDest, err := filepath.Abs(destPath)
+	if err != nil {
+		return "", fmt.Errorf("resolving dest path: %w", err)
+	}
+	rel, err := filepath.Rel(absBase, absDest)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return "", fmt.Errorf("key escapes base path")
+	}
+
 	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 		return "", fmt.Errorf("creating artifact dir: %w", err)
 	}
@@ -61,7 +75,8 @@ func (fs *FilesystemTmpStorage) DeleteByPrefix(ctx context.Context, prefix strin
 	if err != nil {
 		return fmt.Errorf("resolving target path: %w", err)
 	}
-	if !strings.HasPrefix(absTarget, absBase) {
+	rel, err := filepath.Rel(absBase, absTarget)
+	if err != nil || strings.HasPrefix(rel, "..") {
 		return fmt.Errorf("prefix escapes base path")
 	}
 	return os.RemoveAll(target)
