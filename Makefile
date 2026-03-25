@@ -11,7 +11,7 @@ build:
 	go build -ldflags "$(LDFLAGS)" -o mantle ./cmd/mantle
 
 test:
-	go test ./...
+	go test -race ./...
 
 lint:
 	golangci-lint run

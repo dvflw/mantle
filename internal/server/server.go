@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dvflw/mantle/internal/api/health"
+	"github.com/dvflw/mantle/internal/artifact"
 	"github.com/dvflw/mantle/internal/audit"
 	"github.com/dvflw/mantle/internal/auth"
 	"github.com/dvflw/mantle/internal/budget"
@@ -39,8 +40,9 @@ type Server struct {
 	cron       *CronScheduler
 	webhooks   *WebhookHandler
 
-	worker     *engine.Worker
-	reaper     *engine.Reaper
+	worker          *engine.Worker
+	reaper          *engine.Reaper
+	artifactReaper  *artifact.Reaper
 
 	mu         sync.Mutex
 	running    map[string]context.CancelFunc // execution ID → cancel
@@ -203,6 +205,44 @@ func (s *Server) Start(ctx context.Context) error {
 			s.Logger.Info("retention cleanup scheduled",
 				"execution_days", cfg.Retention.ExecutionDays,
 				"audit_days", cfg.Retention.AuditDays)
+		}
+
+		// Start artifact reaper if the artifact subsystem is configured.
+		if s.Engine.ArtifactStore != nil && s.Engine.TmpStorage != nil {
+			retention := 24 * time.Hour // default
+			if cfg.Tmp.Retention != "" {
+				if d, err := time.ParseDuration(cfg.Tmp.Retention); err == nil && d > 0 {
+					retention = d
+				}
+			}
+			s.artifactReaper = &artifact.Reaper{
+				Store:      s.Engine.ArtifactStore,
+				TmpStorage: s.Engine.TmpStorage,
+				Retention:  retention,
+				Logger:     s.Logger,
+			}
+			go func() {
+				interval := cfg.Engine.ReaperInterval
+				if interval <= 0 {
+					interval = 5 * time.Minute
+				}
+				ticker := time.NewTicker(interval)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+						cleaned, err := s.artifactReaper.Sweep(ctx)
+						if err != nil {
+							s.Logger.Error("artifact reaper sweep failed", "error", err)
+						} else if cleaned > 0 {
+							s.Logger.Info("artifact reaper cleaned expired artifacts", "count", cleaned)
+						}
+					}
+				}
+			}()
+			s.Logger.Info("artifact reaper started", "retention", retention)
 		}
 
 		// Periodically update queue depth metric.

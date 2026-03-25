@@ -3,9 +3,13 @@ package artifact
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
+
+// ErrNotFound is returned when an artifact does not exist.
+var ErrNotFound = errors.New("artifact not found")
 
 // Artifact represents metadata for a persisted artifact.
 type Artifact struct {
@@ -45,7 +49,7 @@ func (s *Store) GetByName(ctx context.Context, executionID, name string) (*Artif
 		WHERE execution_id = $1 AND name = $2
 	`, executionID, name).Scan(&a.ID, &a.ExecutionID, &a.StepName, &a.Name, &a.URL, &a.Size, &a.CreatedAt)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("artifact %q not found for execution %s", name, executionID)
+		return nil, fmt.Errorf("artifact %q not found for execution %s: %w", name, executionID, ErrNotFound)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("artifact get: %w", err)
@@ -74,7 +78,10 @@ func (s *Store) ListByExecution(ctx context.Context, executionID string) ([]Arti
 		}
 		artifacts = append(artifacts, a)
 	}
-	return artifacts, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("artifact list: %w", err)
+	}
+	return artifacts, nil
 }
 
 // DeleteByExecution removes all artifact metadata for an execution.
@@ -120,5 +127,8 @@ func (s *Store) ListExpired(ctx context.Context, olderThan time.Duration) ([]Art
 		}
 		artifacts = append(artifacts, a)
 	}
-	return artifacts, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("artifact list expired: %w", err)
+	}
+	return artifacts, nil
 }

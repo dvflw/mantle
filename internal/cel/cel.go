@@ -20,11 +20,14 @@ type Context struct {
 	Artifacts map[string]map[string]any // artifacts.<name> → {name, url, size}
 }
 
+const maxProgramCacheSize = 10000
+
 // Evaluator evaluates CEL expressions against a runtime context.
 type Evaluator struct {
 	env          *cel.Env
 	envCache     map[string]string // cached, filtered environment variables
-	programCache sync.Map          // expression string -> compiled cel.Program
+	programMu    sync.Mutex
+	programCache map[string]cel.Program // expression string -> compiled cel.Program
 }
 
 // NewEvaluator creates a CEL evaluator with the standard Mantle expression environment.
@@ -42,7 +45,7 @@ func NewEvaluator() (*Evaluator, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating CEL environment: %w", err)
 	}
-	return &Evaluator{env: env, envCache: envVars()}, nil
+	return &Evaluator{env: env, envCache: envVars(), programCache: make(map[string]cel.Program)}, nil
 }
 
 // Eval evaluates a CEL expression and returns the result as a Go value.
@@ -80,10 +83,15 @@ func (e *Evaluator) Eval(expression string, ctx *Context) (any, error) {
 }
 
 // getOrCompile returns a cached compiled program or compiles and caches a new one.
+// The cache is bounded to maxProgramCacheSize entries; when full it is cleared
+// (simple eviction — sufficient for the expected expression cardinality).
 func (e *Evaluator) getOrCompile(expression string) (cel.Program, error) {
-	if cached, ok := e.programCache.Load(expression); ok {
-		return cached.(cel.Program), nil
+	e.programMu.Lock()
+	if cached, ok := e.programCache[expression]; ok {
+		e.programMu.Unlock()
+		return cached, nil
 	}
+	e.programMu.Unlock()
 
 	ast, issues := e.env.Compile(expression)
 	if issues != nil && issues.Err() != nil {
@@ -95,7 +103,12 @@ func (e *Evaluator) getOrCompile(expression string) (cel.Program, error) {
 		return nil, fmt.Errorf("creating program for %q: %w", expression, err)
 	}
 
-	e.programCache.Store(expression, prog)
+	e.programMu.Lock()
+	if len(e.programCache) >= maxProgramCacheSize {
+		e.programCache = make(map[string]cel.Program)
+	}
+	e.programCache[expression] = prog
+	e.programMu.Unlock()
 	return prog, nil
 }
 

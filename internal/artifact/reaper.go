@@ -2,8 +2,10 @@ package artifact
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 )
 
@@ -40,9 +42,14 @@ func (r *Reaper) Sweep(ctx context.Context) (int, error) {
 	for _, a := range expired {
 		// Delete file from tmp storage.
 		if delErr := r.TmpStorage.Delete(ctx, a.URL); delErr != nil {
-			logger.Error("failed to delete artifact file",
-				"artifact", a.Name, "url", a.URL, "error", delErr)
-			continue // skip metadata deletion if file delete failed
+			// If the blob is already gone, still clean up the metadata.
+			if !errors.Is(delErr, os.ErrNotExist) {
+				logger.Error("failed to delete artifact file",
+					"artifact", a.Name, "url", a.URL, "error", delErr)
+				continue // skip metadata deletion if file delete genuinely failed
+			}
+			logger.Warn("artifact file already missing, cleaning metadata",
+				"artifact", a.Name, "url", a.URL)
 		}
 
 		// Delete metadata from database.

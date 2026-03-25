@@ -111,3 +111,8 @@ While `docker/run` is the most common artifact producer (the scratch directory i
 - Artifact paths must be directly under `/mantle/artifacts/` (no subdirectories)
 - stdout/stderr from `docker/run` are capped at 10MB and returned as regular step output, not artifacts
 - Artifacts add storage costs and I/O overhead -- use them only for files too large for step output
+
+## Learn More
+
+- [Docker Workflows](/docs/getting-started/docker-workflows) -- practical guide to using `docker/run` with artifacts
+- [Configuration: tmp storage](/docs/configuration) -- configure artifact storage backend and retention

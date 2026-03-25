@@ -46,6 +46,11 @@ engine:
   step_output_max_bytes: 1048576
   default_max_tool_rounds: 10
   default_max_tool_calls_per_round: 10
+
+tmp:
+  type: filesystem
+  path: /var/lib/mantle/artifacts
+  retention: "24h"
 ```
 
 ### All Config File Fields

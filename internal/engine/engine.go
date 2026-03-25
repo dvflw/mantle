@@ -387,14 +387,14 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 	// Resolve CEL expressions in params.
 	resolvedParams, err := e.CEL.ResolveParams(step.Params, celCtx)
 	if err != nil {
-		return nil, fmt.Errorf("resolving params: %v", err)
+		return nil, fmt.Errorf("resolving params: %w", err)
 	}
 
 	// Resolve credential if specified.
 	if step.Credential != "" {
 		credData, credErr := e.Resolver.Resolve(ctx, step.Credential)
 		if credErr != nil {
-			return nil, fmt.Errorf("resolving credential %q: %v", step.Credential, credErr)
+			return nil, fmt.Errorf("resolving credential %q: %w", step.Credential, credErr)
 		}
 		resolvedParams["_credential"] = credData
 	}
@@ -403,7 +403,7 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 	if step.RegistryCredential != "" {
 		regCredData, regCredErr := e.Resolver.Resolve(ctx, step.RegistryCredential)
 		if regCredErr != nil {
-			return nil, fmt.Errorf("resolving registry credential %q: %v", step.RegistryCredential, regCredErr)
+			return nil, fmt.Errorf("resolving registry credential %q: %w", step.RegistryCredential, regCredErr)
 		}
 		resolvedParams["_registry_credential"] = regCredData
 	}
@@ -431,7 +431,7 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 	// Look up connector.
 	conn, err := e.Registry.Get(step.Action)
 	if err != nil {
-		return nil, fmt.Errorf("unknown action: %v", err)
+		return nil, fmt.Errorf("unknown action: %w", err)
 	}
 
 	// Execute with retry and timeout.
@@ -454,7 +454,6 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 			if tmpErr != nil {
 				return nil, fmt.Errorf("creating artifacts dir: %v", tmpErr)
 			}
-			defer os.RemoveAll(artifactsDir)
 			ctx = artifact.WithArtifactsDir(ctx, artifactsDir)
 		}
 
@@ -535,7 +534,7 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 		for _, artDecl := range step.Artifacts {
 			relPath := filepath.Base(artDecl.Path)
 			localPath := filepath.Join(artifactsDir, relPath)
-			info, statErr := os.Stat(localPath)
+			info, statErr := os.Lstat(localPath) // Lstat: don't follow symlinks (defense-in-depth)
 			if statErr != nil {
 				rollback()
 				return nil, fmt.Errorf("declared artifact %q not found at %q: %v", artDecl.Name, localPath, statErr)
@@ -582,6 +581,11 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 				log.Printf("warning: failed to emit artifact audit event: %v", err)
 			}
 		}
+	}
+
+	// Clean up the scratch dir now that artifacts have been persisted (or on error).
+	if artifactsDir != "" {
+		os.RemoveAll(artifactsDir)
 	}
 
 	return output, lastErr

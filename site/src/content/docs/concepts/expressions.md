@@ -151,8 +151,10 @@ if: "size(steps.search.output.json.results) > 0"
 
 ### Type conversions
 
+CEL provides a built-in `string()` constructor that works on primitive types (int, double, bool). Mantle also provides a `toString()` function that handles any value type including maps and lists. Either works for simple conversions; use `toString()` when dealing with dynamic or complex types.
+
 ```yaml
-# Convert number to string for concatenation
+# Convert number to string for concatenation (built-in string() or custom toString() both work)
 timeout: "{{ string(inputs.timeout_seconds) + 's' }}"
 
 # Boolean checks

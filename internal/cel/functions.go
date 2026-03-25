@@ -14,6 +14,12 @@ import (
 	"github.com/google/cel-go/common/types/traits"
 )
 
+const (
+	maxSplitParts     = 10000  // maximum elements from split()
+	maxFlattenElements = 100000 // maximum elements from flatten()
+	maxJSONDecodeBytes = 1 << 20 // 1 MB input limit for jsonDecode()
+)
+
 // customFunctions returns all custom CEL function options for the Mantle environment.
 func customFunctions() []cel.EnvOption {
 	return []cel.EnvOption{
@@ -79,7 +85,10 @@ func (l *stringLib) CompileOptions() []cel.EnvOption {
 				cel.BinaryBinding(func(lhs, rhs ref.Val) ref.Val {
 					s := string(lhs.(types.String))
 					sep := string(rhs.(types.String))
-					parts := strings.Split(s, sep)
+					parts := strings.SplitN(s, sep, maxSplitParts+1)
+					if len(parts) > maxSplitParts {
+						return types.NewErr("split: result exceeds %d parts limit", maxSplitParts)
+					}
 					return types.DefaultTypeAdapter.NativeToValue(parts)
 				}),
 			),
@@ -182,9 +191,15 @@ func (l *collectionLib) CompileOptions() []cel.EnvOption {
 							subIt := sub.Iterator()
 							for subIt.HasNext() == types.True {
 								result = append(result, refToNative(subIt.Next()))
+								if len(result) > maxFlattenElements {
+									return types.NewErr("flatten: result exceeds %d element limit", maxFlattenElements)
+								}
 							}
 						} else {
 							result = append(result, refToNative(item))
+							if len(result) > maxFlattenElements {
+								return types.NewErr("flatten: result exceeds %d element limit", maxFlattenElements)
+							}
 						}
 					}
 					return types.DefaultTypeAdapter.NativeToValue(result)
@@ -275,6 +290,9 @@ func (l *jsonLib) CompileOptions() []cel.EnvOption {
 				cel.DynType,
 				cel.UnaryBinding(func(val ref.Val) ref.Val {
 					s := string(val.(types.String))
+					if len(s) > maxJSONDecodeBytes {
+						return types.NewErr("jsonDecode: input exceeds %d byte limit", maxJSONDecodeBytes)
+					}
 					dec := json.NewDecoder(strings.NewReader(s))
 					dec.UseNumber()
 					var result any

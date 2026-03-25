@@ -149,7 +149,7 @@ Sends a message to a Slack channel via the [chat.postMessage](https://api.slack.
 
 | Param | Type | Required | Description |
 |---|---|---|---|
-| `channel` | string | Yes | Slack channel ID (e.g., `C01234ABCDE`). Use the channel ID, not the channel name. |
+| `channel` | string | Yes | Slack channel — either a channel ID (e.g., `C01234ABCDE`) or a channel name with `#` prefix (e.g., `#general`). Channel IDs are preferred for reliability. |
 | `text` | string | Yes | Message text. Supports Slack [mrkdwn](https://api.slack.com/reference/surfaces/formatting) formatting. |
 
 **Output:**
@@ -456,7 +456,7 @@ Runs a Docker container to completion and captures its output. The container is 
 | `env` | object | No | — | Environment variables |
 | `stdin` | string | No | — | Data piped to container stdin |
 | `mounts` | array | No | — | Volume/bind mounts (each with `source`, `target`, `readonly`) |
-| `network` | string | No | `bridge` | Docker network mode |
+| `network` | string | No | `bridge` | Docker network mode (`bridge` or `none`) |
 | `pull` | string | No | `missing` | Image pull policy: `always`, `missing`, `never` |
 | `memory` | string | No | — | Memory limit (e.g., `512m`, `1g`) |
 | `cpus` | number | No | — | CPU limit (e.g., `1.5`) |
@@ -470,7 +470,9 @@ Runs a Docker container to completion and captures its output. The container is 
 | `stdout` | string | Container stdout (capped at 10MB) |
 | `stderr` | string | Container stderr (capped at 10MB) |
 
-**Authentication:** The Docker connector uses a `docker` credential type for daemon access. All fields are optional — an empty credential connects to the local Docker socket. For private images, use `registry_credential` with a `basic` credential type.
+**Authentication:** The Docker connector uses a `docker` credential type for daemon access. All fields are optional — an empty credential connects to the local Docker socket. For private images, use `registry_credential` with a `basic` credential type. Note that `registry_credential` is a **step-level field** (alongside `credential`), not a param.
+
+**Security:** Containers run with all Linux capabilities dropped (`CAP_DROP ALL`), `no-new-privileges`, and a PID limit. Only `bridge` and `none` network modes are permitted.
 
 **Example:**
 

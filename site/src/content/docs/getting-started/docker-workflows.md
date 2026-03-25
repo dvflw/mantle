@@ -177,6 +177,7 @@ Mount Docker volumes or host paths into containers:
 
 ## What's Next
 
+- [Artifacts](/docs/concepts/artifacts) -- pass large files between workflow steps
 - [Workflow Reference: docker/run](/docs/workflow-reference/connectors#dockerrun) -- full parameter reference
 - [Secrets Guide](/docs/secrets-guide) -- creating Docker and registry credentials
 - [Examples](/docs/examples) -- `docker-volume-backup.yaml` and `docker-data-transform.yaml`

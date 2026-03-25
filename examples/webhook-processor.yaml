@@ -23,8 +23,8 @@ steps:
         Content-Type: "application/json"
       body:
         title: "Webhook payload received"
-        body: "{{ inputs.trigger.payload }}"
-        source_path: "{{ inputs.trigger.path }}"
+        body: "{{ trigger.payload }}"
+        source_path: "{{ trigger.path }}"
 
   - name: log-success
     action: http/request

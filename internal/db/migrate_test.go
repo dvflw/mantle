@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,9 @@ func setupTestDB(t *testing.T) string {
 		),
 	)
 	if err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatalf("Could not start Postgres container (CI): %v", err)
+		}
 		t.Skipf("Could not start Postgres container: %v", err)
 	}
 	t.Cleanup(func() {

@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -21,6 +21,9 @@ import (
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/dvflw/mantle/internal/artifact"
 )
+
+// blockedMountTargets lists container paths that are never allowed as mount targets.
+var blockedMountTargets = []string{"/proc", "/sys", "/dev", "/var/run/docker.sock"}
 
 // DockerRunConnector runs a container to completion and captures output.
 type DockerRunConnector struct{}
@@ -95,9 +98,14 @@ func parseDockerParams(params map[string]any) (*dockerConfig, error) {
 		}
 	}
 
-	// network
+	// network — restrict to safe modes to prevent container escape via host networking.
 	if n, ok := params["network"].(string); ok && n != "" {
-		cfg.Network = n
+		switch n {
+		case "bridge", "none":
+			cfg.Network = n
+		default:
+			return nil, fmt.Errorf("docker/run: network mode %q is not allowed (permitted: bridge, none)", n)
+		}
 	}
 
 	// pull
@@ -163,7 +171,11 @@ func parseMemoryString(s string) (int64, error) {
 	return n * multiplier, nil
 }
 
-// limitWriter wraps a writer to limit bytes written. Logs a warning on first truncation.
+// limitWriter wraps a writer to silently discard bytes beyond a limit.
+// When the limit is exceeded, Write intentionally returns len(p), nil
+// to signal "all bytes consumed" (drain semantics), even though excess
+// bytes are not written to the inner writer. This matches the contract
+// expected by stdcopy.StdCopy which treats short writes as errors.
 type limitWriter struct {
 	w         io.Writer
 	limit     int64
@@ -176,14 +188,23 @@ func (lw *limitWriter) Write(p []byte) (int, error) {
 	if remaining <= 0 {
 		if !lw.truncated {
 			lw.truncated = true
-			log.Printf("docker/run: output truncated at %d bytes", lw.limit)
+			slog.Warn("docker/run: output truncated", "limit_bytes", lw.limit)
 		}
+		// Drain semantics: report all bytes consumed to avoid stdcopy error.
 		return len(p), nil
 	}
 	if int64(len(p)) > remaining {
-		p = p[:remaining]
-		lw.truncated = true
-		log.Printf("docker/run: output truncated at %d bytes", lw.limit)
+		if !lw.truncated {
+			lw.truncated = true
+			slog.Warn("docker/run: output truncated", "limit_bytes", lw.limit)
+		}
+		n, err := lw.w.Write(p[:remaining])
+		lw.n += int64(n)
+		if err != nil {
+			return n, err
+		}
+		// Drain semantics: report all original bytes consumed.
+		return len(p), nil
 	}
 	n, err := lw.w.Write(p)
 	lw.n += int64(n)
@@ -268,13 +289,23 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 		containerCfg.AttachStdin = true
 	}
 
-	// Host config (mounts, resources).
+	// Host config (mounts, resources) — hardened security defaults.
 	hostCfg := &container.HostConfig{
 		NetworkMode: container.NetworkMode(cfg.Network),
+		CapDrop:     []string{"ALL"},
+		SecurityOpt: []string{"no-new-privileges"},
+		Resources: container.Resources{
+			PidsLimit: int64Ptr(512),
+		},
 	}
 
-	// Mounts from params.
+	// Mounts from params — reject dangerous container mount targets.
 	for _, m := range cfg.Mounts {
+		for _, blocked := range blockedMountTargets {
+			if m.Target == blocked || strings.HasPrefix(m.Target, blocked+"/") {
+				return nil, fmt.Errorf("docker/run: mount target %q is not allowed", m.Target)
+			}
+		}
 		hostCfg.Mounts = append(hostCfg.Mounts, mount.Mount{
 			Type:     mount.TypeVolume,
 			Source:   m.Source,
@@ -322,7 +353,7 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second) // #nosec G118 -- intentional: parent ctx may be cancelled
 			defer cleanupCancel()
 			if err := cli.ContainerRemove(cleanupCtx, containerID, container.RemoveOptions{Force: true}); err != nil {
-				log.Printf("docker/run: failed to remove container %s: %v", containerID, err)
+				slog.Error("docker/run: failed to remove container", "container_id", containerID, "error", err)
 			}
 		}
 	}()
@@ -339,7 +370,7 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 		go func() {
 			defer attach.Close()
 			if _, err := io.Copy(attach.Conn, strings.NewReader(cfg.Stdin)); err != nil {
-				log.Printf("docker/run: failed writing stdin to container: %v", err)
+				slog.Error("docker/run: failed writing stdin", "error", err)
 			}
 			attach.CloseWrite()
 		}()
@@ -362,7 +393,7 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 			if err := cli.ContainerStop(stopCtx, containerID, container.StopOptions{
 				Timeout: &gracePeriod,
 			}); err != nil {
-				log.Printf("docker/run: failed to stop container %s: %v", containerID, err)
+				slog.Error("docker/run: failed to stop container", "container_id", containerID, "error", err)
 			}
 		case <-doneCh:
 		}
@@ -404,7 +435,7 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 		&limitWriter{w: &stderrBuf, limit: DefaultMaxResponseBytes},
 		logReader,
 	); err != nil {
-		log.Printf("docker/run: failed to demultiplex container logs: %v", err)
+		slog.Error("docker/run: failed to demultiplex container logs", "error", err)
 	}
 
 	return map[string]any{
@@ -415,6 +446,9 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 }
 
 // pullImage handles image pulling based on the pull policy.
+// int64Ptr returns a pointer to the given int64 value.
+func int64Ptr(v int64) *int64 { return &v }
+
 func pullImage(ctx context.Context, cli *client.Client, cfg *dockerConfig, registryAuth string) error {
 	switch cfg.Pull {
 	case "never":

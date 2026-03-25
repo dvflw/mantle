@@ -32,25 +32,14 @@ steps:
     timeout: "5m"
     params:
       bucket: my-backups
-      key: "volumes/my-app-data/{{ date }}/backup.tar.gz"
+      key: "volumes/my-app-data/backup.tar.gz"
       content: "{{ artifacts['backup-archive'].url }}"
       content_type: "application/gzip"
 
   - name: notify-success
     action: slack/send
     credential: slack-token
-    if: "steps['upload-to-s3'].error == null && steps['upload-to-s3'].output.size > 0"
+    depends_on: [upload-to-s3]
     params:
       channel: "#ops-alerts"
       text: "Volume backup completed — {{ artifacts['backup-archive'].size }} bytes uploaded to s3://my-backups/volumes/my-app-data/"
-
-  # NOTE: notify-failure requires continue_on_error support (see issue #29).
-  # Without it, the engine halts on the first failed step and this step
-  # will not execute. This is included to show the intended pattern.
-  - name: notify-failure
-    action: slack/send
-    credential: slack-token
-    if: "steps['upload-to-s3'].error != null || steps['backup-volume'].error != null"
-    params:
-      channel: "#ops-alerts"
-      text: "Volume backup FAILED"

@@ -25,7 +25,7 @@ func TestDockerRun_ParseParams(t *testing.T) {
 		"image":   "alpine:latest",
 		"cmd":     []any{"echo", "hello"},
 		"env":     map[string]any{"FOO": "bar"},
-		"network": "host",
+		"network": "none",
 		"pull":    "never",
 		"memory":  "256m",
 		"cpus":    1.5,
@@ -45,8 +45,8 @@ func TestDockerRun_ParseParams(t *testing.T) {
 	if cfg.Env["FOO"] != "bar" {
 		t.Errorf("env = %v", cfg.Env)
 	}
-	if cfg.Network != "host" {
-		t.Errorf("network = %q", cfg.Network)
+	if cfg.Network != "none" {
+		t.Errorf("network = %q, want 'none'", cfg.Network)
 	}
 	if cfg.Pull != "never" {
 		t.Errorf("pull = %q", cfg.Pull)
@@ -59,6 +59,19 @@ func TestDockerRun_ParseParams(t *testing.T) {
 	}
 	if cfg.Remove {
 		t.Errorf("remove = %v", cfg.Remove)
+	}
+}
+
+func TestDockerRun_RejectsHostNetwork(t *testing.T) {
+	_, err := parseDockerParams(map[string]any{
+		"image":   "alpine",
+		"network": "host",
+	})
+	if err == nil {
+		t.Fatal("expected error for host network mode")
+	}
+	if !strings.Contains(err.Error(), "not allowed") {
+		t.Errorf("error = %q, want 'not allowed'", err)
 	}
 }
 

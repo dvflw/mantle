@@ -32,4 +32,4 @@ steps:
       bucket: "mantle-backups"
       key: "daily-export/posts-{{ steps['fetch-data'].output.json[0].id }}.json"
       content_type: "application/json"
-      body: "{{ steps['fetch-data'].output.body }}"
+      content: "{{ steps['fetch-data'].output.body }}"

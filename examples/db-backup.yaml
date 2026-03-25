@@ -9,7 +9,7 @@ inputs:
   database_url:
     type: string
     description: Postgres connection URL to back up
-    default: "{{ env.MANTLE_DATABASE_URL }}"
+    default: "{{ env.DATABASE_URL }}"
   s3_bucket:
     type: string
     description: S3 bucket for backup storage
@@ -75,7 +75,7 @@ steps:
         Today's date is {{ env.MANTLE_ENV_DATE }}.
 
         Files:
-        {{ steps.list-backups.output.keys }}
+        {{ steps.list-backups.output.objects }}
 
         Return an empty array [] if nothing should be deleted.
       output_schema:
