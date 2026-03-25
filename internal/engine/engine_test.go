@@ -477,3 +477,60 @@ func TestCheckOutputSize_EmptyMap(t *testing.T) {
 		t.Errorf("checkOutputSize() unexpected error for empty map: %v", err)
 	}
 }
+
+func TestEngine_StepErrorInCELContext(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Step 1: succeeds and returns some output.
+	step1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		json.NewEncoder(w).Encode(map[string]any{"result": "ok"})
+	}))
+	defer step1Server.Close()
+
+	// Step 2: should execute (not be skipped) because step-1's error is null.
+	step2Called := false
+	step2Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		step2Called = true
+		w.WriteHeader(200)
+		json.NewEncoder(w).Encode(map[string]any{"done": true})
+	}))
+	defer step2Server.Close()
+
+	wfYAML := []byte(`name: test-step-error-cel
+description: Test steps.<name>.error is null for successful steps
+steps:
+  - name: step-1
+    action: http/request
+    params:
+      method: GET
+      url: "` + step1Server.URL + `"
+  - name: step-2
+    action: http/request
+    if: "steps['step-1'].error == null"
+    params:
+      method: GET
+      url: "` + step2Server.URL + `"
+`)
+	version := applyWorkflow(t, database, wfYAML)
+
+	eng, err := New(database)
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	result, err := eng.Execute(context.Background(), "test-step-error-cel", version, nil)
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+
+	if result.Status != "completed" {
+		t.Errorf("status = %q, want %q (error: %s)", result.Status, "completed", result.Error)
+	}
+	if !step2Called {
+		t.Error("step-2 should have been called because steps['step-1'].error == null, but it was not called")
+	}
+	if result.Steps["step-2"].Status != "completed" {
+		t.Errorf("step-2 status = %q, want %q", result.Steps["step-2"].Status, "completed")
+	}
+}

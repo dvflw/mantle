@@ -140,7 +140,7 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 		return nil, fmt.Errorf("loading completed steps: %w", err)
 	}
 	for name, output := range completedSteps {
-		celCtx.Steps[name] = map[string]any{"output": output}
+		celCtx.Steps[name] = map[string]any{"output": output, "error": nil}
 	}
 
 	// Load artifacts for CEL context.
@@ -181,11 +181,11 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 		result.Steps[step.Name] = stepResult
 
 		if stepResult.Status == "completed" {
-			celCtx.Steps[step.Name] = map[string]any{"output": stepResult.Output}
+			celCtx.Steps[step.Name] = map[string]any{"output": stepResult.Output, "error": nil}
 			sc.CompletedSteps[step.Name] = stepResult.Output
 			e.loadArtifactsIntoCELContext(ctx, execID, celCtx)
 		} else if stepResult.Status == "skipped" {
-			celCtx.Steps[step.Name] = map[string]any{"output": map[string]any{}}
+			celCtx.Steps[step.Name] = map[string]any{"output": map[string]any{}, "error": nil}
 		} else if stepResult.Status == "failed" {
 			result.Status = "failed"
 			result.Error = fmt.Sprintf("step %q failed: %s", step.Name, stepResult.Error)
