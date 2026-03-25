@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/dvflw/mantle/internal/artifact"
 	"github.com/dvflw/mantle/internal/audit"
 	"github.com/dvflw/mantle/internal/auth"
 	"github.com/dvflw/mantle/internal/budget"
@@ -26,9 +29,11 @@ type Engine struct {
 	Auditor            audit.Emitter
 	CEL                *mantleCEL.Evaluator
 	Resolver           *secret.Resolver
-	MaxToolRoundsLimit int            // admin ceiling for max_rounds; 0 = no limit
-	BudgetChecker      *budget.Checker // nil = budget enforcement disabled
-	BudgetStore        *budget.Store   // nil = token usage recording disabled
+	MaxToolRoundsLimit int                  // admin ceiling for max_rounds; 0 = no limit
+	BudgetChecker      *budget.Checker      // nil = budget enforcement disabled
+	BudgetStore        *budget.Store        // nil = token usage recording disabled
+	ArtifactStore      *artifact.Store      // nil = artifact system disabled
+	TmpStorage         artifact.TmpStorage  // nil = artifact system disabled
 }
 
 // StepContext carries workflow-level metadata needed by step execution.
@@ -136,6 +141,21 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 	}
 	for name, output := range completedSteps {
 		celCtx.Steps[name] = map[string]any{"output": output}
+	}
+
+	// Load artifacts for CEL context.
+	if e.ArtifactStore != nil {
+		arts, artErr := e.ArtifactStore.ListByExecution(ctx, execID)
+		if artErr == nil {
+			celCtx.Artifacts = make(map[string]map[string]any, len(arts))
+			for _, a := range arts {
+				celCtx.Artifacts[a.Name] = map[string]any{
+					"name": a.Name,
+					"url":  a.URL,
+					"size": a.Size,
+				}
+			}
+		}
 	}
 
 	result := &ExecutionResult{
@@ -390,6 +410,27 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 		resolvedParams["_credential"] = credData
 	}
 
+	// Resolve registry credential for docker/run private image pulls.
+	if step.RegistryCredential != "" {
+		regCredData, regCredErr := e.Resolver.Resolve(ctx, step.RegistryCredential)
+		if regCredErr != nil {
+			return nil, fmt.Errorf("resolving registry credential %q: %v", step.RegistryCredential, regCredErr)
+		}
+		resolvedParams["_registry_credential"] = regCredData
+	}
+
+	// Create artifacts scratch dir if step declares artifacts.
+	var artifactsDir string
+	if len(step.Artifacts) > 0 && e.TmpStorage != nil {
+		var tmpErr error
+		artifactsDir, tmpErr = os.MkdirTemp("", "mantle-artifacts-*")
+		if tmpErr != nil {
+			return nil, fmt.Errorf("creating artifacts dir: %v", tmpErr)
+		}
+		defer os.RemoveAll(artifactsDir) // clean local scratch after persisting to tmp storage
+		ctx = artifact.WithArtifactsDir(ctx, artifactsDir)
+	}
+
 	// Inject workflow/step context for AI observability metrics.
 	resolvedParams["_workflow"] = workflowName
 	resolvedParams["_step"] = step.Name
@@ -473,6 +514,34 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 		}
 	}
 
+	// Persist declared artifacts to tmp storage.
+	if lastErr == nil && len(step.Artifacts) > 0 && e.TmpStorage != nil && e.ArtifactStore != nil && artifactsDir != "" {
+		for _, artDecl := range step.Artifacts {
+			relPath := filepath.Base(artDecl.Path)
+			localPath := filepath.Join(artifactsDir, relPath)
+			info, statErr := os.Stat(localPath)
+			if statErr != nil {
+				return nil, fmt.Errorf("declared artifact %q not found at %q: %v", artDecl.Name, localPath, statErr)
+			}
+
+			key := fmt.Sprintf("%s/%s/%s/%s", workflowName, execID, artDecl.Name, relPath)
+			url, putErr := e.TmpStorage.Put(ctx, key, localPath)
+			if putErr != nil {
+				return nil, fmt.Errorf("persisting artifact %q: %v", artDecl.Name, putErr)
+			}
+
+			if createErr := e.ArtifactStore.Create(ctx, &artifact.Artifact{
+				ExecutionID: execID,
+				StepName:    step.Name,
+				Name:        artDecl.Name,
+				URL:         url,
+				Size:        info.Size(),
+			}); createErr != nil {
+				return nil, fmt.Errorf("recording artifact %q: %v", artDecl.Name, createErr)
+			}
+		}
+	}
+
 	return output, lastErr
 }
 
@@ -497,6 +566,22 @@ func (e *Engine) MakeStepExecutor(wf *workflow.Workflow, execID string, celCtx *
 				sc.CompletedSteps[name] = out
 			}
 		}
+
+		// Load artifacts for CEL context.
+		if e.ArtifactStore != nil {
+			arts, artErr := e.ArtifactStore.ListByExecution(ctx, execID)
+			if artErr == nil {
+				celCtx.Artifacts = make(map[string]map[string]any, len(arts))
+				for _, a := range arts {
+					celCtx.Artifacts[a.Name] = map[string]any{
+						"name": a.Name,
+						"url":  a.URL,
+						"size": a.Size,
+					}
+				}
+			}
+		}
+
 		output, err := e.executeStepLogic(ctx, execID, *step, celCtx, wf.Name, sc)
 		if err != nil {
 			return output, err
@@ -566,6 +651,21 @@ func (e *Engine) MakeGlobalStepExecutor() StepExecutor {
 		}
 		for name, output := range completedSteps {
 			celCtx.Steps[name] = map[string]any{"output": output}
+		}
+
+		// Load artifacts for CEL context.
+		if e.ArtifactStore != nil {
+			arts, artErr := e.ArtifactStore.ListByExecution(ctx, execID)
+			if artErr == nil {
+				celCtx.Artifacts = make(map[string]map[string]any, len(arts))
+				for _, a := range arts {
+					celCtx.Artifacts[a.Name] = map[string]any{
+						"name": a.Name,
+						"url":  a.URL,
+						"size": a.Size,
+					}
+				}
+			}
 		}
 
 		sc := StepContext{
