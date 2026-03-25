@@ -115,3 +115,82 @@ func TestFunc_Split(t *testing.T) {
 		})
 	}
 }
+
+// Task 4: parseInt, parseFloat, toString
+
+func TestFunc_ParseInt(t *testing.T) {
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+	tests := []struct {
+		name    string
+		expr    string
+		want    any
+		wantErr bool
+	}{
+		{"basic", `parseInt("42")`, int64(42), false},
+		{"negative", `parseInt("-7")`, int64(-7), false},
+		{"zero", `parseInt("0")`, int64(0), false},
+		{"invalid", `parseInt("abc")`, nil, true},
+		{"float_string", `parseInt("3.14")`, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := eval.Eval(tt.expr, newTestContext())
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, result)
+			}
+		})
+	}
+}
+
+func TestFunc_ParseFloat(t *testing.T) {
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+	tests := []struct {
+		name    string
+		expr    string
+		want    any
+		wantErr bool
+	}{
+		{"basic", `parseFloat("3.14")`, float64(3.14), false},
+		{"integer_string", `parseFloat("42")`, float64(42), false},
+		{"negative", `parseFloat("-1.5")`, float64(-1.5), false},
+		{"invalid", `parseFloat("abc")`, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := eval.Eval(tt.expr, newTestContext())
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, result)
+			}
+		})
+	}
+}
+
+func TestFunc_ToString(t *testing.T) {
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+	tests := []struct {
+		name string
+		expr string
+		want any
+	}{
+		{"int", `toString(42)`, "42"},
+		{"bool", `toString(true)`, "true"},
+		{"string", `toString("hello")`, "hello"},
+		{"float", `toString(1.5)`, "1.5"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := eval.Eval(tt.expr, newTestContext())
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, result)
+		})
+	}
+}

@@ -1,6 +1,8 @@
 package cel
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/google/cel-go/cel"
@@ -12,6 +14,7 @@ import (
 func customFunctions() []cel.EnvOption {
 	return []cel.EnvOption{
 		stringFunctions(),
+		typeFunctions(),
 	}
 }
 
@@ -78,5 +81,59 @@ func (l *stringLib) CompileOptions() []cel.EnvOption {
 }
 
 func (l *stringLib) ProgramOptions() []cel.ProgramOption {
+	return nil
+}
+
+// ── Type coercion functions ───────────────────────────────────────────────────
+
+func typeFunctions() cel.EnvOption {
+	return cel.Lib(&typeLib{})
+}
+
+type typeLib struct{}
+
+func (l *typeLib) CompileOptions() []cel.EnvOption {
+	return []cel.EnvOption{
+		cel.Function("parseInt",
+			cel.Overload("parseInt_string",
+				[]*cel.Type{cel.StringType},
+				cel.IntType,
+				cel.UnaryBinding(func(val ref.Val) ref.Val {
+					s := string(val.(types.String))
+					n, err := strconv.ParseInt(s, 10, 64)
+					if err != nil {
+						return types.NewErr("parseInt: %v", err)
+					}
+					return types.Int(n)
+				}),
+			),
+		),
+		cel.Function("parseFloat",
+			cel.Overload("parseFloat_string",
+				[]*cel.Type{cel.StringType},
+				cel.DoubleType,
+				cel.UnaryBinding(func(val ref.Val) ref.Val {
+					s := string(val.(types.String))
+					f, err := strconv.ParseFloat(s, 64)
+					if err != nil {
+						return types.NewErr("parseFloat: %v", err)
+					}
+					return types.Double(f)
+				}),
+			),
+		),
+		cel.Function("toString",
+			cel.Overload("toString_any",
+				[]*cel.Type{cel.DynType},
+				cel.StringType,
+				cel.UnaryBinding(func(val ref.Val) ref.Val {
+					return types.String(fmt.Sprintf("%v", val.Value()))
+				}),
+			),
+		),
+	}
+}
+
+func (l *typeLib) ProgramOptions() []cel.ProgramOption {
 	return nil
 }
