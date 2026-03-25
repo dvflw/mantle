@@ -417,10 +417,6 @@ In `functions.go`, add to `stringLib.CompileOptions()`:
 					s := string(lhs.(types.String))
 					sep := string(rhs.(types.String))
 					parts := strings.Split(s, sep)
-					result := make([]ref.Val, len(parts))
-					for i, p := range parts {
-						result[i] = types.String(p)
-					}
 					return types.DefaultTypeAdapter.NativeToValue(parts)
 				}),
 			),
@@ -701,25 +697,25 @@ type collectionLib struct{}
 
 func (l *collectionLib) CompileOptions() []cel.EnvOption {
 	return []cel.EnvOption{
+		// obj() — register fixed-arity overloads for 1–5 key-value pairs.
+		// CEL does not support true variadic functions, so we register
+		// overloads for 2/4/6/8/10 args sharing a common objBinding helper.
 		cel.Function("obj",
-			cel.Overload("obj_kvpairs",
-				nil, // variadic — accepts any number of args
-				cel.DynType,
-				cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-					if len(args)%2 != 0 {
-						return types.NewErr("obj: requires even number of arguments (key-value pairs), got %d", len(args))
-					}
-					m := make(map[string]any, len(args)/2)
-					for i := 0; i < len(args); i += 2 {
-						key, ok := args[i].(types.String)
-						if !ok {
-							return types.NewErr("obj: key at position %d must be a string, got %s", i, args[i].Type())
-						}
-						m[string(key)] = refToNative(args[i+1])
-					}
-					return types.DefaultTypeAdapter.NativeToValue(m)
-				}),
-			),
+			cel.Overload("obj_2",
+				[]*cel.Type{cel.DynType, cel.DynType},
+				cel.DynType, cel.FunctionBinding(objBinding)),
+			cel.Overload("obj_4",
+				[]*cel.Type{cel.DynType, cel.DynType, cel.DynType, cel.DynType},
+				cel.DynType, cel.FunctionBinding(objBinding)),
+			cel.Overload("obj_6",
+				[]*cel.Type{cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType},
+				cel.DynType, cel.FunctionBinding(objBinding)),
+			cel.Overload("obj_8",
+				[]*cel.Type{cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType},
+				cel.DynType, cel.FunctionBinding(objBinding)),
+			cel.Overload("obj_10",
+				[]*cel.Type{cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType},
+				cel.DynType, cel.FunctionBinding(objBinding)),
 		),
 	}
 }
@@ -981,6 +977,11 @@ func (l *jsonLib) CompileOptions() []cel.EnvOption {
 					if err := dec.Decode(&result); err != nil {
 						return types.NewErr("jsonDecode: %v", err)
 					}
+					// Reject trailing data by attempting a second decode — must hit EOF.
+					var trailing json.RawMessage
+					if err := dec.Decode(&trailing); err != io.EOF {
+						return types.NewErr("jsonDecode: unexpected trailing data after JSON value")
+					}
 					return types.DefaultTypeAdapter.NativeToValue(normalizeJSONNumbers(result))
 				}),
 			),
@@ -1203,7 +1204,7 @@ After the existing content, add sections covering:
 - `jsonEncode(value)`, `jsonDecode(string)`
 
 **Date/Time Functions:**
-- `timestamp(string)`, `formatTimestamp(ts, layout)` with Go layout reference
+- `parseTimestamp(string)`, `formatTimestamp(ts, layout)` with Go layout reference
 
 Each function should have a brief description and a YAML example showing usage in a workflow step.
 

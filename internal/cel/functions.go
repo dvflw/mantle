@@ -174,7 +174,7 @@ func (l *collectionLib) CompileOptions() []cel.EnvOption {
 				cel.ListType(cel.DynType),
 				cel.UnaryBinding(func(val ref.Val) ref.Val {
 					list := val.(traits.Lister)
-					var result []any
+					result := make([]any, 0)
 					it := list.Iterator()
 					for it.HasNext() == types.True {
 						item := it.Next()
@@ -349,17 +349,25 @@ func (l *timeLib) ProgramOptions() []cel.ProgramOption {
 }
 
 // normalizeJSONNumbers walks a decoded JSON structure and converts json.Number
-// values to int64 (if the number is an integer) or float64.
+// values to int64 (if the number is an integer) or float64 (if it has a decimal
+// or exponent). Numbers that overflow int64 are preserved as strings to avoid
+// silent precision loss.
 func normalizeJSONNumbers(v any) any {
 	switch val := v.(type) {
 	case json.Number:
+		s := val.String()
+		// Only attempt float64 for numbers with decimal point or exponent.
+		if strings.ContainsAny(s, ".eE") {
+			if f, err := val.Float64(); err == nil {
+				return f
+			}
+			return s
+		}
+		// Integer — try int64, fall back to string for overflow.
 		if i, err := val.Int64(); err == nil {
 			return i
 		}
-		if f, err := val.Float64(); err == nil {
-			return f
-		}
-		return val.String()
+		return s
 	case map[string]any:
 		for k, v := range val {
 			val[k] = normalizeJSONNumbers(v)

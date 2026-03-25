@@ -309,18 +309,15 @@ func TestFunc_Flatten(t *testing.T) {
 		})
 	}
 
-	// Empty list: flatten([]) — result may be nil or empty slice.
+	// Empty list: flatten([]) — must return a non-nil empty []any.
 	t.Run("empty list", func(t *testing.T) {
 		ctx := newTestContext()
 		ctx.Inputs["empty"] = []any{}
 		result, err := eval.Eval(`flatten(inputs.empty)`, ctx)
 		require.NoError(t, err)
-		// CEL may return nil or an empty slice for an empty list; both are acceptable.
-		if result != nil {
-			list, ok := result.([]any)
-			require.True(t, ok, "expected []any, got %T", result)
-			assert.Empty(t, list)
-		}
+		list, ok := result.([]any)
+		require.True(t, ok, "expected []any, got %T", result)
+		assert.Empty(t, list)
 	})
 }
 
@@ -387,6 +384,17 @@ func TestFunc_JsonDecode(t *testing.T) {
 			name:    "trailing_brace",
 			expr:    `jsonDecode("1}")`,
 			wantErr: true,
+		},
+		{
+			name: "large_integer_preserved",
+			expr: `jsonDecode("9223372036854775808")`,
+			check: func(t *testing.T, result any) {
+				// int64 max is 9223372036854775807 — this overflows.
+				// Should be preserved as string, not silently converted to float64.
+				s, ok := result.(string)
+				require.True(t, ok, "expected string for overflow int, got %T", result)
+				assert.Equal(t, "9223372036854775808", s)
+			},
 		},
 	}
 	for _, tt := range tests {

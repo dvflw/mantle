@@ -275,7 +275,7 @@ These are the Mantle CEL extensions available in workflow expressions. For full 
 
 | Function | Description |
 |---|---|
-| `obj(key, val, ...)` | Construct a map from alternating key-value arguments |
+| `obj(key, val, ...)` | Construct a map from alternating key-value arguments (up to 5 pairs / 10 args) |
 
 **Type coercion**
 
