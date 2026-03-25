@@ -188,12 +188,10 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 	}
 
 	// Build client options from credential.
-	var dockerHost string
 	clientOpts := []client.Opt{client.WithAPIVersionNegotiation()}
 	if cred, ok := params["_credential"].(map[string]string); ok {
-		dockerHost = cred["host"]
-		if dockerHost != "" {
-			clientOpts = append(clientOpts, client.WithHost(dockerHost))
+		if host := cred["host"]; host != "" {
+			clientOpts = append(clientOpts, client.WithHost(host))
 		}
 		// TLS configuration.
 		if cred["ca_cert"] != "" && cred["client_cert"] != "" && cred["client_key"] != "" {
@@ -278,8 +276,9 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 	// Artifacts dir mount (from context).
 	if artDir := artifact.ArtifactsDirFromContext(ctx); artDir != "" {
 		// Bind mounts only work with local Docker daemons.
-		if dockerHost != "" && !strings.HasPrefix(dockerHost, "unix://") {
-			return nil, fmt.Errorf("docker/run: artifact mounts are not supported with remote Docker daemons (host: %s); use s3/put inside the container instead", dockerHost)
+		daemonHost := cli.DaemonHost()
+		if daemonHost != "" && !strings.HasPrefix(daemonHost, "unix://") {
+			return nil, fmt.Errorf("docker/run: artifact mounts are not supported with remote Docker daemons (host: %s); use s3/put inside the container instead", daemonHost)
 		}
 		hostCfg.Mounts = append(hostCfg.Mounts, mount.Mount{
 			Type:   mount.TypeBind,

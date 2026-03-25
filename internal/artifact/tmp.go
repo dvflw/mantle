@@ -101,5 +101,8 @@ func (fs *FilesystemTmpStorage) Delete(ctx context.Context, url string) error {
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return fmt.Errorf("artifact path escapes base path")
 	}
-	return os.Remove(url)
+	if err := os.Remove(absURL); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }

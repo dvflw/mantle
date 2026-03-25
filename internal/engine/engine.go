@@ -410,6 +410,11 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 
 	// Create artifacts scratch dir if step declares artifacts.
 	var artifactsDir string
+	if len(step.Artifacts) > 0 {
+		if e.TmpStorage == nil || e.ArtifactStore == nil {
+			return nil, fmt.Errorf("step %q declares artifacts but artifact subsystem is not configured (set tmp storage in mantle.yaml)", step.Name)
+		}
+	}
 	if len(step.Artifacts) > 0 && e.TmpStorage != nil {
 		var tmpErr error
 		artifactsDir, tmpErr = os.MkdirTemp("", "mantle-artifacts-*")
