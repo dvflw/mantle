@@ -1,0 +1,53 @@
+name: docker-volume-backup
+description: >
+  Back up a Docker volume to S3 on a daily schedule.
+  Compresses the volume contents, uploads to S3, and
+  sends a Slack alert on success or failure.
+
+triggers:
+  - type: cron
+    schedule: "0 2 * * *"
+
+steps:
+  - name: backup-volume
+    action: docker/run
+    credential: my-docker
+    timeout: "10m"
+    params:
+      image: alpine
+      cmd: ["tar", "-czf", "/mantle/artifacts/backup.tar.gz", "-C", "/data", "."]
+      mounts:
+        - source: "my-app-data"
+          target: "/data"
+          readonly: true
+      memory: "256m"
+      remove: true
+    artifacts:
+      - path: /mantle/artifacts/backup.tar.gz
+        name: backup-archive
+
+  - name: upload-to-s3
+    action: s3/put
+    credential: aws-prod
+    timeout: "5m"
+    params:
+      bucket: my-backups
+      key: "volumes/my-app-data/{{ date }}/backup.tar.gz"
+      content: "{{ artifacts['backup-archive'].url }}"
+      content_type: "application/gzip"
+
+  - name: notify-success
+    action: slack/send
+    credential: slack-token
+    if: "steps['upload-to-s3'].output.size > 0"
+    params:
+      channel: "#ops-alerts"
+      text: "Volume backup completed — {{ artifacts['backup-archive'].size }} bytes uploaded to s3://my-backups/volumes/my-app-data/"
+
+  - name: notify-failure
+    action: slack/send
+    credential: slack-token
+    if: "steps['upload-to-s3'].error != null"
+    params:
+      channel: "#ops-alerts"
+      text: "Volume backup FAILED — {{ steps['upload-to-s3'].error }}"
