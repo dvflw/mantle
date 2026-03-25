@@ -40,6 +40,8 @@ func (c *EmailReceiveConnector) Execute(ctx context.Context, params map[string]a
 		filter = v
 	}
 
+	const maxEmailFetchLimit = 200
+
 	limit := 10
 	switch v := params["limit"].(type) {
 	case int:
@@ -50,6 +52,9 @@ func (c *EmailReceiveConnector) Execute(ctx context.Context, params map[string]a
 		if v > 0 {
 			limit = int(v)
 		}
+	}
+	if limit > maxEmailFetchLimit {
+		limit = maxEmailFetchLimit
 	}
 
 	markSeen := false
@@ -160,7 +165,6 @@ func buildSearchCriteria(filter string) *imap.SearchCriteria {
 // output map format expected by the connector.
 func fetchMessages(client *imapclient.Client, uidSet imap.UIDSet, opts *imap.FetchOptions) ([]map[string]any, error) {
 	cmd := client.Fetch(uidSet, opts)
-	defer func() { _ = cmd.Close() }()
 
 	var out []map[string]any
 

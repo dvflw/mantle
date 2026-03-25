@@ -121,6 +121,7 @@ func (e *EmailTriggerPoller) startPoller(ctx context.Context, t TriggerRecord) {
 			"trigger_id", t.ID,
 			"workflow", t.WorkflowName,
 			"max", e.maxConnections)
+		metrics.EmailTriggersSkippedTotal.Inc()
 		return
 	}
 

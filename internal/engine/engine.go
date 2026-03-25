@@ -725,6 +725,18 @@ func (e *Engine) MakeGlobalStepExecutor() StepExecutor {
 			celCtx.Steps[name] = map[string]any{"output": output}
 		}
 
+		// Load failed-but-continued steps for CEL context.
+		failedContinuedSteps, err := e.loadFailedContinuedSteps(ctx, execID)
+		if err != nil {
+			return nil, fmt.Errorf("loading failed continued steps: %w", err)
+		}
+		for name, fcs := range failedContinuedSteps {
+			celCtx.Steps[name] = map[string]any{
+				"output": fcs.output,
+				"error":  fcs.errMsg,
+			}
+		}
+
 		// Load artifacts for CEL context.
 		e.loadArtifactsIntoCELContext(ctx, execID, celCtx)
 

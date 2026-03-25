@@ -151,6 +151,10 @@ var (
 		Name: "mantle_email_connection_errors_total",
 		Help: "Total IMAP connection errors",
 	}, []string{"workflow"})
+	EmailTriggersSkippedTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "mantle_email_triggers_skipped_total",
+		Help: "Total email triggers skipped due to connection limit",
+	})
 )
 
 // Budget metrics.
