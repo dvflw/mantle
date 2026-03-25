@@ -1,0 +1,64 @@
+name: email-inbox-triage
+description: >
+  AI-powered email triage: reads new emails, classifies them,
+  moves to appropriate folders, and flags important ones.
+
+triggers:
+  - type: email
+    mailbox: company-inbox
+    folder: INBOX
+    filter: unseen
+    poll_interval: 30s
+
+steps:
+  - name: classify
+    action: ai/completion
+    credential: openai-key
+    params:
+      model: gpt-4o
+      system_prompt: >
+        Classify this email into one of: important, actionable, newsletter, spam.
+        Respond with JSON: {"category": "...", "summary": "...", "priority": "high|medium|low"}
+      prompt: |
+        From: {{ trigger.from }}
+        Subject: {{ trigger.subject }}
+        Body: {{ trigger.body }}
+      output_schema:
+        type: object
+        properties:
+          category:
+            type: string
+            enum: [important, actionable, newsletter, spam]
+          summary:
+            type: string
+          priority:
+            type: string
+            enum: [high, medium, low]
+        required: [category, summary, priority]
+
+  - name: flag-important
+    action: email/flag
+    credential: company-inbox
+    if: "steps.classify.output.json.priority == 'high'"
+    params:
+      uid: "{{ trigger.uid }}"
+      flags: ["flagged", "important"]
+      action: add
+
+  - name: move-to-folder
+    action: email/move
+    credential: company-inbox
+    params:
+      uid: "{{ trigger.uid }}"
+      target_folder: "{{ steps.classify.output.json.category }}"
+
+  - name: notify-important
+    action: slack/send
+    credential: slack-token
+    if: "steps.classify.output.json.priority == 'high'"
+    params:
+      channel: "#important-emails"
+      text: |
+        New important email from {{ trigger.from }}:
+        Subject: {{ trigger.subject }}
+        Summary: {{ steps.classify.output.json.summary }}

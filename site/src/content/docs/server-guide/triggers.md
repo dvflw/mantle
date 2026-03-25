@@ -140,3 +140,157 @@ prompt: "Analyze this event: {{ trigger.payload }}"
 # In if expressions:
 if: "trigger.payload.action == 'opened'"
 ```
+
+## Setting Up Email Triggers
+
+An email trigger polls an email mailbox and executes a workflow each time a new message matching the filter arrives. The trigger runs continuously when Mantle is in server mode.
+
+```yaml
+name: email-inbox-triage
+description: AI-powered email classification and organization
+
+triggers:
+  - type: email
+    mailbox: company-inbox
+    folder: INBOX
+    filter: unseen
+    poll_interval: 30s
+
+steps:
+  - name: classify
+    action: ai/completion
+    credential: my-openai
+    params:
+      model: gpt-4o
+      system_prompt: "Classify this email as: important, actionable, newsletter, or spam."
+      prompt: |
+        From: {{ trigger.from }}
+        Subject: {{ trigger.subject }}
+        Body: {{ trigger.body }}
+      output_schema:
+        type: object
+        properties:
+          category:
+            type: string
+            enum: [important, actionable, newsletter, spam]
+        required: [category]
+
+  - name: move-email
+    action: email/move
+    credential: company-inbox
+    params:
+      uid: "{{ trigger.uid }}"
+      target_folder: "{{ steps.classify.output.json.category }}"
+```
+
+Apply the workflow to start polling:
+
+```bash
+mantle apply email-inbox-triage.yaml
+# Applied email-inbox-triage version 1
+```
+
+### Email Trigger Configuration
+
+The `email` trigger type polls a mailbox for messages matching a filter and executes the workflow for each message found.
+
+**Configuration:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `type` | string | Yes | Must be `email`. |
+| `mailbox` | string | Yes | Credential name for the email account (IMAP-compatible). |
+| `folder` | string | No | Folder to monitor (e.g., `INBOX`, `Archive`). Default: `INBOX`. |
+| `filter` | string | No | Filter messages: `all`, `unseen`, `seen`, `flagged`. Default: `unseen`. |
+| `poll_interval` | string | No | How often to check for new messages (e.g., `30s`, `5m`). Default: `60s`. |
+
+### Trigger Context Variables
+
+When an email trigger fires, the following variables are available in CEL expressions and template strings:
+
+| Variable | Type | Description |
+|---|---|---|
+| `trigger.message_id` | string | Unique message ID. |
+| `trigger.uid` | number | IMAP UID (for use with email actions). |
+| `trigger.from` | string | Sender email address. |
+| `trigger.to` | string | Primary recipient(s). |
+| `trigger.cc` | string | CC recipients. |
+| `trigger.subject` | string | Message subject. |
+| `trigger.body` | string | Message body (plaintext). |
+| `trigger.date` | string | Message date (RFC 3339 timestamp). |
+| `trigger.headers` | map | Full message headers. |
+| `trigger.flags` | array | IMAP flags (e.g., `["seen", "flagged"]`). |
+
+**Example -- conditional logic based on sender:**
+
+```yaml
+steps:
+  - name: handle-vip-email
+    action: ai/completion
+    credential: my-openai
+    if: "trigger.from == 'ceo@company.com'"
+    params:
+      model: gpt-4o
+      prompt: "This is from the CEO. Provide an executive summary:\n\n{{ trigger.body }}"
+
+  - name: notify-team
+    action: slack/send
+    credential: slack-bot
+    if: "trigger.from == 'ceo@company.com'"
+    params:
+      channel: "#executive-inbox"
+      text: "New email from {{ trigger.from }}: {{ trigger.subject }}"
+```
+
+### Connection Management
+
+Email triggers maintain persistent IMAP connections to reduce authentication overhead. By default, Mantle pools up to 5 concurrent connections per mailbox credential.
+
+**Configuring connection limits in `mantle.yaml`:**
+
+```yaml
+engine:
+  email:
+    max_connections: 10  # Default: 5
+    connection_timeout: 30s  # Default: 30s
+    idle_timeout: 5m  # Default: 5m
+```
+
+### Provider Limits
+
+Email providers have different concurrency limits. Plan your poll intervals accordingly:
+
+| Provider | Max Concurrent | Recommendation |
+|---|---|---|
+| Gmail | 15 | Up to 15 concurrent connections; use `poll_interval: 30s` for many workflows |
+| Microsoft 365 | 20 | Higher concurrency limit; safe for aggressive polling |
+| Generic IMAP | Varies | Check with your email host; conservative: 5 concurrent |
+
+**Example -- multiple workflows, Gmail:**
+
+If you have 3 email workflows on Gmail, each connecting once per poll:
+
+```yaml
+# workflow-1.yaml
+triggers:
+  - type: email
+    mailbox: my-gmail
+    folder: INBOX
+    poll_interval: 60s  # Check every minute
+
+# workflow-2.yaml
+triggers:
+  - type: email
+    mailbox: my-gmail
+    folder: Archive
+    poll_interval: 60s
+
+# workflow-3.yaml
+triggers:
+  - type: email
+    mailbox: my-gmail
+    folder: Drafts
+    poll_interval: 60s
+```
+
+Each workflow gets its own connection, but they share the pool. If latency is a concern, stagger poll intervals or increase `max_connections` in `mantle.yaml`.

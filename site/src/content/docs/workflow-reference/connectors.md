@@ -319,6 +319,151 @@ mantle secrets create --name smtp-creds --type basic \
   --field port=587
 ```
 
+## email/receive
+
+Reads messages from an email mailbox. Supports filtering by folder and read status.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `folder` | string | No | Folder to read from (e.g., `INBOX`, `Archive`, `[Gmail]/Sent Mail`). Default: `INBOX`. |
+| `filter` | string | No | Filter messages by status: `all`, `unseen`, `seen`, `flagged`. Default: `all`. |
+| `limit` | number | No | Maximum number of messages to return. Default: `10`. |
+| `mark_seen` | boolean | No | Mark retrieved messages as seen. Default: `false`. |
+| `_credential` | string | Yes | Email account credential (IMAP-compatible). |
+
+**Output:**
+
+| Field | Type | Description |
+|---|---|---|
+| `message_count` | number | Number of messages returned. |
+| `messages` | array | Array of message objects. Each message contains: `message_id` (string), `from` (string), `to` (string), `cc` (string), `subject` (string), `body` (string), `date` (RFC 3339 timestamp), `headers` (map), `flags` (array of strings), `uid` (number, IMAP UID). |
+
+**Example:**
+
+```yaml
+- name: read-inbox
+  action: email/receive
+  credential: company-inbox
+  params:
+    folder: INBOX
+    filter: unseen
+    limit: 20
+    mark_seen: true
+```
+
+## email/move
+
+Moves an email message to a different folder.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `uid` | number | Yes | IMAP UID of the message. |
+| `source_folder` | string | No | Source folder (for reference). Default: `INBOX`. |
+| `target_folder` | string | Yes | Destination folder path (e.g., `Archive`, `[Gmail]/All Mail`). |
+| `_credential` | string | Yes | Email account credential. |
+
+**Output:**
+
+| Field | Type | Description |
+|---|---|---|
+| `success` | boolean | `true` if the move was successful. |
+| `uid` | number | The IMAP UID of the moved message. |
+| `target_folder` | string | The folder the message was moved to. |
+
+**Note:** Gmail's "archive" action is implemented as a move to `[Gmail]/All Mail`.
+
+**Example:**
+
+```yaml
+- name: archive-message
+  action: email/move
+  credential: company-inbox
+  params:
+    uid: "{{ trigger.uid }}"
+    source_folder: INBOX
+    target_folder: Archive
+```
+
+## email/delete
+
+Deletes an email message.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `uid` | number | Yes | IMAP UID of the message. |
+| `folder` | string | No | Folder containing the message. Default: `INBOX`. |
+| `_credential` | string | Yes | Email account credential. |
+
+**Output:**
+
+| Field | Type | Description |
+|---|---|---|
+| `success` | boolean | `true` if the deletion was successful. |
+| `uid` | number | The IMAP UID of the deleted message. |
+
+**Example:**
+
+```yaml
+- name: delete-spam
+  action: email/delete
+  credential: company-inbox
+  params:
+    uid: "{{ trigger.uid }}"
+    folder: INBOX
+```
+
+## email/flag
+
+Adds or removes flags (labels) on an email message.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `uid` | number | Yes | IMAP UID of the message. |
+| `flags` | array | Yes | List of flag names to modify (e.g., `["flagged", "important"]`). |
+| `action` | string | Yes | `add` to set flags, `remove` to unset flags. |
+| `folder` | string | No | Folder containing the message. Default: `INBOX`. |
+| `_credential` | string | Yes | Email account credential. |
+
+**Standard IMAP Flags:**
+
+| Flag | Description |
+|---|---|
+| `seen` | Message has been read. |
+| `flagged` | Message is flagged for follow-up. |
+| `answered` | Message has been replied to. |
+| `deleted` | Message is marked for deletion. |
+| `draft` | Message is a draft. |
+
+**Custom Keywords:** Most email providers support custom flag names beyond the standard set. These are often used as tags or labels (e.g., `important`, `urgent`, `client-xyz`).
+
+**Output:**
+
+| Field | Type | Description |
+|---|---|---|
+| `success` | boolean | `true` if the flag operation was successful. |
+| `uid` | number | The IMAP UID of the message. |
+| `flags` | array | The flags that were modified. |
+
+**Example:**
+
+```yaml
+- name: flag-important
+  action: email/flag
+  credential: company-inbox
+  params:
+    uid: "{{ trigger.uid }}"
+    flags: ["flagged", "important"]
+    action: add
+```
+
 ## s3/put
 
 Uploads an object to an S3-compatible storage bucket.
