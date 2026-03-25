@@ -1,0 +1,23 @@
+name: data-transform-api-to-db
+description: >
+  Fetches user data from an API, transforms each record using CEL
+  expressions to match a database schema, and inserts the normalized
+  records into Postgres. Demonstrates map(), obj(), toLower(), and
+  type coercion without requiring an AI model.
+
+steps:
+  - name: fetch-users
+    action: http/request
+    timeout: "15s"
+    params:
+      method: GET
+      url: "https://jsonplaceholder.typicode.com/users"
+      headers:
+        Accept: "application/json"
+
+  - name: store-users
+    action: postgres/query
+    credential: app-db
+    params:
+      query: "INSERT INTO users (username, email, city) VALUES ($1, $2, $3)"
+      params: "{{ steps['fetch-users'].output.json.map(u, [u.username.toLower(), u.email.toLower(), u.address.city]) }}"
