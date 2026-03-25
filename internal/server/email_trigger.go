@@ -125,7 +125,7 @@ func (e *EmailTriggerPoller) startPoller(ctx context.Context, t TriggerRecord) {
 		return
 	}
 
-	pollCtx, cancel := context.WithCancel(ctx)
+	pollCtx, cancel := context.WithCancel(ctx) // #nosec G118 -- cancel is stored in e.pollers and called during Stop()/Reload()
 	e.pollers[t.ID] = cancel
 
 	e.wg.Add(1)
