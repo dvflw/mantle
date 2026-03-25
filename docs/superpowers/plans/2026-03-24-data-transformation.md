@@ -1031,7 +1031,7 @@ git commit -m "feat(cel): add jsonEncode and jsonDecode functions"
 Append to `internal/cel/functions_test.go`:
 
 ```go
-func TestFunc_Timestamp(t *testing.T) {
+func TestFunc_ParseTimestamp(t *testing.T) {
 	eval, err := NewEvaluator()
 	require.NoError(t, err)
 
@@ -1072,8 +1072,8 @@ func TestFunc_FormatTimestamp(t *testing.T) {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `go test ./internal/cel/ -run "TestFunc_Timestamp|TestFunc_FormatTimestamp" -v`
-Expected: FAIL (functions registered as `parseTimestamp`, not `timestamp`)
+Run: `go test ./internal/cel/ -run "TestFunc_ParseTimestamp|TestFunc_FormatTimestamp" -v`
+Expected: FAIL — functions not registered yet
 
 - [ ] **Step 3: Add date/time functions**
 
@@ -1383,9 +1383,12 @@ git commit -m "feat: add data transformation and AI enrichment example workflows
 Run: `go test ./internal/cel/ -v`
 Expected: PASS — all function tests, macro tests, and existing tests
 
-- [ ] **Step 2: Run go vet**
+- [ ] **Step 2: Run go vet and golangci-lint**
 
 Run: `go vet ./internal/cel/`
+Expected: clean
+
+Run: `golangci-lint run ./...`
 Expected: clean
 
 - [ ] **Step 3: Verify site builds**

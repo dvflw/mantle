@@ -378,6 +378,16 @@ func TestFunc_JsonDecode(t *testing.T) {
 			expr:    `jsonDecode("{} {}")`,
 			wantErr: true,
 		},
+		{
+			name:    "trailing_bracket",
+			expr:    `jsonDecode("{}]")`,
+			wantErr: true,
+		},
+		{
+			name:    "trailing_brace",
+			expr:    `jsonDecode("1}")`,
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

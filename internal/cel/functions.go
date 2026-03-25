@@ -3,6 +3,7 @@ package cel
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -280,8 +281,9 @@ func (l *jsonLib) CompileOptions() []cel.EnvOption {
 					if err := dec.Decode(&result); err != nil {
 						return types.NewErr("jsonDecode: %v", err)
 					}
-					// Reject trailing data (e.g., "{} {}")
-					if dec.More() {
+					// Reject trailing data by attempting a second decode — must hit EOF.
+					var trailing json.RawMessage
+					if err := dec.Decode(&trailing); err != io.EOF {
 						return types.NewErr("jsonDecode: unexpected trailing data after JSON value")
 					}
 					return types.DefaultTypeAdapter.NativeToValue(normalizeJSONNumbers(result))

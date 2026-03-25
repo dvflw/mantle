@@ -296,7 +296,7 @@ These are the Mantle CEL extensions available in workflow expressions. For full 
 
 | Function | Description |
 |---|---|
-| `parseTimestamp(s)` | Parse an RFC 3339 string into a timestamp |
+| `parseTimestamp(s)` | Parse a date/time string into a timestamp (accepts RFC 3339, RFC 3339 Nano, bare ISO datetimes, date-only, US dates, and named-month formats) |
 | `formatTimestamp(t, layout)` | Format a timestamp using a Go time layout string |
 
 **Utility**
