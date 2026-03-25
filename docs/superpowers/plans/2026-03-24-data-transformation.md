@@ -1147,7 +1147,7 @@ func customFunctions() []cel.EnvOption {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `go test ./internal/cel/ -run "TestFunc_Timestamp|TestFunc_FormatTimestamp" -v`
+Run: `go test ./internal/cel/ -run "TestFunc_ParseTimestamp|TestFunc_FormatTimestamp" -v`
 Expected: PASS
 
 - [ ] **Step 5: Run full test suite**
