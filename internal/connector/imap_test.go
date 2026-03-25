@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -72,9 +73,22 @@ func TestIMAPDial(t *testing.T) {
 		UseTLS:   false,
 	}
 
-	client, err := imapDial(cfg)
+	// GreenMail may not accept logins immediately after the startup log line.
+	// Retry with a short backoff to handle this CI timing window.
+	var client *imapclient.Client
+	var err error
+	for attempt := 0; attempt < 5; attempt++ {
+		if attempt > 0 {
+			time.Sleep(2 * time.Second)
+		}
+		client, err = imapDial(cfg)
+		if err == nil {
+			break
+		}
+		t.Logf("imapDial attempt %d/5 failed: %v", attempt+1, err)
+	}
 	if err != nil {
-		t.Fatalf("imapDial() error: %v", err)
+		t.Fatalf("imapDial() error after retries: %v", err)
 	}
 	defer func() {
 		if err := client.Close(); err != nil {

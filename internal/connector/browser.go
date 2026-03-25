@@ -107,18 +107,21 @@ func (c *BrowserRunConnector) Execute(ctx context.Context, params map[string]any
 	case "javascript":
 		containerImage = playwrightNodeImage
 		wrapperScript = buildJSWrapper(script)
-		// Pass the wrapper via stdin; `node` reads from stdin when no file argument is given.
-		containerCmd = []string{"node"}
+		// The Playwright Docker image ships browsers but not the npm package.
+		// Install it silently before running so the script can require('playwright').
+		// `node` with no file argument reads the script from stdin.
+		containerCmd = []string{"sh", "-c", "cd /tmp && npm init -y --silent 2>/dev/null && npm install --silent playwright 2>/dev/null && node"}
 	case "typescript":
 		containerImage = playwrightNodeImage
 		wrapperScript = buildJSWrapper(script)
-		// Use --experimental-strip-types so Node can execute TypeScript directly.
-		containerCmd = []string{"node", "--experimental-strip-types"}
+		// Same npm-install preamble; use --experimental-strip-types for TS syntax.
+		containerCmd = []string{"sh", "-c", "cd /tmp && npm init -y --silent 2>/dev/null && npm install --silent playwright 2>/dev/null && node --experimental-strip-types"}
 	case "python":
 		containerImage = playwrightPythonImage
 		wrapperScript = buildPythonWrapper(script)
-		// Pass the wrapper via stdin; `python3 -` reads from stdin.
-		containerCmd = []string{"python3", "-"}
+		// Install the playwright Python package if not already present, then run
+		// the script via stdin (`python3 -`).
+		containerCmd = []string{"sh", "-c", "pip install --quiet playwright 2>/dev/null && python3 -"}
 	}
 
 	// --- build docker/run params ---

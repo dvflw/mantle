@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/smtp"
 	"testing"
+	"time"
 )
 
 // TestEmailMoveParamValidation verifies that required parameters are enforced.
@@ -150,31 +151,45 @@ func createTargetFolder(t *testing.T, host, imapPort, username, password, folder
 
 // fetchFirstUID retrieves the first UID from the given IMAP folder using the
 // EmailReceiveConnector, to avoid duplicating IMAP client logic in tests.
+// It retries up to 5 times with a 2-second pause to accommodate the brief
+// delay between SMTP delivery and IMAP visibility in CI.
 func fetchFirstUID(t *testing.T, host, imapPort, username, password, folder string) uint32 {
 	t.Helper()
 	recv := &EmailReceiveConnector{}
-	result, err := recv.Execute(context.Background(), map[string]any{
-		"folder": folder,
-		"filter": "all",
-		"limit":  1,
-		"_credential": map[string]string{
-			"host":     host,
-			"port":     imapPort,
-			"username": username,
-			"password": password,
-			"use_tls":  "false",
-		},
-	})
-	if err != nil {
-		t.Fatalf("fetchFirstUID: receive error: %v", err)
+	cred := map[string]string{
+		"host":     host,
+		"port":     imapPort,
+		"username": username,
+		"password": password,
+		"use_tls":  "false",
 	}
-	msgs, ok := result["messages"].([]map[string]any)
-	if !ok || len(msgs) == 0 {
-		t.Fatal("fetchFirstUID: no messages found")
+
+	for attempt := 0; attempt < 5; attempt++ {
+		if attempt > 0 {
+			time.Sleep(2 * time.Second)
+		}
+		result, err := recv.Execute(context.Background(), map[string]any{
+			"folder":      folder,
+			"filter":      "all",
+			"limit":       1,
+			"_credential": cred,
+		})
+		if err != nil {
+			t.Logf("fetchFirstUID attempt %d/5: receive error: %v", attempt+1, err)
+			continue
+		}
+		msgs, ok := result["messages"].([]map[string]any)
+		if !ok || len(msgs) == 0 {
+			t.Logf("fetchFirstUID attempt %d/5: no messages yet", attempt+1)
+			continue
+		}
+		uid, _ := msgs[0]["uid"].(uint32)
+		if uid == 0 {
+			t.Logf("fetchFirstUID attempt %d/5: uid is zero", attempt+1)
+			continue
+		}
+		return uid
 	}
-	uid, _ := msgs[0]["uid"].(uint32)
-	if uid == 0 {
-		t.Fatal("fetchFirstUID: uid is zero")
-	}
-	return uid
+	t.Fatal("fetchFirstUID: no messages found after retries")
+	return 0
 }
