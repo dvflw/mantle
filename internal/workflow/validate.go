@@ -216,6 +216,45 @@ func Validate(result *ParseResult) []ValidationError {
 			}
 		}
 
+		// Validate params for browser/run steps.
+		if step.Action == "browser/run" && step.Params != nil {
+			// Validate script is present and non-empty.
+			script, hasScript := step.Params["script"].(string)
+			if !hasScript {
+				errs = append(errs, ValidationError{
+					Field:   prefix + ".params.script",
+					Message: "script param is required and must be a string",
+				})
+			} else if strings.TrimSpace(script) == "" {
+				errs = append(errs, ValidationError{
+					Field:   prefix + ".params.script",
+					Message: "script param must not be empty",
+				})
+			}
+
+			// Validate language (if present).
+			if lang, ok := step.Params["language"].(string); ok && lang != "" {
+				validLanguages := map[string]bool{"javascript": true, "typescript": true, "python": true}
+				if !validLanguages[lang] {
+					errs = append(errs, ValidationError{
+						Field:   prefix + ".params.language",
+						Message: fmt.Sprintf("language must be one of: javascript, typescript, python (got %q)", lang),
+					})
+				}
+			}
+
+			// Validate output_format (if present).
+			if format, ok := step.Params["output_format"].(string); ok && format != "" {
+				validFormats := map[string]bool{"json": true, "text": true}
+				if !validFormats[format] {
+					errs = append(errs, ValidationError{
+						Field:   prefix + ".params.output_format",
+						Message: fmt.Sprintf("output_format must be one of: json, text (got %q)", format),
+					})
+				}
+			}
+		}
+
 		// Validate tools for ai/completion steps.
 		if step.Action == "ai/completion" && step.Params != nil {
 			tools, err := ParseTools(step.Params)

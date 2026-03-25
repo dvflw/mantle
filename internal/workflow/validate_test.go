@@ -722,3 +722,100 @@ steps:
 		t.Errorf("expected ContinueOnError to be false for steps[1], got %v", result.Workflow.Steps[1].ContinueOnError)
 	}
 }
+
+func TestValidate_BrowserRun_Valid(t *testing.T) {
+	result := mustParse(t, `
+name: browser-test
+steps:
+  - name: run-browser
+    action: browser/run
+    params:
+      script: "console.log('hello')"
+      language: javascript
+      output_format: text
+`)
+	errs := Validate(result)
+	assertNoErrors(t, errs)
+}
+
+func TestValidate_BrowserRun_ValidWithDefaults(t *testing.T) {
+	result := mustParse(t, `
+name: browser-test
+steps:
+  - name: run-browser
+    action: browser/run
+    params:
+      script: "console.log('hello')"
+`)
+	errs := Validate(result)
+	assertNoErrors(t, errs)
+}
+
+func TestValidate_BrowserRun_MissingScript(t *testing.T) {
+	result := mustParse(t, `
+name: browser-test
+steps:
+  - name: run-browser
+    action: browser/run
+    params:
+      language: javascript
+`)
+	errs := Validate(result)
+	assertHasError(t, errs, "steps[0].params.script")
+}
+
+func TestValidate_BrowserRun_EmptyScript(t *testing.T) {
+	result := mustParse(t, `
+name: browser-test
+steps:
+  - name: run-browser
+    action: browser/run
+    params:
+      script: ""
+`)
+	errs := Validate(result)
+	assertHasError(t, errs, "steps[0].params.script")
+}
+
+func TestValidate_BrowserRun_InvalidLanguage(t *testing.T) {
+	result := mustParse(t, `
+name: browser-test
+steps:
+  - name: run-browser
+    action: browser/run
+    params:
+      script: "console.log('hello')"
+      language: ruby
+`)
+	errs := Validate(result)
+	assertHasError(t, errs, "steps[0].params.language")
+}
+
+func TestValidate_BrowserRun_InvalidOutputFormat(t *testing.T) {
+	result := mustParse(t, `
+name: browser-test
+steps:
+  - name: run-browser
+    action: browser/run
+    params:
+      script: "console.log('hello')"
+      output_format: xml
+`)
+	errs := Validate(result)
+	assertHasError(t, errs, "steps[0].params.output_format")
+}
+
+func TestValidate_BrowserRun_ValidPython(t *testing.T) {
+	result := mustParse(t, `
+name: browser-test
+steps:
+  - name: run-browser
+    action: browser/run
+    params:
+      script: "print('hello')"
+      language: python
+      output_format: json
+`)
+	errs := Validate(result)
+	assertNoErrors(t, errs)
+}
