@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	playwrightNodeImage   = "mcr.microsoft.com/playwright:v1.52.0-noble"
-	playwrightPythonImage = "mcr.microsoft.com/playwright/python:v1.52.0-noble"
+	playwrightVersion     = "1.52.0"
+	playwrightNodeImage   = "mcr.microsoft.com/playwright:v" + playwrightVersion + "-noble"
+	playwrightPythonImage = "mcr.microsoft.com/playwright/python:v" + playwrightVersion + "-noble"
 )
 
 // BrowserRunConnector wraps user Playwright scripts with boilerplate and
@@ -110,18 +111,18 @@ func (c *BrowserRunConnector) Execute(ctx context.Context, params map[string]any
 		// The official Playwright Docker image ships browsers and system deps but
 		// NOT the npm package. Install it (pinned to match the image version) then
 		// run the wrapper from stdin.
-		containerCmd = []string{"sh", "-c", "npm install --no-save --silent playwright 2>/dev/null && node"}
+		containerCmd = []string{"sh", "-c", "npm install --no-save --silent playwright@" + playwrightVersion + " 2>/dev/null && node"}
 	case "typescript":
 		containerImage = playwrightNodeImage
 		wrapperScript = buildJSWrapper(script)
 		// Same as JS but with TypeScript type-stripping enabled.
-		containerCmd = []string{"sh", "-c", "npm install --no-save --silent playwright 2>/dev/null && node --experimental-strip-types"}
+		containerCmd = []string{"sh", "-c", "npm install --no-save --silent playwright@" + playwrightVersion + " 2>/dev/null && node --experimental-strip-types"}
 	case "python":
 		containerImage = playwrightPythonImage
 		wrapperScript = buildPythonWrapper(script)
 		// The official Playwright Python image ships browsers and system deps but
-		// NOT the pip package. Install it then run the wrapper from stdin.
-		containerCmd = []string{"sh", "-c", "pip install --quiet playwright 2>/dev/null && python3 -"}
+		// NOT the pip package. Pin to match the image version.
+		containerCmd = []string{"sh", "-c", "pip install --quiet playwright==" + playwrightVersion + " 2>/dev/null && python3 -"}
 	}
 
 	// --- build docker/run params ---
