@@ -57,7 +57,7 @@ func TestDockerRun_ParseParams(t *testing.T) {
 	if cfg.CPUs != 1.5 {
 		t.Errorf("cpus = %f", cfg.CPUs)
 	}
-	if cfg.Remove != false {
+	if cfg.Remove {
 		t.Errorf("remove = %v", cfg.Remove)
 	}
 }

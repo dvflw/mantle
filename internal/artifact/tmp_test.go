@@ -48,7 +48,9 @@ func TestFilesystemTmpStorage_Delete(t *testing.T) {
 	// Write a file
 	key := "test-workflow/exec-123/artifact/file.txt"
 	srcPath := filepath.Join(dir, "src.txt")
-	os.WriteFile(srcPath, []byte("data"), 0644)
+	if err := os.WriteFile(srcPath, []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	url, _ := fs.Put(ctx, key, srcPath)
 
 	// Delete by prefix

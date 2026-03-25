@@ -1,6 +1,10 @@
 package secret
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
 
 // FieldDef defines a credential field with its validation rules.
 type FieldDef struct {
@@ -88,7 +92,12 @@ var builtinTypes = map[string]*CredentialType{
 func GetType(name string) (*CredentialType, error) {
 	ct, ok := builtinTypes[name]
 	if !ok {
-		return nil, fmt.Errorf("unknown credential type %q (available: generic, bearer, openai, basic, aws, docker)", name)
+		available := make([]string, 0, len(builtinTypes))
+		for k := range builtinTypes {
+			available = append(available, k)
+		}
+		sort.Strings(available)
+		return nil, fmt.Errorf("unknown credential type %q (available: %s)", name, strings.Join(available, ", "))
 	}
 	return ct, nil
 }

@@ -51,9 +51,14 @@ func (fs *FilesystemTmpStorage) Put(ctx context.Context, key string, localPath s
 
 func (fs *FilesystemTmpStorage) DeleteByPrefix(ctx context.Context, prefix string) error {
 	target := filepath.Join(fs.BasePath, prefix)
-	// Safety: ensure we're deleting within BasePath.
-	absBase, _ := filepath.Abs(fs.BasePath)
-	absTarget, _ := filepath.Abs(target)
+	absBase, err := filepath.Abs(fs.BasePath)
+	if err != nil {
+		return fmt.Errorf("resolving base path: %w", err)
+	}
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return fmt.Errorf("resolving target path: %w", err)
+	}
 	if !strings.HasPrefix(absTarget, absBase) {
 		return fmt.Errorf("prefix escapes base path")
 	}

@@ -45,10 +45,12 @@ func (r *Reaper) Sweep(ctx context.Context) (int, error) {
 	cleaned := 0
 	for execID, arts := range byExecution {
 		// Delete files from tmp storage.
+		fileDeleteFailed := false
 		for _, a := range arts {
 			if delErr := r.TmpStorage.DeleteByPrefix(ctx, a.URL); delErr != nil {
 				logger.Error("failed to delete artifact file",
 					"artifact", a.Name, "url", a.URL, "error", delErr)
+				fileDeleteFailed = true
 			}
 		}
 
@@ -57,6 +59,11 @@ func (r *Reaper) Sweep(ctx context.Context) (int, error) {
 			logger.Error("failed to delete artifact metadata",
 				"execution_id", execID, "error", err)
 			continue
+		}
+
+		if fileDeleteFailed {
+			logger.Warn("some artifact files could not be deleted",
+				"execution_id", execID)
 		}
 		cleaned += len(arts)
 		logger.Info("cleaned expired artifacts",

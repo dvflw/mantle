@@ -244,9 +244,10 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 	// Resource limits.
 	if cfg.Memory != "" {
 		mem, parseErr := parseMemoryString(cfg.Memory)
-		if parseErr == nil {
-			hostCfg.Resources.Memory = mem
+		if parseErr != nil {
+			return nil, fmt.Errorf("docker/run: invalid memory limit: %w", parseErr)
 		}
+		hostCfg.Resources.Memory = mem
 	}
 	if cfg.CPUs > 0 {
 		hostCfg.Resources.NanoCPUs = int64(cfg.CPUs * 1e9)
@@ -324,11 +325,13 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 	defer logReader.Close()
 
 	var stdoutBuf, stderrBuf strings.Builder
-	stdcopy.StdCopy(
+	if _, err := stdcopy.StdCopy(
 		&limitWriter{w: &stdoutBuf, limit: DefaultMaxResponseBytes},
 		&limitWriter{w: &stderrBuf, limit: DefaultMaxResponseBytes},
 		logReader,
-	)
+	); err != nil {
+		log.Printf("docker/run: failed to demultiplex container logs: %v", err)
+	}
 
 	return map[string]any{
 		"exit_code": exitCode,

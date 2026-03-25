@@ -18,20 +18,27 @@ func TestReaper_CleansExpiredArtifacts(t *testing.T) {
 
 	// Write a file and create metadata
 	srcPath := filepath.Join(dir, "src.bin")
-	os.WriteFile(srcPath, []byte("data"), 0644)
+	if err := os.WriteFile(srcPath, []byte("data"), 0644); err != nil {
+		t.Fatalf("os.WriteFile: %v", err)
+	}
 	key := "wf/" + execID + "/artifact/file.bin"
-	url, _ := fs.Put(ctx, key, srcPath)
+	url, err := fs.Put(ctx, key, srcPath)
+	if err != nil {
+		t.Fatalf("fs.Put: %v", err)
+	}
 
-	store.Create(ctx, &Artifact{
+	if err := store.Create(ctx, &Artifact{
 		ExecutionID: execID,
 		StepName:    "step-a",
 		Name:        "test-artifact",
 		URL:         url,
 		Size:        4,
-	})
+	}); err != nil {
+		t.Fatalf("store.Create: %v", err)
+	}
 
 	// Backdate the artifact so it appears expired
-	_, err := db.ExecContext(ctx, `
+	_, err = db.ExecContext(ctx, `
 		UPDATE execution_artifacts SET created_at = NOW() - interval '48 hours'
 		WHERE execution_id = $1
 	`, execID)

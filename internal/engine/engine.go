@@ -144,19 +144,7 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 	}
 
 	// Load artifacts for CEL context.
-	if e.ArtifactStore != nil {
-		arts, artErr := e.ArtifactStore.ListByExecution(ctx, execID)
-		if artErr == nil {
-			celCtx.Artifacts = make(map[string]map[string]any, len(arts))
-			for _, a := range arts {
-				celCtx.Artifacts[a.Name] = map[string]any{
-					"name": a.Name,
-					"url":  a.URL,
-					"size": a.Size,
-				}
-			}
-		}
-	}
+	e.loadArtifactsIntoCELContext(ctx, execID, celCtx)
 
 	result := &ExecutionResult{
 		ExecutionID: execID,
@@ -568,19 +556,7 @@ func (e *Engine) MakeStepExecutor(wf *workflow.Workflow, execID string, celCtx *
 		}
 
 		// Load artifacts for CEL context.
-		if e.ArtifactStore != nil {
-			arts, artErr := e.ArtifactStore.ListByExecution(ctx, execID)
-			if artErr == nil {
-				celCtx.Artifacts = make(map[string]map[string]any, len(arts))
-				for _, a := range arts {
-					celCtx.Artifacts[a.Name] = map[string]any{
-						"name": a.Name,
-						"url":  a.URL,
-						"size": a.Size,
-					}
-				}
-			}
-		}
+		e.loadArtifactsIntoCELContext(ctx, execID, celCtx)
 
 		output, err := e.executeStepLogic(ctx, execID, *step, celCtx, wf.Name, sc)
 		if err != nil {
@@ -654,19 +630,7 @@ func (e *Engine) MakeGlobalStepExecutor() StepExecutor {
 		}
 
 		// Load artifacts for CEL context.
-		if e.ArtifactStore != nil {
-			arts, artErr := e.ArtifactStore.ListByExecution(ctx, execID)
-			if artErr == nil {
-				celCtx.Artifacts = make(map[string]map[string]any, len(arts))
-				for _, a := range arts {
-					celCtx.Artifacts[a.Name] = map[string]any{
-						"name": a.Name,
-						"url":  a.URL,
-						"size": a.Size,
-					}
-				}
-			}
-		}
+		e.loadArtifactsIntoCELContext(ctx, execID, celCtx)
 
 		sc := StepContext{
 			WorkflowTokenBudget: wf.TokenBudget,
@@ -683,6 +647,26 @@ func (e *Engine) MakeGlobalStepExecutor() StepExecutor {
 			return nil, sizeErr
 		}
 		return output, nil
+	}
+}
+
+// loadArtifactsIntoCELContext loads artifact metadata into the CEL context.
+func (e *Engine) loadArtifactsIntoCELContext(ctx context.Context, execID string, celCtx *mantleCEL.Context) {
+	if e.ArtifactStore == nil {
+		return
+	}
+	arts, err := e.ArtifactStore.ListByExecution(ctx, execID)
+	if err != nil {
+		log.Printf("warning: loading artifacts for execution %s: %v", execID, err)
+		return
+	}
+	celCtx.Artifacts = make(map[string]map[string]any, len(arts))
+	for _, a := range arts {
+		celCtx.Artifacts[a.Name] = map[string]any{
+			"name": a.Name,
+			"url":  a.URL,
+			"size": a.Size,
+		}
 	}
 }
 
