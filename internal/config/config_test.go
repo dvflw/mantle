@@ -247,3 +247,65 @@ func TestLoad_BudgetResetDay_CalendarClampsUpperBound(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, cfg.Engine.Budget.ResetDay)
 }
+
+func TestLoad_TmpConfigFromEnvVars(t *testing.T) {
+	t.Setenv("MANTLE_TMP_TYPE", "s3")
+	t.Setenv("MANTLE_TMP_BUCKET", "my-artifacts")
+	t.Setenv("MANTLE_TMP_PREFIX", "workflows/")
+	t.Setenv("MANTLE_TMP_RETENTION", "24h")
+
+	cmd := newTestCommand()
+	cfg, err := Load(cmd)
+	require.NoError(t, err)
+
+	assert.Equal(t, "s3", cfg.Tmp.Type)
+	assert.Equal(t, "my-artifacts", cfg.Tmp.Bucket)
+	assert.Equal(t, "workflows/", cfg.Tmp.Prefix)
+	assert.Equal(t, "24h", cfg.Tmp.Retention)
+}
+
+func TestLoad_TmpConfigFromConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, "mantle.yaml")
+	err := os.WriteFile(configFile, []byte(`
+tmp:
+  type: "filesystem"
+  path: "/tmp/mantle-artifacts"
+  retention: "48h"
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := newTestCommand()
+	_ = cmd.Flags().Set("config", configFile)
+
+	cfg, err := Load(cmd)
+	require.NoError(t, err)
+
+	assert.Equal(t, "filesystem", cfg.Tmp.Type)
+	assert.Equal(t, "/tmp/mantle-artifacts", cfg.Tmp.Path)
+	assert.Equal(t, "48h", cfg.Tmp.Retention)
+}
+
+func TestLoad_TmpConfigEnvVarOverridesFile(t *testing.T) {
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, "mantle.yaml")
+	_ = os.WriteFile(configFile, []byte(`
+tmp:
+  type: "filesystem"
+  path: "/tmp/file-path"
+`), 0644)
+
+	t.Setenv("MANTLE_TMP_TYPE", "s3")
+	t.Setenv("MANTLE_TMP_BUCKET", "env-bucket")
+
+	cmd := newTestCommand()
+	_ = cmd.Flags().Set("config", configFile)
+
+	cfg, err := Load(cmd)
+	require.NoError(t, err)
+
+	assert.Equal(t, "s3", cfg.Tmp.Type)
+	assert.Equal(t, "env-bucket", cfg.Tmp.Bucket)
+	// path from file should still be present since env var didn't override it
+	assert.Equal(t, "/tmp/file-path", cfg.Tmp.Path)
+}
