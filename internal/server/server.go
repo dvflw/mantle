@@ -36,9 +36,10 @@ type Server struct {
 	TLSKeyFile    string
 	Logger        *slog.Logger
 
-	httpServer *http.Server
-	cron       *CronScheduler
-	webhooks   *WebhookHandler
+	httpServer   *http.Server
+	cron         *CronScheduler
+	webhooks     *WebhookHandler
+	emailPoller  *EmailTriggerPoller
 
 	worker          *engine.Worker
 	reaper          *engine.Reaper
@@ -78,6 +79,7 @@ func New(db *sql.DB, eng *engine.Engine, address string) *Server {
 	}
 	s.cron = NewCronScheduler(s)
 	s.webhooks = NewWebhookHandler(s)
+	s.emailPoller = NewEmailTriggerPoller(s)
 	return s
 }
 
@@ -282,6 +284,12 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	s.Logger.Info("cron scheduler started")
 
+	// Start email trigger poller.
+	if err := s.emailPoller.Start(ctx); err != nil {
+		return fmt.Errorf("starting email trigger poller: %w", err)
+	}
+	s.Logger.Info("email trigger poller started")
+
 	// Start HTTP server.
 	errCh := make(chan error, 1)
 	go func() {
@@ -313,6 +321,9 @@ func (s *Server) Start(ctx context.Context) error {
 
 	s.cron.Stop()
 	s.Logger.Info("cron scheduler stopped")
+
+	s.emailPoller.Stop()
+	s.Logger.Info("email trigger poller stopped")
 
 	if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("server shutdown: %w", err)

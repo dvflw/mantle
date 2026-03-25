@@ -32,6 +32,11 @@ const (
 	ActionCredentialRotated Action = "credential.rotated"
 	ActionAuthFailed        Action = "auth.failed"
 
+	// Email trigger operations.
+	ActionEmailTriggerFired          Action = "email.trigger.fired"
+	ActionEmailConnectionEstablished Action = "email.connection.established"
+	ActionEmailConnectionFailed      Action = "email.connection.failed"
+
 	// Budget operations.
 	ActionBudgetExceeded Action = "budget.exceeded"
 	ActionBudgetWarning  Action = "budget.warning"
