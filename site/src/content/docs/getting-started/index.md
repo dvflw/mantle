@@ -11,36 +11,32 @@ Mantle is a headless AI workflow automation platform. You define workflows as YA
 You need the following installed on your machine:
 
 - **Go 1.25+** -- [install instructions](https://go.dev/doc/install)
-- **Docker and Docker Compose** -- [install instructions](https://docs.docker.com/get-docker/)
-- **Make** -- included on macOS and most Linux distributions
+
+Optional (for automatic local Postgres provisioning):
+
+- **Docker** -- [install instructions](https://docs.docker.com/get-docker/)
 
 Verify your setup:
 
 ```bash
 go version    # go1.25 or later
-docker --version
 ```
 
 ## Install and Start (< 2 minutes)
 
-Clone the repository, start Postgres, build the binary, and run migrations:
+Install the binary and initialize:
 
 ```bash
-git clone https://github.com/dvflw/mantle.git && cd mantle
-docker compose up -d
-make build
-./mantle init
+go install github.com/dvflw/mantle/cmd/mantle@latest
+mantle init
 ```
 
-The `docker compose up -d` command starts Postgres 16 on `localhost:5432` with user `mantle`, password `mantle`, and database `mantle`. The `make build` command produces a single `mantle` binary in the project root. The `mantle init` command creates all required database tables.
-
-By default, Mantle uses `sslmode=prefer` in the database URL. This works for local development with the provided Docker Compose setup (it will connect without TLS if the server does not offer TLS). For production, always configure TLS explicitly with `sslmode=require` or `sslmode=verify-full`:
+`mantle init` connects to Postgres and runs migrations. If no database is reachable on localhost, it offers to start one automatically via Docker. For remote databases, set the URL before running init:
 
 ```bash
 export MANTLE_DATABASE_URL="postgres://mantle:secret@db.example.com:5432/mantle?sslmode=require"
+mantle init
 ```
-
-See [Configuration](/docs/configuration) for all database options.
 
 You should see:
 
@@ -49,11 +45,15 @@ Running migrations...
 Migrations complete.
 ```
 
-Optionally, move the binary onto your PATH:
+**Development setup:** If you want to build from source, clone the repository and use `make build` instead of `go install`:
 
 ```bash
-sudo mv mantle /usr/local/bin/
+git clone https://github.com/dvflw/mantle.git && cd mantle
+make build
+./mantle init
 ```
+
+See [Configuration](/docs/configuration) for all database options.
 
 Verify it works:
 

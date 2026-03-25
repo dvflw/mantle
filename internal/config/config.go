@@ -6,12 +6,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
-	"net"
 	"net/url"
 	"os"
-	"strings"
 	"time"
 
+	"github.com/dvflw/mantle/internal/budget"
+	"github.com/dvflw/mantle/internal/dbdefaults"
+	"github.com/dvflw/mantle/internal/netutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -142,7 +143,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	v := viper.New()
 
 	// Defaults
-	v.SetDefault("database.url", "postgres://mantle:mantle@localhost:5432/mantle?sslmode=prefer")
+	v.SetDefault("database.url", fmt.Sprintf("postgres://%s:%s@localhost:5432/%s?sslmode=prefer", dbdefaults.User, dbdefaults.Password, dbdefaults.Database))
 	v.SetDefault("database.max_open_conns", 25)
 	v.SetDefault("database.max_idle_conns", 25)
 	v.SetDefault("database.conn_max_lifetime", 5*time.Minute)
@@ -162,7 +163,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	v.SetDefault("engine.default_max_tool_calls_per_round", 10)
 
 	// Budget defaults
-	v.SetDefault("engine.budget.reset_mode", "calendar")
+	v.SetDefault("engine.budget.reset_mode", budget.ResetModeCalendar)
 	v.SetDefault("engine.budget.reset_day", 1)
 	v.SetDefault("engine.budget.global_monthly_token_limit", 0)
 	v.SetDefault("engine.budget.default_team_monthly_token_limit", 0)
@@ -258,7 +259,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 
 	// Validate budget reset_day range.
 	if cfg.Engine.Budget.ResetDay < 1 || cfg.Engine.Budget.ResetDay > 28 {
-		if cfg.Engine.Budget.ResetMode == "rolling" {
+		if cfg.Engine.Budget.ResetMode == budget.ResetModeRolling {
 			return nil, fmt.Errorf("engine.budget.reset_day must be between 1 and 28, got %d", cfg.Engine.Budget.ResetDay)
 		}
 		// For calendar mode, reset_day is ignored, so just clamp it silently.
@@ -269,9 +270,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	if dbURL := cfg.Database.URL; dbURL != "" {
 		if parsed, err := url.Parse(dbURL); err == nil {
 			host := parsed.Hostname()
-			ip := net.ParseIP(host)
-			isLoopback := host != "" && (strings.EqualFold(host, "localhost") || (ip != nil && ip.IsLoopback()))
-			if !isLoopback {
+			if !netutil.IsLoopback(host) {
 				q := parsed.Query()
 				if q.Get("sslmode") == "prefer" {
 					log.Printf("WARNING: database URL uses sslmode=prefer for non-loopback host %q; consider sslmode=require for production", host)

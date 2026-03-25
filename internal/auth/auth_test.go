@@ -10,6 +10,7 @@ import (
 
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
+	"github.com/dvflw/mantle/internal/dbdefaults"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -20,10 +21,10 @@ func setupTestStore(t *testing.T) *Store {
 	t.Helper()
 	ctx := context.Background()
 	pgContainer, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("mantle_test"),
-		postgres.WithUsername("mantle"),
-		postgres.WithPassword("mantle"),
+		dbdefaults.PostgresImage,
+		postgres.WithDatabase(dbdefaults.TestDatabase),
+		postgres.WithUsername(dbdefaults.User),
+		postgres.WithPassword(dbdefaults.Password),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).

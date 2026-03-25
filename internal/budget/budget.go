@@ -6,12 +6,18 @@ import (
 	"time"
 )
 
+// Reset mode constants for budget period calculation.
+const (
+	ResetModeCalendar = "calendar"
+	ResetModeRolling  = "rolling"
+)
+
 // CurrentPeriodStart returns the start date of the current budget period.
 // For "calendar" mode: first day of the current month.
 // For "rolling" mode: the most recent occurrence of resetDay (1-28).
 func CurrentPeriodStart(now time.Time, mode string, resetDay int) time.Time {
 	now = now.UTC()
-	if mode == "rolling" && resetDay >= 1 && resetDay <= 28 {
+	if mode == ResetModeRolling && resetDay >= 1 && resetDay <= 28 {
 		if now.Day() >= resetDay {
 			return time.Date(now.Year(), now.Month(), resetDay, 0, 0, 0, 0, time.UTC)
 		}
