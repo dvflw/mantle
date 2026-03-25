@@ -1,0 +1,37 @@
+name: error-notification
+description: >
+  Demonstrates continue_on_error: when upload fails,
+  a Slack notification fires with the error details.
+
+steps:
+  - name: fetch-data
+    action: http/request
+    params:
+      url: https://api.example.com/export
+      method: GET
+
+  - name: upload-to-s3
+    action: s3/put
+    credential: aws-prod
+    continue_on_error: true
+    timeout: "5m"
+    params:
+      bucket: my-backups
+      key: "data/export.csv"
+      content: "{{ steps['fetch-data'].output.body }}"
+
+  - name: notify-failure
+    action: slack/send
+    credential: slack-token
+    if: "steps['upload-to-s3'].error != null"
+    params:
+      channel: "#ops-alerts"
+      text: "Upload failed: {{ steps['upload-to-s3'].error }}"
+
+  - name: notify-success
+    action: slack/send
+    credential: slack-token
+    if: "steps['upload-to-s3'].error == null"
+    params:
+      channel: "#ops-alerts"
+      text: "Upload succeeded"

@@ -136,6 +136,7 @@ steps:
 | `timeout` | string | No | Maximum duration for the step. Uses Go duration format (e.g., `30s`, `5m`, `1h`). |
 | `credential` | string | No | Name of a stored credential to inject into this step. See [Secrets Guide](/docs/secrets-guide). |
 | `depends_on` | list of strings | No | Declares explicit dependencies on other steps for parallel execution. See [Parallel Execution](#parallel-execution). |
+| `continue_on_error` | boolean | No | When `true`, workflow execution continues even if this step fails after exhausting retries. Default is `false`. See [Error Handling](#error-handling). |
 
 ### Step Name Rules
 
@@ -221,6 +222,68 @@ The `timeout` field accepts Go duration strings. These consist of a number follo
 You can combine units: `1m30s` means one minute and thirty seconds.
 
 The timeout must be a positive duration. `0s` and negative values are invalid.
+
+## Error Handling
+
+By default, if a step fails after exhausting its retry policy, the workflow stops and the entire execution is marked as failed. The `continue_on_error` field changes this behavior.
+
+### continue_on_error
+
+When `continue_on_error: true`, the step's failure does not stop the workflow. Instead, the error is captured and made available to downstream steps via `steps['step-name'].error`. This allows workflows to implement custom error handling, logging, or recovery logic.
+
+```yaml
+steps:
+  - name: backup
+    action: s3/put
+    continue_on_error: true
+    timeout: "5m"
+    params:
+      bucket: my-backups
+      key: "data.csv"
+      content: "{{ steps.fetch.output.body }}"
+
+  - name: notify-on-failure
+    action: slack/send
+    credential: slack-token
+    if: "steps['backup'].error != null"
+    params:
+      channel: "#ops-alerts"
+      text: "Backup failed: {{ steps['backup'].error }}"
+```
+
+### Available Error Fields
+
+- **`steps['name'].error`** — `null` for successful or skipped steps; a string error message for failed steps. Available for all steps regardless of `continue_on_error`.
+- **`steps['name'].output`** — Partial output available from the failed step if the connector provided it. Structure depends on the connector.
+
+### Example: Fallback Pattern
+
+Use `continue_on_error` with conditional steps to implement fallback logic:
+
+```yaml
+steps:
+  - name: try-primary-api
+    action: http/request
+    continue_on_error: true
+    params:
+      method: GET
+      url: https://primary-api.example.com/data
+
+  - name: try-backup-api
+    action: http/request
+    if: "steps['try-primary-api'].error != null"
+    params:
+      method: GET
+      url: https://backup-api.example.com/data
+
+  - name: process-data
+    action: http/request
+    params:
+      method: POST
+      url: https://processor.example.com/process
+      # Use output from whichever API succeeded
+      body: "{{ steps['try-primary-api'].error == null ? steps['try-primary-api'].output.body : steps['try-backup-api'].output.body }}"
+```
 
 ## CEL Expressions
 
