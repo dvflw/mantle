@@ -140,9 +140,10 @@ func TestEmailReceive_FetchesUnseenMessages(t *testing.T) {
 		t.Fatalf("failed to send test email: %v", err)
 	}
 
-	// Fetch via the connector.
+	// Fetch via the connector — retry to allow GreenMail time to propagate
+	// the SMTP delivery to the IMAP store.
 	c := &EmailReceiveConnector{}
-	result, err := c.Execute(context.Background(), map[string]any{
+	params := map[string]any{
 		"folder": "INBOX",
 		"filter": "unseen",
 		"limit":  10,
@@ -153,9 +154,20 @@ func TestEmailReceive_FetchesUnseenMessages(t *testing.T) {
 			"password": password,
 			"use_tls":  "false",
 		},
-	})
+	}
+
+	var result map[string]any
+	var err error
+	for attempt := 1; attempt <= 5; attempt++ {
+		result, err = c.Execute(context.Background(), params)
+		if err == nil {
+			break
+		}
+		t.Logf("attempt %d: Execute() error: %v (retrying in 2s)", attempt, err)
+		time.Sleep(2 * time.Second)
+	}
 	if err != nil {
-		t.Fatalf("Execute() error: %v", err)
+		t.Fatalf("Execute() error after retries: %v", err)
 	}
 
 	count, ok := result["message_count"].(int)
