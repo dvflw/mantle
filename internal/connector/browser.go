@@ -111,7 +111,7 @@ func (c *BrowserRunConnector) Execute(ctx context.Context, params map[string]any
 		// The official Playwright Docker image ships browsers and system deps but
 		// NOT the npm package. Install it (pinned to match the image version) then
 		// run the wrapper from stdin.
-		containerCmd = []string{"sh", "-c", "npm install --no-save --silent playwright@" + playwrightVersion + " 2>/dev/null && node"}
+		containerCmd = []string{"sh", "-c", "npm install --no-save --silent playwright@" + playwrightVersion + " && node"}
 	case "typescript":
 		containerImage = playwrightNodeImage
 		wrapperScript = buildJSWrapper(script)
@@ -122,7 +122,7 @@ func (c *BrowserRunConnector) Execute(ctx context.Context, params map[string]any
 		wrapperScript = buildPythonWrapper(script)
 		// The official Playwright Python image ships browsers and system deps but
 		// NOT the pip package. Pin to match the image version.
-		containerCmd = []string{"sh", "-c", "pip install --quiet playwright==" + playwrightVersion + " 2>/dev/null && python3 -"}
+		containerCmd = []string{"sh", "-c", "pip install --quiet playwright==" + playwrightVersion + " && python3 -"}
 	}
 
 	// --- build docker/run params ---
