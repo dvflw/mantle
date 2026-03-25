@@ -239,3 +239,48 @@ func TestFunc_Obj(t *testing.T) {
 		})
 	}
 }
+
+// Task 6: default() and flatten()
+
+func TestFunc_Default(t *testing.T) {
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+	tests := []struct {
+		name string
+		expr string
+		want any
+	}{
+		{"value exists returns value", `default("hello", "fallback")`, "hello"},
+		{"empty string returns empty string", `default("", "fallback")`, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := eval.Eval(tt.expr, newTestContext())
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, result)
+		})
+	}
+}
+
+func TestFunc_Flatten(t *testing.T) {
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+	tests := []struct {
+		name string
+		expr string
+		want any
+	}{
+		{
+			name: "nested lists → flat list",
+			expr: `flatten([[1, 2], [3, 4], [5]])`,
+			want: []any{int64(1), int64(2), int64(3), int64(4), int64(5)},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := eval.Eval(tt.expr, newTestContext())
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, result)
+		})
+	}
+}

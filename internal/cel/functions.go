@@ -8,6 +8,7 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
+	"github.com/google/cel-go/common/types/traits"
 )
 
 // customFunctions returns all custom CEL function options for the Mantle environment.
@@ -149,6 +150,41 @@ type collectionLib struct{}
 
 func (l *collectionLib) CompileOptions() []cel.EnvOption {
 	return []cel.EnvOption{
+		cel.Function("default",
+			cel.Overload("default_any_any",
+				[]*cel.Type{cel.DynType, cel.DynType},
+				cel.DynType,
+				cel.BinaryBinding(func(lhs, rhs ref.Val) ref.Val {
+					if types.IsError(lhs) || types.IsUnknown(lhs) {
+						return rhs
+					}
+					return lhs
+				}),
+			),
+		),
+		cel.Function("flatten",
+			cel.Overload("flatten_list",
+				[]*cel.Type{cel.ListType(cel.DynType)},
+				cel.ListType(cel.DynType),
+				cel.UnaryBinding(func(val ref.Val) ref.Val {
+					list := val.(traits.Lister)
+					var result []any
+					it := list.Iterator()
+					for it.HasNext() == types.True {
+						item := it.Next()
+						if sub, ok := item.(traits.Lister); ok {
+							subIt := sub.Iterator()
+							for subIt.HasNext() == types.True {
+								result = append(result, refToNative(subIt.Next()))
+							}
+						} else {
+							result = append(result, refToNative(item))
+						}
+					}
+					return types.DefaultTypeAdapter.NativeToValue(result)
+				}),
+			),
+		),
 		// obj() — register fixed-arity overloads for 1–5 key-value pairs.
 		// CEL does not support true variadic functions without macros, so we register
 		// overloads for each supported arity. All overloads share the same binding
