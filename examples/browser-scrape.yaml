@@ -1,0 +1,51 @@
+name: browser-scrape-portal
+description: >
+  Scrape data from a web portal that requires login,
+  take a screenshot, and post results to Slack.
+
+inputs:
+  username:
+    type: string
+    description: Portal username
+  password:
+    type: string
+    description: Portal password
+
+steps:
+  - name: scrape-data
+    action: browser/run
+    timeout: "2m"
+    params:
+      language: javascript
+      output_format: json
+      env:
+        PORTAL_USER: "{{ inputs.username }}"
+        PORTAL_PASS: "{{ inputs.password }}"
+      script: |
+        const page = await browser.newPage();
+        await page.goto('https://portal.example.com/login');
+        await page.fill('#username', process.env.PORTAL_USER);
+        await page.fill('#password', process.env.PORTAL_PASS);
+        await page.click('#login-button');
+        await page.waitForSelector('.dashboard');
+
+        const data = await page.evaluate(() => {
+          const rows = document.querySelectorAll('.data-table tr');
+          return Array.from(rows).map(row => ({
+            name: row.querySelector('.name')?.textContent,
+            value: row.querySelector('.value')?.textContent,
+          }));
+        });
+
+        await page.screenshot({ path: '/mantle/artifacts/dashboard.png' });
+        console.log(JSON.stringify({ records: data, count: data.length }));
+    artifacts:
+      - path: dashboard.png
+        name: dashboard-screenshot
+
+  - name: notify
+    action: slack/send
+    credential: slack-token
+    params:
+      channel: "#data-updates"
+      text: "Scraped {{ steps['scrape-data'].output.json.count }} records from portal"
