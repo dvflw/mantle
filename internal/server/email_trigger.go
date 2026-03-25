@@ -309,10 +309,21 @@ func (e *EmailTriggerPoller) poll(ctx context.Context, t TriggerRecord, client *
 		return err
 	}
 
+	const maxEmailsPerPoll = 200
+
 	uids := searchData.AllUIDs()
 	if len(uids) == 0 {
 		metrics.EmailPollDuration.WithLabelValues(t.WorkflowName, folder).Observe(time.Since(start).Seconds())
 		return nil
+	}
+
+	// Cap to avoid memory exhaustion on large mailboxes.
+	if len(uids) > maxEmailsPerPoll {
+		e.server.Logger.Warn("email poller: truncating UID list",
+			"trigger_id", t.ID,
+			"total_uids", len(uids),
+			"processing", maxEmailsPerPoll)
+		uids = uids[:maxEmailsPerPoll]
 	}
 
 	// Fetch envelope + body text for each message.
@@ -409,7 +420,7 @@ func (e *EmailTriggerPoller) fireWorkflow(ctx context.Context, t TriggerRecord, 
 		"uid", uid)
 
 	if e.server.Auditor != nil {
-		_ = e.server.Auditor.Emit(ctx, audit.Event{
+		_ = e.server.Auditor.Emit(teamCtx, audit.Event{
 			Actor:  "email-poller",
 			Action: audit.ActionEmailTriggerFired,
 			Resource: audit.Resource{
