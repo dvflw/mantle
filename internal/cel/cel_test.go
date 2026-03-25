@@ -317,3 +317,40 @@ func TestEnvVars_PrefixStripping(t *testing.T) {
 		t.Error("envVars() should not contain DATABASE_URL (MANTLE_ prefix without ENV_)")
 	}
 }
+
+func TestEval_ArtifactsAccess(t *testing.T) {
+	eval, err := NewEvaluator()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := &Context{
+		Steps:  map[string]map[string]any{},
+		Inputs: map[string]any{},
+		Artifacts: map[string]map[string]any{
+			"backup-archive": {
+				"name": "backup-archive",
+				"url":  "s3://bucket/path/backup.tar.gz",
+				"size": int64(1048576),
+			},
+		},
+	}
+
+	// Test accessing artifact URL
+	result, err := eval.Eval("artifacts['backup-archive'].url", ctx)
+	if err != nil {
+		t.Fatalf("Eval url: %v", err)
+	}
+	if result != "s3://bucket/path/backup.tar.gz" {
+		t.Errorf("url result = %v, want s3 URL", result)
+	}
+
+	// Test accessing artifact size
+	result, err = eval.Eval("artifacts['backup-archive'].size", ctx)
+	if err != nil {
+		t.Fatalf("Eval size: %v", err)
+	}
+	if result != int64(1048576) {
+		t.Errorf("size result = %v, want 1048576", result)
+	}
+}
