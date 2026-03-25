@@ -595,3 +595,29 @@ steps:
 		t.Errorf("unexpected artifact validation errors: %v", artifactErrs)
 	}
 }
+
+func TestValidate_ContinueOnError(t *testing.T) {
+	result := mustParse(t, `
+name: test-continue
+steps:
+  - name: risky-step
+    action: http/request
+    continue_on_error: true
+    params:
+      url: https://example.com
+  - name: notify
+    action: slack/send
+    if: "steps['risky-step'].error != null"
+    params:
+      channel: "#alerts"
+      text: "Step failed"
+`)
+	errs := Validate(result)
+	assertNoErrors(t, errs)
+	if result.Workflow.Steps[0].ContinueOnError != true {
+		t.Errorf("expected ContinueOnError to be true for steps[0], got %v", result.Workflow.Steps[0].ContinueOnError)
+	}
+	if result.Workflow.Steps[1].ContinueOnError != false {
+		t.Errorf("expected ContinueOnError to be false for steps[1], got %v", result.Workflow.Steps[1].ContinueOnError)
+	}
+}

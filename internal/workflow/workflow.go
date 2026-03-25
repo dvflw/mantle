@@ -40,6 +40,7 @@ type Step struct {
 	DependsOn          []string       `yaml:"depends_on"`
 	RegistryCredential string         `yaml:"registry_credential"`
 	Artifacts          []ArtifactDecl `yaml:"artifacts"`
+	ContinueOnError    bool           `yaml:"continue_on_error"`
 }
 
 // FindStep returns a pointer to the step with the given name, or nil if not found.
