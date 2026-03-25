@@ -1,6 +1,7 @@
 package cel
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ func customFunctions() []cel.EnvOption {
 		stringFunctions(),
 		typeFunctions(),
 		collectionFunctions(),
+		jsonFunctions(),
 	}
 }
 
@@ -237,4 +239,49 @@ func objBinding(args ...ref.Val) ref.Val {
 		m[string(key)] = refToNative(args[i+1])
 	}
 	return types.DefaultTypeAdapter.NativeToValue(m)
+}
+
+// ── JSON functions ────────────────────────────────────────────────────────────
+
+func jsonFunctions() cel.EnvOption {
+	return cel.Lib(&jsonLib{})
+}
+
+type jsonLib struct{}
+
+func (l *jsonLib) CompileOptions() []cel.EnvOption {
+	return []cel.EnvOption{
+		cel.Function("jsonEncode",
+			cel.Overload("jsonEncode_any",
+				[]*cel.Type{cel.DynType},
+				cel.StringType,
+				cel.UnaryBinding(func(val ref.Val) ref.Val {
+					native := refToNative(val)
+					b, err := json.Marshal(native)
+					if err != nil {
+						return types.NewErr("jsonEncode: %v", err)
+					}
+					return types.String(string(b))
+				}),
+			),
+		),
+		cel.Function("jsonDecode",
+			cel.Overload("jsonDecode_string",
+				[]*cel.Type{cel.StringType},
+				cel.DynType,
+				cel.UnaryBinding(func(val ref.Val) ref.Val {
+					s := string(val.(types.String))
+					var result any
+					if err := json.Unmarshal([]byte(s), &result); err != nil {
+						return types.NewErr("jsonDecode: %v", err)
+					}
+					return types.DefaultTypeAdapter.NativeToValue(result)
+				}),
+			),
+		),
+	}
+}
+
+func (l *jsonLib) ProgramOptions() []cel.ProgramOption {
+	return nil
 }

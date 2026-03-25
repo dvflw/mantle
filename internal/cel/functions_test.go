@@ -1,6 +1,7 @@
 package cel
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -281,6 +282,71 @@ func TestFunc_Flatten(t *testing.T) {
 			result, err := eval.Eval(tt.expr, newTestContext())
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, result)
+		})
+	}
+}
+
+// Task 7: jsonEncode and jsonDecode
+
+func TestFunc_JsonEncode(t *testing.T) {
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+
+	result, err := eval.Eval(`jsonEncode(obj("name", "alice", "score", 99))`, newTestContext())
+	require.NoError(t, err)
+
+	s, ok := result.(string)
+	require.True(t, ok, "expected string result, got %T", result)
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(s), &parsed))
+	assert.Equal(t, "alice", parsed["name"])
+	assert.Equal(t, float64(99), parsed["score"])
+}
+
+func TestFunc_JsonDecode(t *testing.T) {
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+	tests := []struct {
+		name    string
+		expr    string
+		wantErr bool
+		check   func(t *testing.T, result any)
+	}{
+		{
+			name: "object",
+			expr: `jsonDecode("{\"name\":\"bob\",\"age\":25}")`,
+			check: func(t *testing.T, result any) {
+				m, ok := result.(map[string]any)
+				require.True(t, ok)
+				assert.Equal(t, "bob", m["name"])
+				assert.Equal(t, float64(25), m["age"])
+			},
+		},
+		{
+			name: "array",
+			expr: `jsonDecode("[1,2,3]")`,
+			check: func(t *testing.T, result any) {
+				assert.NotNil(t, result)
+			},
+		},
+		{
+			name:    "invalid",
+			expr:    `jsonDecode("not json")`,
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := eval.Eval(tt.expr, newTestContext())
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				if tt.check != nil {
+					tt.check(t, result)
+				}
+			}
 		})
 	}
 }
