@@ -91,12 +91,7 @@ func (e *EmailTriggerPoller) Reload(ctx context.Context) error {
 
 	// Start pollers for newly added triggers.
 	for _, t := range triggers {
-		e.mu.Lock()
-		_, running := e.pollers[t.ID]
-		e.mu.Unlock()
-		if !running {
-			e.startPoller(ctx, t)
-		}
+		e.startPollerIfNotRunning(ctx, t)
 	}
 
 	return nil
@@ -112,10 +107,30 @@ func (e *EmailTriggerPoller) Stop() {
 
 // startPoller starts a single goroutine for the given trigger, subject to the
 // maxConnections limit. Excess triggers are logged and skipped.
-func (e *EmailTriggerPoller) startPoller(ctx context.Context, t TriggerRecord) {
+// startPollerIfNotRunning acquires the lock, checks if the trigger is already
+// running, and starts it if not. The check-and-start is atomic under the lock
+// to prevent duplicate pollers from concurrent Reload calls.
+func (e *EmailTriggerPoller) startPollerIfNotRunning(ctx context.Context, t TriggerRecord) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	if _, running := e.pollers[t.ID]; running {
+		return
+	}
+	e.startPollerLocked(ctx, t)
+}
+
+// startPoller acquires the lock and starts a poller. Used during Start() where
+// no existence check is needed (fresh startup).
+func (e *EmailTriggerPoller) startPoller(ctx context.Context, t TriggerRecord) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.startPollerLocked(ctx, t)
+}
+
+// startPollerLocked starts a single goroutine for the given trigger. Must be
+// called with e.mu held. Excess triggers beyond maxConnections are skipped.
+func (e *EmailTriggerPoller) startPollerLocked(ctx context.Context, t TriggerRecord) {
 	if len(e.pollers) >= e.maxConnections {
 		e.server.Logger.Warn("email poller: maxConnections reached, skipping trigger",
 			"trigger_id", t.ID,
