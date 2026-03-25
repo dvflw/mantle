@@ -505,33 +505,55 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 
 	// Persist declared artifacts to tmp storage.
 	if lastErr == nil && len(step.Artifacts) > 0 && e.TmpStorage != nil && e.ArtifactStore != nil && artifactsDir != "" {
+		type persistedArtifact struct {
+			id  string
+			url string
+		}
+		var persisted []persistedArtifact
+
+		rollback := func() {
+			for _, p := range persisted {
+				if delErr := e.ArtifactStore.DeleteByID(ctx, p.id); delErr != nil {
+					log.Printf("warning: rollback: failed to delete artifact metadata %q: %v", p.id, delErr)
+				}
+				if delErr := e.TmpStorage.Delete(ctx, p.url); delErr != nil {
+					log.Printf("warning: rollback: failed to delete artifact blob %q: %v", p.url, delErr)
+				}
+			}
+		}
+
 		for _, artDecl := range step.Artifacts {
 			relPath := filepath.Base(artDecl.Path)
 			localPath := filepath.Join(artifactsDir, relPath)
 			info, statErr := os.Stat(localPath)
 			if statErr != nil {
+				rollback()
 				return nil, fmt.Errorf("declared artifact %q not found at %q: %v", artDecl.Name, localPath, statErr)
 			}
 
 			key := fmt.Sprintf("%s/%s/%s/%s", workflowName, execID, artDecl.Name, relPath)
 			url, putErr := e.TmpStorage.Put(ctx, key, localPath)
 			if putErr != nil {
+				rollback()
 				return nil, fmt.Errorf("persisting artifact %q: %v", artDecl.Name, putErr)
 			}
 
-			if createErr := e.ArtifactStore.Create(ctx, &artifact.Artifact{
+			art := &artifact.Artifact{
 				ExecutionID: execID,
 				StepName:    step.Name,
 				Name:        artDecl.Name,
 				URL:         url,
 				Size:        info.Size(),
-			}); createErr != nil {
-				// Attempt to clean up the orphaned blob.
-				if delErr := e.TmpStorage.DeleteByPrefix(ctx, key); delErr != nil {
-					log.Printf("warning: failed to clean up orphaned artifact blob %q: %v", key, delErr)
+			}
+			if createErr := e.ArtifactStore.Create(ctx, art); createErr != nil {
+				if delErr := e.TmpStorage.Delete(ctx, url); delErr != nil {
+					log.Printf("warning: failed to clean up orphaned artifact blob %q: %v", url, delErr)
 				}
+				rollback()
 				return nil, fmt.Errorf("recording artifact %q: %v", artDecl.Name, createErr)
 			}
+
+			persisted = append(persisted, persistedArtifact{id: art.ID, url: url})
 
 			// Emit audit event for artifact persistence.
 			if err := e.Auditor.Emit(ctx, audit.Event{

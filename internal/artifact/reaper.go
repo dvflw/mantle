@@ -39,7 +39,7 @@ func (r *Reaper) Sweep(ctx context.Context) (int, error) {
 	cleaned := 0
 	for _, a := range expired {
 		// Delete file from tmp storage.
-		if delErr := r.TmpStorage.DeleteByPrefix(ctx, a.URL); delErr != nil {
+		if delErr := r.TmpStorage.Delete(ctx, a.URL); delErr != nil {
 			logger.Error("failed to delete artifact file",
 				"artifact", a.Name, "url", a.URL, "error", delErr)
 			continue // skip metadata deletion if file delete failed

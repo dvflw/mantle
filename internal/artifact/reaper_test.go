@@ -75,7 +75,7 @@ func TestReaper_SkipsWhenRetentionZero(t *testing.T) {
 	fs := &FilesystemTmpStorage{BasePath: dir}
 
 	reaper := &Reaper{
-		Store:      &Store{}, // won't be called
+		Store:      &Store{}, // safe: Sweep returns early when Retention <= 0, before accessing Store.DB
 		TmpStorage: fs,
 		Retention:  0,
 	}

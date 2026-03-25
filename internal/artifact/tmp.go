@@ -15,6 +15,9 @@ type TmpStorage interface {
 	// Returns the URL or path where the file can be accessed.
 	Put(ctx context.Context, key string, localPath string) (string, error)
 
+	// Delete removes a single artifact by the URL/path returned from Put.
+	Delete(ctx context.Context, url string) error
+
 	// DeleteByPrefix removes all files under the given key prefix.
 	DeleteByPrefix(ctx context.Context, prefix string) error
 }
@@ -58,6 +61,8 @@ func (fs *FilesystemTmpStorage) Put(ctx context.Context, key string, localPath s
 	defer dst.Close()
 
 	if _, err := io.Copy(dst, src); err != nil {
+		dst.Close()
+		os.Remove(destPath)
 		return "", fmt.Errorf("copying artifact: %w", err)
 	}
 
@@ -80,4 +85,21 @@ func (fs *FilesystemTmpStorage) DeleteByPrefix(ctx context.Context, prefix strin
 		return fmt.Errorf("prefix escapes base path")
 	}
 	return os.RemoveAll(target)
+}
+
+// Delete removes a single artifact file by its path (as returned by Put).
+func (fs *FilesystemTmpStorage) Delete(ctx context.Context, url string) error {
+	absBase, err := filepath.Abs(fs.BasePath)
+	if err != nil {
+		return fmt.Errorf("resolving base path: %w", err)
+	}
+	absURL, err := filepath.Abs(url)
+	if err != nil {
+		return fmt.Errorf("resolving artifact path: %w", err)
+	}
+	rel, err := filepath.Rel(absBase, absURL)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return fmt.Errorf("artifact path escapes base path")
+	}
+	return os.Remove(url)
 }

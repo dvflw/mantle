@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
@@ -142,10 +143,9 @@ func parseMemoryString(s string) (int64, error) {
 		multiplier = 1024
 		s = s[:len(s)-1]
 	}
-	var n int64
-	_, err := fmt.Sscanf(s, "%d", &n)
+	n, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("invalid memory value %q", s)
+		return 0, fmt.Errorf("invalid memory value %q: %w", s, err)
 	}
 	if n < 0 {
 		return 0, fmt.Errorf("negative memory value %q", s)
@@ -188,11 +188,12 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 	}
 
 	// Build client options from credential.
+	var dockerHost string
 	clientOpts := []client.Opt{client.WithAPIVersionNegotiation()}
 	if cred, ok := params["_credential"].(map[string]string); ok {
-		delete(params, "_credential")
-		if host := cred["host"]; host != "" {
-			clientOpts = append(clientOpts, client.WithHost(host))
+		dockerHost = cred["host"]
+		if dockerHost != "" {
+			clientOpts = append(clientOpts, client.WithHost(dockerHost))
 		}
 		// TLS configuration.
 		if cred["ca_cert"] != "" && cred["client_cert"] != "" && cred["client_key"] != "" {
@@ -216,7 +217,6 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 			clientOpts = append(clientOpts, client.WithTLSClientConfig(caPath, certPath, keyPath))
 		}
 	} else {
-		delete(params, "_credential")
 		clientOpts = append(clientOpts, client.FromEnv)
 	}
 
@@ -229,15 +229,12 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 	// Build registry auth for private image pulls.
 	var registryAuth string
 	if regCred, ok := params["_registry_credential"].(map[string]string); ok {
-		delete(params, "_registry_credential")
 		authConfig := map[string]string{
 			"username": regCred["username"],
 			"password": regCred["password"],
 		}
 		authJSON, _ := json.Marshal(authConfig)
 		registryAuth = base64.URLEncoding.EncodeToString(authJSON)
-	} else {
-		delete(params, "_registry_credential")
 	}
 
 	// Pull image.
@@ -280,6 +277,10 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 
 	// Artifacts dir mount (from context).
 	if artDir := artifact.ArtifactsDirFromContext(ctx); artDir != "" {
+		// Bind mounts only work with local Docker daemons.
+		if dockerHost != "" && !strings.HasPrefix(dockerHost, "unix://") {
+			return nil, fmt.Errorf("docker/run: artifact mounts are not supported with remote Docker daemons (host: %s); use s3/put inside the container instead", dockerHost)
+		}
 		hostCfg.Mounts = append(hostCfg.Mounts, mount.Mount{
 			Type:   mount.TypeBind,
 			Source: artDir,
