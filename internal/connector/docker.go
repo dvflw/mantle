@@ -292,12 +292,11 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 	// Handle context cancellation → container stop.
 	doneCh := make(chan struct{})
 	defer close(doneCh)
-	go func() {
+	go func() { // #nosec G118 -- intentional context.Background: parent ctx is cancelled, need a live context to stop the container
 		select {
 		case <-ctx.Done():
 			gracePeriod := 10
-			// Use Background because the parent ctx is already cancelled — we need a live context to stop the container.
-			cli.ContainerStop(context.Background(), containerID, container.StopOptions{ // #nosec G118 -- intentional: parent ctx is cancelled
+			cli.ContainerStop(context.Background(), containerID, container.StopOptions{
 				Timeout: &gracePeriod,
 			})
 		case <-doneCh:
