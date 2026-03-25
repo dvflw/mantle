@@ -256,6 +256,372 @@ The data flows like this:
 
 Each step can only reference outputs from steps that have completed before it runs. The engine detects these references automatically and treats them as implicit dependencies. When combined with explicit `depends_on` declarations, this enables parallel execution — see [Execution Model](/docs/concepts/execution).
 
+## List Macros
+
+CEL provides built-in macros for working with lists. These operate on any list value — step output arrays, input arrays, or lists constructed inline.
+
+### `.map(item, expr)`
+
+Transforms each element in a list by evaluating `expr` for every `item`.
+
+```yaml
+steps:
+  - name: extract-titles
+    action: http/request
+    params:
+      method: POST
+      url: "https://api.example.com/batch"
+      body:
+        # Produce a list of title strings from a list of article objects
+        titles: "{{ steps.fetch.output.json.articles.map(a, a.title) }}"
+```
+
+### `.filter(item, expr)`
+
+Returns a new list containing only the elements for which `expr` is true.
+
+```yaml
+steps:
+  - name: notify-failures
+    action: http/request
+    if: "size(steps.results.output.json.jobs.filter(j, j.status == 'failed')) > 0"
+    params:
+      method: POST
+      url: "https://hooks.example.com/alert"
+      body:
+        failed_jobs: "{{ steps.results.output.json.jobs.filter(j, j.status == 'failed') }}"
+```
+
+### `.exists(item, expr)`
+
+Returns `true` if at least one element satisfies `expr`.
+
+```yaml
+steps:
+  - name: escalate
+    action: http/request
+    # Run this step only if any result has a critical severity
+    if: "steps.scan.output.json.findings.exists(f, f.severity == 'critical')"
+    params:
+      method: POST
+      url: "https://api.example.com/escalate"
+```
+
+### `.all(item, expr)`
+
+Returns `true` if every element satisfies `expr`.
+
+```yaml
+steps:
+  - name: mark-complete
+    action: http/request
+    # Only mark complete when every task is done
+    if: "steps.fetch.output.json.tasks.all(t, t.done == true)"
+    params:
+      method: PATCH
+      url: "https://api.example.com/projects/{{ inputs.project_id }}"
+      body:
+        status: "complete"
+```
+
+### `.exists_one(item, expr)`
+
+Returns `true` if exactly one element satisfies `expr`.
+
+```yaml
+steps:
+  - name: assign-owner
+    action: http/request
+    # Assign only when there is exactly one eligible owner
+    if: "steps.fetch.output.json.members.exists_one(m, m.role == 'lead')"
+    params:
+      method: POST
+      url: "https://api.example.com/assignments"
+```
+
+### Chaining `.filter()` and `.map()`
+
+Filter and map can be chained to first narrow a list and then reshape it.
+
+```yaml
+steps:
+  - name: summarize-errors
+    action: ai/completion
+    params:
+      provider: openai
+      model: gpt-4o
+      prompt: >
+        Summarize these error messages:
+        {{ steps.logs.output.json.entries
+             .filter(e, e.level == 'error')
+             .map(e, e.message) }}
+```
+
+## String Functions
+
+Mantle registers the following string functions on top of CEL's built-in string methods.
+
+### `toLower()`
+
+Converts a string to lowercase.
+
+```yaml
+steps:
+  - name: normalize-tag
+    action: http/request
+    params:
+      method: POST
+      url: "https://api.example.com/tags"
+      body:
+        tag: "{{ steps.input.output.json.label.toLower() }}"
+```
+
+### `toUpper()`
+
+Converts a string to uppercase.
+
+```yaml
+steps:
+  - name: set-env-key
+    action: http/request
+    params:
+      method: POST
+      url: "https://api.example.com/config"
+      body:
+        key: "{{ inputs.variable_name.toUpper() }}"
+```
+
+### `trim()`
+
+Removes leading and trailing whitespace.
+
+```yaml
+steps:
+  - name: clean-input
+    action: http/request
+    params:
+      method: POST
+      url: "https://api.example.com/search"
+      body:
+        query: "{{ inputs.search_term.trim() }}"
+```
+
+### `replace(old, new)`
+
+Replaces all occurrences of `old` with `new`.
+
+```yaml
+steps:
+  - name: slugify
+    action: http/request
+    params:
+      method: POST
+      url: "https://api.example.com/pages"
+      body:
+        slug: "{{ inputs.title.toLower().replace(' ', '-') }}"
+```
+
+### `split(delimiter)`
+
+Splits a string into a list of strings at each occurrence of `delimiter`.
+
+```yaml
+steps:
+  - name: process-tags
+    action: http/request
+    params:
+      method: POST
+      url: "https://api.example.com/items"
+      body:
+        # Convert "a,b,c" to ["a", "b", "c"]
+        tags: "{{ inputs.tag_string.split(',') }}"
+```
+
+## Type Coercion
+
+These functions parse and convert values between types. They produce an evaluation error on invalid input — use `default()` to handle failure gracefully.
+
+### `parseInt(string)`
+
+Parses a decimal string to an integer. Errors if the string is not a valid integer.
+
+```yaml
+steps:
+  - name: paginate
+    action: http/request
+    params:
+      method: GET
+      url: "https://api.example.com/results"
+      body:
+        page: "{{ parseInt(inputs.page_string) }}"
+```
+
+### `parseFloat(string)`
+
+Parses a string to a floating-point number. Errors if the string is not a valid float.
+
+```yaml
+steps:
+  - name: apply-threshold
+    action: http/request
+    if: "parseFloat(steps.score.output.body) > 0.75"
+    params:
+      method: POST
+      url: "https://api.example.com/approve"
+```
+
+### `toString(value)`
+
+Converts any value to its string representation.
+
+```yaml
+steps:
+  - name: build-message
+    action: http/request
+    params:
+      method: POST
+      url: "https://hooks.example.com/notify"
+      body:
+        text: "Processed {{ toString(steps.count.output.json.total) }} records."
+```
+
+## Object Construction
+
+### `obj(key, value, ...)`
+
+Builds a map from alternating key-value arguments. Supports up to 5 key-value pairs (10 arguments) due to cel-go's fixed-arity overload requirement — CEL does not support true variadic functions without macros. For maps with more than 5 pairs, use nested `obj()` calls or construct the value with `jsonDecode`.
+
+```yaml
+steps:
+  - name: create-record
+    action: http/request
+    params:
+      method: POST
+      url: "https://api.example.com/records"
+      body:
+        record: "{{ obj('name', inputs.name, 'status', 'pending', 'source', 'mantle') }}"
+```
+
+`obj()` is particularly useful combined with `.map()` to reshape a list of objects into a different structure:
+
+```yaml
+steps:
+  - name: reformat-users
+    action: http/request
+    params:
+      method: POST
+      url: "https://api.example.com/import"
+      body:
+        # Reshape each user to only include id and display_name
+        users: >
+          {{ steps.fetch.output.json.users.map(u,
+               obj('id', u.id, 'display_name', u.first_name + ' ' + u.last_name)) }}
+```
+
+## Utility Functions
+
+### `default(value, fallback)`
+
+Returns `value` if it is non-null and does not produce an error; returns `fallback` otherwise. Use this to handle optional fields without a `has()` guard.
+
+```yaml
+steps:
+  - name: notify
+    action: http/request
+    params:
+      method: POST
+      url: "https://hooks.example.com/notify"
+      body:
+        # Use a default region when the field is absent from the response
+        region: "{{ default(steps.fetch.output.json.region, 'us-east-1') }}"
+```
+
+### `flatten(list)`
+
+Flattens one level of nesting from a list of lists.
+
+```yaml
+steps:
+  - name: collect-all-items
+    action: http/request
+    params:
+      method: POST
+      url: "https://api.example.com/process"
+      body:
+        # Each page returns a list; flatten to get a single list of items
+        items: "{{ flatten(steps.paginate.output.json.pages.map(p, p.items)) }}"
+```
+
+## JSON Functions
+
+### `jsonEncode(value)`
+
+Serializes any value to a JSON string. Useful when a downstream API expects a JSON-encoded string field rather than a structured object.
+
+```yaml
+steps:
+  - name: store-metadata
+    action: http/request
+    params:
+      method: PUT
+      url: "https://api.example.com/records/{{ inputs.id }}"
+      body:
+        # The target API expects metadata as a JSON string, not an object
+        metadata_json: "{{ jsonEncode(steps.fetch.output.json.metadata) }}"
+```
+
+### `jsonDecode(string)`
+
+Parses a JSON string to a structured value. Use this when a step returns a JSON-encoded string inside a field rather than a parsed object.
+
+```yaml
+steps:
+  - name: parse-config
+    action: http/request
+    params:
+      method: POST
+      url: "https://api.example.com/apply"
+      body:
+        # steps.load.output.json.config_str is a JSON string — decode it first
+        settings: "{{ jsonDecode(steps.load.output.json.config_str).settings }}"
+```
+
+## Date/Time Functions
+
+### `parseTimestamp(string)`
+
+Parses an ISO 8601 / RFC 3339 string to a CEL timestamp value. Named `parseTimestamp` rather than `timestamp` to avoid collision with CEL's built-in `timestamp()` constructor.
+
+```yaml
+steps:
+  - name: check-expiry
+    action: http/request
+    if: "parseTimestamp(steps.fetch.output.json.expires_at) < parseTimestamp(\"2026-12-31T00:00:00Z\")"
+    params:
+      method: POST
+      url: "https://api.example.com/renew"
+      body:
+        resource_id: "{{ inputs.resource_id }}"
+```
+
+### `formatTimestamp(timestamp, layout)`
+
+Formats a timestamp value to a string using a [Go time layout](https://pkg.go.dev/time#Layout). The reference time for Go layouts is `Mon Jan 2 15:04:05 MST 2006`.
+
+```yaml
+steps:
+  - name: create-report
+    action: http/request
+    params:
+      method: POST
+      url: "https://api.example.com/reports"
+      body:
+        # Format as "2006-01-02" (Go layout for YYYY-MM-DD)
+        report_date: "{{ formatTimestamp(parseTimestamp(steps.fetch.output.json.created_at), '2006-01-02') }}"
+        # Format with time for a human-readable label
+        label: "Report for {{ formatTimestamp(parseTimestamp(steps.fetch.output.json.created_at), 'Jan 2, 2006') }}"
+```
+
 ## Limitations
 
 - **`env.*` is restricted** — only environment variables with the `MANTLE_ENV_` prefix are available. This prevents accidental exposure of system secrets through CEL.

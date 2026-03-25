@@ -28,12 +28,15 @@ type Evaluator struct {
 
 // NewEvaluator creates a CEL evaluator with the standard Mantle expression environment.
 func NewEvaluator() (*Evaluator, error) {
-	env, err := cel.NewEnv(
+	opts := []cel.EnvOption{
 		cel.Variable("steps", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("inputs", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("env", cel.MapType(cel.StringType, cel.StringType)),
 		cel.Variable("trigger", cel.MapType(cel.StringType, cel.DynType)),
-	)
+	}
+	opts = append(opts, customFunctions()...)
+
+	env, err := cel.NewEnv(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("creating CEL environment: %w", err)
 	}

@@ -1,0 +1,65 @@
+name: ai-data-enrichment
+description: >
+  Fetches support tickets, uses an AI model to classify priority and
+  extract key entities, then stores the enriched data. Demonstrates
+  using AI for transforms that require interpretation rather than
+  simple structural mapping.
+
+inputs:
+  ticket_api_url:
+    type: string
+    description: URL to fetch support tickets from
+
+steps:
+  - name: fetch-tickets
+    action: http/request
+    timeout: "15s"
+    params:
+      method: GET
+      url: "{{ inputs.ticket_api_url }}"
+      headers:
+        Accept: "application/json"
+
+  - name: classify
+    action: ai/completion
+    credential: openai
+    timeout: "60s"
+    params:
+      model: gpt-4o
+      system_prompt: >
+        You are a support ticket classifier. Given a ticket, determine
+        the priority (critical, high, medium, low), category, and extract
+        any mentioned product names or error codes.
+      prompt: "Classify this ticket: {{ steps['fetch-tickets'].output.body }}"
+      output_schema:
+        type: object
+        properties:
+          priority:
+            type: string
+            enum: [critical, high, medium, low]
+          category:
+            type: string
+          products:
+            type: array
+            items:
+              type: string
+          error_codes:
+            type: array
+            items:
+              type: string
+        required: [priority, category, products, error_codes]
+        additionalProperties: false
+
+  - name: store-enriched
+    action: postgres/query
+    credential: app-db
+    if: "steps.classify.output.json.priority == 'critical' || steps.classify.output.json.priority == 'high'"
+    params:
+      query: >
+        INSERT INTO urgent_tickets (priority, category, products, raw_body)
+        VALUES ($1, $2, $3, $4)
+      args:
+        - "{{ steps.classify.output.json.priority }}"
+        - "{{ steps.classify.output.json.category }}"
+        - "{{ jsonEncode(steps.classify.output.json.products) }}"
+        - "{{ steps['fetch-tickets'].output.body }}"
