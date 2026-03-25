@@ -442,3 +442,48 @@ mantle secrets create --name minio --type generic \
   --field secret_key=minioadmin \
   --field endpoint=http://localhost:9000
 ```
+
+## docker/run
+
+Runs a Docker container to completion and captures its output. The container is created, started, waited on, and optionally removed. Non-zero exit codes do not constitute a step failure — use `if` conditions to branch on exit code.
+
+**Params:**
+
+| Param | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `image` | string | Yes | — | Container image (e.g., `alpine:latest`) |
+| `cmd` | array | No | — | Command and arguments |
+| `env` | object | No | — | Environment variables |
+| `stdin` | string | No | — | Data piped to container stdin |
+| `mounts` | array | No | — | Volume/bind mounts (each with `source`, `target`, `readonly`) |
+| `network` | string | No | `bridge` | Docker network mode |
+| `pull` | string | No | `missing` | Image pull policy: `always`, `missing`, `never` |
+| `memory` | string | No | — | Memory limit (e.g., `512m`, `1g`) |
+| `cpus` | number | No | — | CPU limit (e.g., `1.5`) |
+| `remove` | boolean | No | `true` | Remove container after completion |
+
+**Output:**
+
+| Field | Type | Description |
+|---|---|---|
+| `exit_code` | integer | Container exit code |
+| `stdout` | string | Container stdout (capped at 10MB) |
+| `stderr` | string | Container stderr (capped at 10MB) |
+
+**Authentication:** The Docker connector uses a `docker` credential type for daemon access. All fields are optional — an empty credential connects to the local Docker socket. For private images, use `registry_credential` with a `basic` credential type.
+
+**Example:**
+
+```yaml
+- name: process-data
+  action: docker/run
+  credential: my-docker
+  registry_credential: my-registry
+  timeout: "2m"
+  params:
+    image: myorg/processor:latest
+    cmd: ["process", "--format", "json"]
+    stdin: "{{ steps['fetch-data'].output.body }}"
+    memory: "512m"
+    cpus: 1.0
+```
