@@ -1,8 +1,11 @@
 package connector
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	"github.com/docker/docker/client"
 )
 
 func TestDockerRun_MissingImage(t *testing.T) {
@@ -125,5 +128,114 @@ func TestParseMemoryString(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("parseMemoryString(%q) = %d, want %d", tt.input, got, tt.want)
 		}
+	}
+}
+
+func TestDockerRun_Integration_EchoStdout(t *testing.T) {
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		t.Skipf("Docker not available: %v", err)
+	}
+	defer cli.Close()
+	if _, err := cli.Ping(context.Background()); err != nil {
+		t.Skipf("Docker not reachable: %v", err)
+	}
+
+	c := &DockerRunConnector{}
+	output, err := c.Execute(context.Background(), map[string]any{
+		"image": "alpine:latest",
+		"cmd":   []any{"echo", "hello mantle"},
+		"pull":  "missing",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if output["exit_code"] != int64(0) {
+		t.Errorf("exit_code = %v, want 0", output["exit_code"])
+	}
+	stdout, _ := output["stdout"].(string)
+	if !strings.Contains(stdout, "hello mantle") {
+		t.Errorf("stdout = %q, want to contain 'hello mantle'", stdout)
+	}
+}
+
+func TestDockerRun_Integration_NonZeroExitCode(t *testing.T) {
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		t.Skipf("Docker not available: %v", err)
+	}
+	defer cli.Close()
+	if _, err := cli.Ping(context.Background()); err != nil {
+		t.Skipf("Docker not reachable: %v", err)
+	}
+
+	c := &DockerRunConnector{}
+	output, err := c.Execute(context.Background(), map[string]any{
+		"image": "alpine:latest",
+		"cmd":   []any{"sh", "-c", "echo error-output >&2; exit 42"},
+		"pull":  "missing",
+	})
+	// Non-zero exit code is NOT a step failure.
+	if err != nil {
+		t.Fatalf("Execute should not error on non-zero exit: %v", err)
+	}
+	if output["exit_code"] != int64(42) {
+		t.Errorf("exit_code = %v, want 42", output["exit_code"])
+	}
+	stderr, _ := output["stderr"].(string)
+	if !strings.Contains(stderr, "error-output") {
+		t.Errorf("stderr = %q, want to contain 'error-output'", stderr)
+	}
+}
+
+func TestDockerRun_Integration_Stdin(t *testing.T) {
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		t.Skipf("Docker not available: %v", err)
+	}
+	defer cli.Close()
+	if _, err := cli.Ping(context.Background()); err != nil {
+		t.Skipf("Docker not reachable: %v", err)
+	}
+
+	c := &DockerRunConnector{}
+	output, err := c.Execute(context.Background(), map[string]any{
+		"image": "alpine:latest",
+		"cmd":   []any{"cat"},
+		"stdin": "piped input data",
+		"pull":  "missing",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	stdout, _ := output["stdout"].(string)
+	if !strings.Contains(stdout, "piped input data") {
+		t.Errorf("stdout = %q, want to contain 'piped input data'", stdout)
+	}
+}
+
+func TestDockerRun_Integration_EnvVars(t *testing.T) {
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		t.Skipf("Docker not available: %v", err)
+	}
+	defer cli.Close()
+	if _, err := cli.Ping(context.Background()); err != nil {
+		t.Skipf("Docker not reachable: %v", err)
+	}
+
+	c := &DockerRunConnector{}
+	output, err := c.Execute(context.Background(), map[string]any{
+		"image": "alpine:latest",
+		"cmd":   []any{"sh", "-c", "echo $MY_VAR"},
+		"env":   map[string]any{"MY_VAR": "hello-from-env"},
+		"pull":  "missing",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	stdout, _ := output["stdout"].(string)
+	if !strings.Contains(stdout, "hello-from-env") {
+		t.Errorf("stdout = %q, want 'hello-from-env'", stdout)
 	}
 }
