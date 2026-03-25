@@ -29,6 +29,7 @@ type Config struct {
 	AWS        AWSConfig        `mapstructure:"aws"`
 	GCP        GCPConfig        `mapstructure:"gcp"`
 	Azure      AzureConfig      `mapstructure:"azure"`
+	Tmp        TmpConfig        `mapstructure:"tmp"`
 }
 
 // RetentionConfig holds data retention settings.
@@ -51,6 +52,15 @@ type GCPConfig struct {
 // AzureConfig holds Azure provider settings.
 type AzureConfig struct {
 	Region string `mapstructure:"region"`
+}
+
+// TmpConfig configures ephemeral storage for workflow artifacts.
+type TmpConfig struct {
+	Type      string `mapstructure:"type"`      // "s3" or "filesystem"
+	Bucket    string `mapstructure:"bucket"`    // S3 bucket name (for type: s3)
+	Prefix    string `mapstructure:"prefix"`    // Key prefix (for type: s3)
+	Path      string `mapstructure:"path"`      // Local directory (for type: filesystem)
+	Retention string `mapstructure:"retention"` // Duration string, e.g. "24h". Empty = no auto-cleanup.
 }
 
 // AuthConfig holds authentication configuration.
@@ -218,6 +228,13 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	// Retention env var bindings
 	_ = v.BindEnv("retention.execution_days", "MANTLE_RETENTION_EXECUTION_DAYS")
 	_ = v.BindEnv("retention.audit_days", "MANTLE_RETENTION_AUDIT_DAYS")
+
+	// Tmp env var bindings
+	_ = v.BindEnv("tmp.type", "MANTLE_TMP_TYPE")
+	_ = v.BindEnv("tmp.bucket", "MANTLE_TMP_BUCKET")
+	_ = v.BindEnv("tmp.prefix", "MANTLE_TMP_PREFIX")
+	_ = v.BindEnv("tmp.path", "MANTLE_TMP_PATH")
+	_ = v.BindEnv("tmp.retention", "MANTLE_TMP_RETENTION")
 
 	// Engine env var bindings
 	_ = v.BindEnv("engine.node_id", "MANTLE_ENGINE_NODE_ID")

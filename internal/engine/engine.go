@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/dvflw/mantle/internal/artifact"
 	"github.com/dvflw/mantle/internal/audit"
 	"github.com/dvflw/mantle/internal/auth"
 	"github.com/dvflw/mantle/internal/budget"
@@ -26,9 +29,11 @@ type Engine struct {
 	Auditor            audit.Emitter
 	CEL                *mantleCEL.Evaluator
 	Resolver           *secret.Resolver
-	MaxToolRoundsLimit int            // admin ceiling for max_rounds; 0 = no limit
-	BudgetChecker      *budget.Checker // nil = budget enforcement disabled
-	BudgetStore        *budget.Store   // nil = token usage recording disabled
+	MaxToolRoundsLimit int                  // admin ceiling for max_rounds; 0 = no limit
+	BudgetChecker      *budget.Checker      // nil = budget enforcement disabled
+	BudgetStore        *budget.Store        // nil = token usage recording disabled
+	ArtifactStore      *artifact.Store      // nil = artifact system disabled
+	TmpStorage         artifact.TmpStorage  // nil = artifact system disabled
 }
 
 // StepContext carries workflow-level metadata needed by step execution.
@@ -138,6 +143,9 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 		celCtx.Steps[name] = map[string]any{"output": output}
 	}
 
+	// Load artifacts for CEL context.
+	e.loadArtifactsIntoCELContext(ctx, execID, celCtx)
+
 	result := &ExecutionResult{
 		ExecutionID: execID,
 		Status:      "completed",
@@ -175,6 +183,7 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 		if stepResult.Status == "completed" {
 			celCtx.Steps[step.Name] = map[string]any{"output": stepResult.Output}
 			sc.CompletedSteps[step.Name] = stepResult.Output
+			e.loadArtifactsIntoCELContext(ctx, execID, celCtx)
 		} else if stepResult.Status == "skipped" {
 			celCtx.Steps[step.Name] = map[string]any{"output": map[string]any{}}
 		} else if stepResult.Status == "failed" {
@@ -390,6 +399,23 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 		resolvedParams["_credential"] = credData
 	}
 
+	// Resolve registry credential for docker/run private image pulls.
+	if step.RegistryCredential != "" {
+		regCredData, regCredErr := e.Resolver.Resolve(ctx, step.RegistryCredential)
+		if regCredErr != nil {
+			return nil, fmt.Errorf("resolving registry credential %q: %v", step.RegistryCredential, regCredErr)
+		}
+		resolvedParams["_registry_credential"] = regCredData
+	}
+
+	// Validate artifact subsystem is configured if step declares artifacts.
+	var artifactsDir string
+	if len(step.Artifacts) > 0 {
+		if e.TmpStorage == nil || e.ArtifactStore == nil {
+			return nil, fmt.Errorf("step %q declares artifacts but artifact subsystem is not configured (set tmp storage in mantle.yaml)", step.Name)
+		}
+	}
+
 	// Inject workflow/step context for AI observability metrics.
 	resolvedParams["_workflow"] = workflowName
 	resolvedParams["_step"] = step.Name
@@ -418,6 +444,20 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 	var lastErr error
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		// Create a fresh artifacts scratch dir per attempt.
+		if len(step.Artifacts) > 0 && e.TmpStorage != nil {
+			if artifactsDir != "" {
+				os.RemoveAll(artifactsDir) // clean previous attempt's scratch
+			}
+			var tmpErr error
+			artifactsDir, tmpErr = os.MkdirTemp("", "mantle-artifacts-*")
+			if tmpErr != nil {
+				return nil, fmt.Errorf("creating artifacts dir: %v", tmpErr)
+			}
+			defer os.RemoveAll(artifactsDir)
+			ctx = artifact.WithArtifactsDir(ctx, artifactsDir)
+		}
+
 		// Apply per-step timeout.
 		execCtx := ctx
 		var cancel context.CancelFunc
@@ -473,6 +513,77 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 		}
 	}
 
+	// Persist declared artifacts to tmp storage.
+	if lastErr == nil && len(step.Artifacts) > 0 && e.TmpStorage != nil && e.ArtifactStore != nil && artifactsDir != "" {
+		type persistedArtifact struct {
+			id  string
+			url string
+		}
+		var persisted []persistedArtifact
+
+		rollback := func() {
+			for _, p := range persisted {
+				if delErr := e.ArtifactStore.DeleteByID(ctx, p.id); delErr != nil {
+					log.Printf("warning: rollback: failed to delete artifact metadata %q: %v", p.id, delErr)
+				}
+				if delErr := e.TmpStorage.Delete(ctx, p.url); delErr != nil {
+					log.Printf("warning: rollback: failed to delete artifact blob %q: %v", p.url, delErr)
+				}
+			}
+		}
+
+		for _, artDecl := range step.Artifacts {
+			relPath := filepath.Base(artDecl.Path)
+			localPath := filepath.Join(artifactsDir, relPath)
+			info, statErr := os.Stat(localPath)
+			if statErr != nil {
+				rollback()
+				return nil, fmt.Errorf("declared artifact %q not found at %q: %v", artDecl.Name, localPath, statErr)
+			}
+
+			key := fmt.Sprintf("%s/%s/%s/%s", workflowName, execID, artDecl.Name, relPath)
+			url, putErr := e.TmpStorage.Put(ctx, key, localPath)
+			if putErr != nil {
+				rollback()
+				return nil, fmt.Errorf("persisting artifact %q: %v", artDecl.Name, putErr)
+			}
+
+			art := &artifact.Artifact{
+				ExecutionID: execID,
+				StepName:    step.Name,
+				Name:        artDecl.Name,
+				URL:         url,
+				Size:        info.Size(),
+			}
+			if createErr := e.ArtifactStore.Create(ctx, art); createErr != nil {
+				if delErr := e.TmpStorage.Delete(ctx, url); delErr != nil {
+					log.Printf("warning: failed to clean up orphaned artifact blob %q: %v", url, delErr)
+				}
+				rollback()
+				return nil, fmt.Errorf("recording artifact %q: %v", artDecl.Name, createErr)
+			}
+
+			persisted = append(persisted, persistedArtifact{id: art.ID, url: url})
+
+			// Emit audit event for artifact persistence.
+			if err := e.Auditor.Emit(ctx, audit.Event{
+				Timestamp: time.Now(),
+				Actor:     "engine",
+				Action:    audit.ActionArtifactPersisted,
+				Resource:  audit.Resource{Type: "execution_artifact", ID: execID},
+				Metadata: map[string]string{
+					"step":          step.Name,
+					"artifact_name": artDecl.Name,
+					"url":           url,
+					"size":          fmt.Sprintf("%d", info.Size()),
+				},
+				TeamID: sc.TeamID,
+			}); err != nil {
+				log.Printf("warning: failed to emit artifact audit event: %v", err)
+			}
+		}
+	}
+
 	return output, lastErr
 }
 
@@ -497,6 +608,10 @@ func (e *Engine) MakeStepExecutor(wf *workflow.Workflow, execID string, celCtx *
 				sc.CompletedSteps[name] = out
 			}
 		}
+
+		// Load artifacts for CEL context.
+		e.loadArtifactsIntoCELContext(ctx, execID, celCtx)
+
 		output, err := e.executeStepLogic(ctx, execID, *step, celCtx, wf.Name, sc)
 		if err != nil {
 			return output, err
@@ -568,6 +683,9 @@ func (e *Engine) MakeGlobalStepExecutor() StepExecutor {
 			celCtx.Steps[name] = map[string]any{"output": output}
 		}
 
+		// Load artifacts for CEL context.
+		e.loadArtifactsIntoCELContext(ctx, execID, celCtx)
+
 		sc := StepContext{
 			WorkflowTokenBudget: wf.TokenBudget,
 			CompletedSteps:      completedSteps,
@@ -583,6 +701,26 @@ func (e *Engine) MakeGlobalStepExecutor() StepExecutor {
 			return nil, sizeErr
 		}
 		return output, nil
+	}
+}
+
+// loadArtifactsIntoCELContext loads artifact metadata into the CEL context.
+func (e *Engine) loadArtifactsIntoCELContext(ctx context.Context, execID string, celCtx *mantleCEL.Context) {
+	if e.ArtifactStore == nil {
+		return
+	}
+	arts, err := e.ArtifactStore.ListByExecution(ctx, execID)
+	if err != nil {
+		log.Printf("warning: loading artifacts for execution %s: %v", execID, err)
+		return
+	}
+	celCtx.Artifacts = make(map[string]map[string]any, len(arts))
+	for _, a := range arts {
+		celCtx.Artifacts[a.Name] = map[string]any{
+			"name": a.Name,
+			"url":  a.URL,
+			"size": a.Size,
+		}
 	}
 }
 

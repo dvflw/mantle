@@ -515,3 +515,83 @@ steps:
 	errs := Validate(result)
 	assertNoErrors(t, errs)
 }
+
+func TestValidate_ArtifactDuplicateNames(t *testing.T) {
+	result := mustParse(t, `
+name: test-dup-artifacts
+description: test
+steps:
+  - name: step-a
+    action: docker/run
+    params:
+      image: alpine
+    artifacts:
+      - path: /mantle/artifacts/out.tar.gz
+        name: my-artifact
+  - name: step-b
+    action: docker/run
+    params:
+      image: alpine
+    artifacts:
+      - path: /mantle/artifacts/other.tar.gz
+        name: my-artifact
+`)
+	errs := Validate(result)
+	if len(errs) == 0 {
+		t.Fatal("expected validation error for duplicate artifact name")
+	}
+	found := false
+	for _, e := range errs {
+		if strings.Contains(e.Message, "duplicate artifact name") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected 'duplicate artifact name' error, got: %v", errs)
+	}
+}
+
+func TestValidate_ArtifactMissingFields(t *testing.T) {
+	result := mustParse(t, `
+name: test-missing-artifact-fields
+description: test
+steps:
+  - name: step-a
+    action: docker/run
+    params:
+      image: alpine
+    artifacts:
+      - path: ""
+        name: ""
+`)
+	errs := Validate(result)
+	if len(errs) < 2 {
+		t.Fatalf("expected at least 2 errors for missing artifact fields, got %d: %v", len(errs), errs)
+	}
+}
+
+func TestValidate_ArtifactValidDeclaration(t *testing.T) {
+	result := mustParse(t, `
+name: test-valid-artifacts
+description: test
+steps:
+  - name: step-a
+    action: docker/run
+    params:
+      image: alpine
+    artifacts:
+      - path: /mantle/artifacts/out.tar.gz
+        name: my-artifact
+`)
+	errs := Validate(result)
+	// Filter to artifact-related errors only
+	var artifactErrs []ValidationError
+	for _, e := range errs {
+		if strings.Contains(e.Field, "artifact") {
+			artifactErrs = append(artifactErrs, e)
+		}
+	}
+	if len(artifactErrs) > 0 {
+		t.Errorf("unexpected artifact validation errors: %v", artifactErrs)
+	}
+}

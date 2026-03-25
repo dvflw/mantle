@@ -1,0 +1,32 @@
+name: docker-data-transform
+description: >
+  Query a database for recent records, process them through
+  a containerized tool, and post the results to Slack.
+  Demonstrates the docker/run connector with stdin/stdout
+  data passing.
+
+steps:
+  - name: fetch-records
+    action: postgres/query
+    credential: my-db
+    timeout: "15s"
+    params:
+      query: "SELECT id, name, status, updated_at FROM tasks WHERE updated_at > now() - interval '24 hours' ORDER BY updated_at DESC"
+
+  - name: transform-data
+    action: docker/run
+    credential: my-docker
+    timeout: "30s"
+    params:
+      image: giantswarm/tiny-tools
+      cmd: ["jq", "[.[] | {id, name, status}]"]
+      stdin: "{{ jsonEncode(steps['fetch-records'].output.rows) }}"
+      memory: "128m"
+
+  - name: post-results
+    action: slack/send
+    credential: slack-token
+    if: "steps['transform-data'].output.exit_code == 0"
+    params:
+      channel: "#daily-report"
+      text: "Daily task summary:\n{{ steps['transform-data'].output.stdout }}"

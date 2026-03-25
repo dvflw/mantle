@@ -70,6 +70,11 @@ engine:
 | `engine.step_output_max_bytes` | integer | `1048576` | Maximum size in bytes for a single step's output. Outputs exceeding this limit are truncated. Default is 1 MB. |
 | `engine.default_max_tool_rounds` | integer | `10` | Default maximum number of LLM-tool interaction rounds for AI steps with tools. Can be overridden per step with `max_tool_rounds`. |
 | `engine.default_max_tool_calls_per_round` | integer | `10` | Default maximum number of tool calls the LLM can make per round. Can be overridden per step with `max_tool_calls_per_round`. |
+| `tmp.type` | string | -- | Artifact storage backend. One of: `s3`, `filesystem`. Required if any workflow declares artifacts. |
+| `tmp.bucket` | string | -- | S3 bucket name. Required when `tmp.type` is `s3`. |
+| `tmp.prefix` | string | -- | S3 key prefix for artifact storage. Optional. |
+| `tmp.path` | string | -- | Local directory path. Required when `tmp.type` is `filesystem`. |
+| `tmp.retention` | duration | -- | How long to keep artifacts after workflow completion. Uses Go duration format (e.g., `24h`). Empty means no auto-cleanup. |
 
 ### Config File Discovery
 
@@ -101,6 +106,11 @@ All environment variables use the `MANTLE_` prefix with underscores replacing do
 | `MANTLE_ENGINE_STEP_OUTPUT_MAX_BYTES` | `engine.step_output_max_bytes` | `1048576` |
 | `MANTLE_ENGINE_DEFAULT_MAX_TOOL_ROUNDS` | `engine.default_max_tool_rounds` | `10` |
 | `MANTLE_ENGINE_DEFAULT_MAX_TOOL_CALLS_PER_ROUND` | `engine.default_max_tool_calls_per_round` | `10` |
+| `MANTLE_TMP_TYPE` | `tmp.type` | -- |
+| `MANTLE_TMP_BUCKET` | `tmp.bucket` | -- |
+| `MANTLE_TMP_PREFIX` | `tmp.prefix` | -- |
+| `MANTLE_TMP_PATH` | `tmp.path` | -- |
+| `MANTLE_TMP_RETENTION` | `tmp.retention` | -- |
 
 **Example:**
 

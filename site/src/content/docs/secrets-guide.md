@@ -88,6 +88,10 @@ Each credential type has a defined set of fields. Mantle validates that all requ
 | `bearer` | `token` | -- | Bearer token authentication |
 | `openai` | `api_key` | `org_id` | OpenAI API access |
 | `basic` | `username`, `password` | -- | HTTP Basic authentication |
+| `aws` | `access_key_id`, `secret_access_key` | `region`, `session_token` | AWS service access (S3, Bedrock, etc.) |
+| `docker` | -- | `host`, `ca_cert`, `client_cert`, `client_key` | Docker daemon access |
+
+The `docker` type has no required fields. An empty credential connects to the local Docker socket (`unix:///var/run/docker.sock`). For a remote daemon with TLS, provide all four fields. For private image registries, use a `basic` credential with `registry_credential` on the step.
 
 If you pass a field name that does not belong to the credential type, it is silently ignored. If you omit a required field, you get an error:
 

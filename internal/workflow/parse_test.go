@@ -307,3 +307,39 @@ steps:
 		t.Fatal("tool[1] input_schema is nil")
 	}
 }
+
+func TestParse_ArtifactsAndRegistryCredential(t *testing.T) {
+	path := writeTestFile(t, `
+name: test-artifacts
+description: test artifacts parsing
+steps:
+  - name: build
+    action: docker/run
+    credential: my-docker
+    registry_credential: my-registry
+    params:
+      image: alpine
+      cmd: ["tar", "-czf", "/mantle/artifacts/out.tar.gz", "/data"]
+    artifacts:
+      - path: /mantle/artifacts/out.tar.gz
+        name: build-output
+`)
+	result, err := Parse(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	step := result.Workflow.Steps[0]
+	if step.RegistryCredential != "my-registry" {
+		t.Errorf("registry_credential = %q, want %q", step.RegistryCredential, "my-registry")
+	}
+	if len(step.Artifacts) != 1 {
+		t.Fatalf("len(artifacts) = %d, want 1", len(step.Artifacts))
+	}
+	if step.Artifacts[0].Name != "build-output" {
+		t.Errorf("artifact name = %q, want %q", step.Artifacts[0].Name, "build-output")
+	}
+	if step.Artifacts[0].Path != "/mantle/artifacts/out.tar.gz" {
+		t.Errorf("artifact path = %q, want %q", step.Artifacts[0].Path, "/mantle/artifacts/out.tar.gz")
+	}
+}

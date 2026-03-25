@@ -243,6 +243,37 @@ func Validate(result *ParseResult) []ValidationError {
 		}
 	}
 
+	// Validate artifact declarations.
+	artifactNames := make(map[string]string) // name -> step that declared it
+	for i, step := range w.Steps {
+		prefix := fmt.Sprintf("steps[%d]", i)
+		for j, art := range step.Artifacts {
+			artPrefix := fmt.Sprintf("%s.artifacts[%d]", prefix, j)
+			if art.Name == "" {
+				errs = append(errs, ValidationError{
+					Field:   artPrefix + ".name",
+					Message: "artifact name is required",
+				})
+			}
+			if art.Path == "" {
+				errs = append(errs, ValidationError{
+					Field:   artPrefix + ".path",
+					Message: "artifact path is required",
+				})
+			}
+			if art.Name != "" {
+				if prevStep, exists := artifactNames[art.Name]; exists {
+					errs = append(errs, ValidationError{
+						Field:   artPrefix + ".name",
+						Message: fmt.Sprintf("duplicate artifact name %q (also declared in step %q)", art.Name, prevStep),
+					})
+				} else {
+					artifactNames[art.Name] = step.Name
+				}
+			}
+		}
+	}
+
 	// Validate dependency references (explicit + implicit from CEL expressions).
 	for i, step := range w.Steps {
 		prefix := fmt.Sprintf("steps[%d]", i)

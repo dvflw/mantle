@@ -14,9 +14,10 @@ import (
 
 // Context holds the runtime data available to CEL expressions.
 type Context struct {
-	Steps   map[string]map[string]any // steps.<name>.output → step outputs
-	Inputs  map[string]any            // inputs.<name> → workflow inputs
-	Trigger map[string]any            // trigger.payload → webhook trigger data
+	Steps     map[string]map[string]any // steps.<name>.output → step outputs
+	Inputs    map[string]any            // inputs.<name> → workflow inputs
+	Trigger   map[string]any            // trigger.payload → webhook trigger data
+	Artifacts map[string]map[string]any // artifacts.<name> → {name, url, size}
 }
 
 // Evaluator evaluates CEL expressions against a runtime context.
@@ -33,6 +34,7 @@ func NewEvaluator() (*Evaluator, error) {
 		cel.Variable("inputs", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("env", cel.MapType(cel.StringType, cel.StringType)),
 		cel.Variable("trigger", cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable("artifacts", cel.MapType(cel.StringType, cel.DynType)),
 	}
 	opts = append(opts, customFunctions()...)
 
@@ -56,11 +58,17 @@ func (e *Evaluator) Eval(expression string, ctx *Context) (any, error) {
 		trigger = map[string]any{}
 	}
 
+	artifacts := ctx.Artifacts
+	if artifacts == nil {
+		artifacts = map[string]map[string]any{}
+	}
+
 	vars := map[string]any{
-		"steps":   ctx.Steps,
-		"inputs":  ctx.Inputs,
-		"env":     e.envCache,
-		"trigger": trigger,
+		"steps":     ctx.Steps,
+		"inputs":    ctx.Inputs,
+		"env":       e.envCache,
+		"trigger":   trigger,
+		"artifacts": artifacts,
 	}
 
 	out, _, err := prog.Eval(vars)
