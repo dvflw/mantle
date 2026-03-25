@@ -15,6 +15,7 @@ func customFunctions() []cel.EnvOption {
 	return []cel.EnvOption{
 		stringFunctions(),
 		typeFunctions(),
+		collectionFunctions(),
 	}
 }
 
@@ -136,4 +137,68 @@ func (l *typeLib) CompileOptions() []cel.EnvOption {
 
 func (l *typeLib) ProgramOptions() []cel.ProgramOption {
 	return nil
+}
+
+// ── Collection functions ──────────────────────────────────────────────────────
+
+func collectionFunctions() cel.EnvOption {
+	return cel.Lib(&collectionLib{})
+}
+
+type collectionLib struct{}
+
+func (l *collectionLib) CompileOptions() []cel.EnvOption {
+	return []cel.EnvOption{
+		// obj() — register fixed-arity overloads for 1–5 key-value pairs.
+		// CEL does not support true variadic functions without macros, so we register
+		// overloads for each supported arity. All overloads share the same binding
+		// via objBinding.
+		cel.Function("obj",
+			cel.Overload("obj_2",
+				[]*cel.Type{cel.DynType, cel.DynType},
+				cel.DynType,
+				cel.FunctionBinding(objBinding),
+			),
+			cel.Overload("obj_4",
+				[]*cel.Type{cel.DynType, cel.DynType, cel.DynType, cel.DynType},
+				cel.DynType,
+				cel.FunctionBinding(objBinding),
+			),
+			cel.Overload("obj_6",
+				[]*cel.Type{cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType},
+				cel.DynType,
+				cel.FunctionBinding(objBinding),
+			),
+			cel.Overload("obj_8",
+				[]*cel.Type{cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType},
+				cel.DynType,
+				cel.FunctionBinding(objBinding),
+			),
+			cel.Overload("obj_10",
+				[]*cel.Type{cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType, cel.DynType},
+				cel.DynType,
+				cel.FunctionBinding(objBinding),
+			),
+		),
+	}
+}
+
+func (l *collectionLib) ProgramOptions() []cel.ProgramOption {
+	return nil
+}
+
+// objBinding is the shared implementation for all obj() fixed-arity overloads.
+func objBinding(args ...ref.Val) ref.Val {
+	if len(args)%2 != 0 {
+		return types.NewErr("obj: requires even number of arguments (key-value pairs), got %d", len(args))
+	}
+	m := make(map[string]any, len(args)/2)
+	for i := 0; i < len(args); i += 2 {
+		key, ok := args[i].(types.String)
+		if !ok {
+			return types.NewErr("obj: key at position %d must be a string, got %s", i, args[i].Type())
+		}
+		m[string(key)] = refToNative(args[i+1])
+	}
+	return types.DefaultTypeAdapter.NativeToValue(m)
 }

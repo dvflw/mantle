@@ -194,3 +194,48 @@ func TestFunc_ToString(t *testing.T) {
 		})
 	}
 }
+
+// Task 5: obj()
+
+func TestFunc_Obj(t *testing.T) {
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+	tests := []struct {
+		name    string
+		expr    string
+		want    any
+		wantErr bool
+	}{
+		{
+			name: "basic map",
+			expr: `obj("name", "alice", "age", 30)`,
+			want: map[string]any{"name": "alice", "age": int64(30)},
+		},
+		{
+			name: "single pair",
+			expr: `obj("key", "value")`,
+			want: map[string]any{"key": "value"},
+		},
+		{
+			name: "nested with step reference",
+			expr: `obj("status", steps.fetch.output.status)`,
+			want: map[string]any{"status": int64(200)},
+		},
+		{
+			name:    "odd_args",
+			expr:    `obj("key")`,
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := eval.Eval(tt.expr, newTestContext())
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, result)
+			}
+		})
+	}
+}
