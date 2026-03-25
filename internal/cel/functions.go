@@ -50,6 +50,30 @@ func (l *stringLib) CompileOptions() []cel.EnvOption {
 				}),
 			),
 		),
+		cel.Function("replace",
+			cel.MemberOverload("string_replace",
+				[]*cel.Type{cel.StringType, cel.StringType, cel.StringType},
+				cel.StringType,
+				cel.FunctionBinding(func(args ...ref.Val) ref.Val {
+					s := string(args[0].(types.String))
+					old := string(args[1].(types.String))
+					newStr := string(args[2].(types.String))
+					return types.String(strings.ReplaceAll(s, old, newStr))
+				}),
+			),
+		),
+		cel.Function("split",
+			cel.MemberOverload("string_split",
+				[]*cel.Type{cel.StringType, cel.StringType},
+				cel.ListType(cel.StringType),
+				cel.BinaryBinding(func(lhs, rhs ref.Val) ref.Val {
+					s := string(lhs.(types.String))
+					sep := string(rhs.(types.String))
+					parts := strings.Split(s, sep)
+					return types.DefaultTypeAdapter.NativeToValue(parts)
+				}),
+			),
+		),
 	}
 }
 

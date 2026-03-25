@@ -71,3 +71,47 @@ func TestFunc_Trim(t *testing.T) {
 		})
 	}
 }
+
+func TestFunc_Replace(t *testing.T) {
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+	tests := []struct {
+		name string
+		expr string
+		want any
+	}{
+		{"basic", `"hello world".replace("world", "CEL")`, "hello CEL"},
+		{"multiple", `"aabbaa".replace("aa", "x")`, "xbbx"},
+		{"no_match", `"hello".replace("xyz", "abc")`, "hello"},
+		{"empty_replacement", `"hello world".replace("world", "")`, "hello "},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := eval.Eval(tt.expr, newTestContext())
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, result)
+		})
+	}
+}
+
+func TestFunc_Split(t *testing.T) {
+	eval, err := NewEvaluator()
+	require.NoError(t, err)
+	tests := []struct {
+		name string
+		expr string
+		want any
+	}{
+		{"comma", `"a,b,c".split(",")`, []any{"a", "b", "c"}},
+		{"space", `"hello world foo".split(" ")`, []any{"hello", "world", "foo"}},
+		{"no_match", `"hello".split(",")`, []any{"hello"}},
+		{"empty", `"".split(",")`, []any{""}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := eval.Eval(tt.expr, newTestContext())
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, result)
+		})
+	}
+}
