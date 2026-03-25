@@ -388,6 +388,7 @@ func (e *EmailTriggerPoller) poll(ctx context.Context, t TriggerRecord, client *
 		e.server.Logger.Warn("email poller: marking messages as seen failed",
 			"trigger_id", t.ID,
 			"workflow", t.WorkflowName,
+			"uids", fmt.Sprintf("%v", uids),
 			"error", err)
 		metrics.EmailPollErrorsTotal.WithLabelValues(t.WorkflowName, "mark_seen").Inc()
 	}

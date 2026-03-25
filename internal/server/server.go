@@ -312,6 +312,7 @@ func (s *Server) Start(ctx context.Context) error {
 	case <-ctx.Done():
 		s.Logger.Info("shutting down...")
 	case err := <-errCh:
+		s.emailPoller.Stop()
 		return err
 	}
 
