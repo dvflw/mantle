@@ -253,20 +253,31 @@ func TestFunc_Default(t *testing.T) {
 	eval, err := NewEvaluator()
 	require.NoError(t, err)
 	tests := []struct {
-		name string
-		expr string
-		want any
+		name    string
+		expr    string
+		want    any
+		wantErr bool
 	}{
-		{"value exists returns value", `default("hello", "fallback")`, "hello"},
-		{"empty string returns empty string", `default("", "fallback")`, ""},
-		{"null returns fallback", `default(null, "fallback")`, "fallback"},
-		{"non-null int unchanged", `default(42, 0)`, int64(42)},
+		{"value exists returns value", `default("hello", "fallback")`, "hello", false},
+		{"empty string returns empty string", `default("", "fallback")`, "", false},
+		{"null returns fallback", `default(null, "fallback")`, "fallback", false},
+		{"non-null int unchanged", `default(42, 0)`, int64(42), false},
+		{
+			"missing_key_returns_fallback",
+			`default(steps.fetch.output.missing, "fallback")`,
+			"fallback",
+			false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := eval.Eval(tt.expr, newTestContext())
-			require.NoError(t, err)
-			assert.Equal(t, tt.want, result)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, result)
+			}
 		})
 	}
 }
@@ -360,6 +371,11 @@ func TestFunc_JsonDecode(t *testing.T) {
 		{
 			name:    "invalid",
 			expr:    `jsonDecode("not json")`,
+			wantErr: true,
+		},
+		{
+			name:    "trailing_data",
+			expr:    `jsonDecode("{} {}")`,
 			wantErr: true,
 		},
 	}

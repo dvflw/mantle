@@ -822,8 +822,9 @@ In `functions.go`, add to `collectionLib.CompileOptions()`:
 			cel.Overload("default_any_any",
 				[]*cel.Type{cel.DynType, cel.DynType},
 				cel.DynType,
+				cel.OverloadIsNonStrict(),
 				cel.BinaryBinding(func(lhs, rhs ref.Val) ref.Val {
-					if types.IsError(lhs) || types.IsUnknown(lhs) {
+					if types.IsError(lhs) || types.IsUnknown(lhs) || lhs == types.NullValue {
 						return rhs
 					}
 					return lhs
@@ -836,20 +837,20 @@ In `functions.go`, add to `collectionLib.CompileOptions()`:
 				cel.ListType(cel.DynType),
 				cel.UnaryBinding(func(val ref.Val) ref.Val {
 					list := val.(traits.Lister)
-					var result []ref.Val
+					var result []any
 					it := list.Iterator()
 					for it.HasNext() == types.True {
 						item := it.Next()
 						if sub, ok := item.(traits.Lister); ok {
 							subIt := sub.Iterator()
 							for subIt.HasNext() == types.True {
-								result = append(result, subIt.Next())
+								result = append(result, refToNative(subIt.Next()))
 							}
 						} else {
-							result = append(result, item)
+							result = append(result, refToNative(item))
 						}
 					}
-					return types.DefaultTypeAdapter.NativeToValue(nativeSlice(result))
+					return types.DefaultTypeAdapter.NativeToValue(result)
 				}),
 			),
 		),
@@ -974,11 +975,13 @@ func (l *jsonLib) CompileOptions() []cel.EnvOption {
 				cel.DynType,
 				cel.UnaryBinding(func(val ref.Val) ref.Val {
 					s := string(val.(types.String))
+					dec := json.NewDecoder(strings.NewReader(s))
+					dec.UseNumber()
 					var result any
-					if err := json.Unmarshal([]byte(s), &result); err != nil {
+					if err := dec.Decode(&result); err != nil {
 						return types.NewErr("jsonDecode: %v", err)
 					}
-					return types.DefaultTypeAdapter.NativeToValue(result)
+					return types.DefaultTypeAdapter.NativeToValue(normalizeJSONNumbers(result))
 				}),
 			),
 		),
@@ -1091,11 +1094,20 @@ func (l *timeLib) CompileOptions() []cel.EnvOption {
 				cel.TimestampType,
 				cel.UnaryBinding(func(val ref.Val) ref.Val {
 					s := string(val.(types.String))
-					t, err := time.Parse(time.RFC3339, s)
-					if err != nil {
-						return types.NewErr("parseTimestamp: %v", err)
+					layouts := []string{
+						time.RFC3339,
+						time.RFC3339Nano,
+						"2006-01-02T15:04:05",
+						"2006-01-02",
+						"01/02/2006",
+						"Jan 2, 2006",
 					}
-					return types.Timestamp{Time: t}
+					for _, layout := range layouts {
+						if t, err := time.Parse(layout, s); err == nil {
+							return types.Timestamp{Time: t}
+						}
+					}
+					return types.NewErr("parseTimestamp: unable to parse %q (tried RFC3339, ISO 8601 date, and common formats)", s)
 				}),
 			),
 		),
@@ -1258,27 +1270,29 @@ In `examples/data-transform-api-to-db.yaml`:
 ```yaml
 name: data-transform-api-to-db
 description: >
-  Fetches user data from an API, transforms each record using CEL
-  expressions to match a database schema, and inserts the normalized
-  records into Postgres. Demonstrates map(), obj(), toLower(), and
-  type coercion without requiring an AI model.
+  Fetches a user from an API, transforms the record using CEL expressions
+  to match a database schema, and inserts the normalized data into Postgres.
+  Demonstrates toLower() and string functions without requiring an AI model.
 
 steps:
-  - name: fetch-users
+  - name: fetch-user
     action: http/request
     timeout: "15s"
     params:
       method: GET
-      url: "https://jsonplaceholder.typicode.com/users"
+      url: "https://jsonplaceholder.typicode.com/users/1"
       headers:
         Accept: "application/json"
 
-  - name: store-users
+  - name: store-user
     action: postgres/query
     credential: app-db
     params:
       query: "INSERT INTO users (username, email, city) VALUES ($1, $2, $3)"
-      params: "{{ steps['fetch-users'].output.json.map(u, [u.username.toLower(), u.email.toLower(), u.address.city]) }}"
+      args:
+        - "{{ steps['fetch-user'].output.json.username.toLower() }}"
+        - "{{ steps['fetch-user'].output.json.email.toLower() }}"
+        - "{{ steps['fetch-user'].output.json.address.city }}"
 ```
 
 - [ ] **Step 2: Create AI enrichment example**
@@ -1346,7 +1360,7 @@ steps:
       query: >
         INSERT INTO urgent_tickets (priority, category, products, raw_body)
         VALUES ($1, $2, $3, $4)
-      params:
+      args:
         - "{{ steps.classify.output.json.priority }}"
         - "{{ steps.classify.output.json.category }}"
         - "{{ jsonEncode(steps.classify.output.json.products) }}"

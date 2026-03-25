@@ -86,9 +86,8 @@ steps:
 
   - name: classify
     action: ai/completion
+    credential: openai
     params:
-      provider: openai
-      credential: openai
       model: gpt-4o-mini
       prompt: >
         Classify the following support ticket. Extract the priority, product
@@ -180,9 +179,8 @@ steps:
 
   - name: enrich
     action: ai/completion
+    credential: openai
     params:
-      provider: openai
-      credential: openai
       model: gpt-4o-mini
       prompt: >
         Analyze the following product reviews and classify the sentiment

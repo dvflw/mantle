@@ -280,6 +280,10 @@ func (l *jsonLib) CompileOptions() []cel.EnvOption {
 					if err := dec.Decode(&result); err != nil {
 						return types.NewErr("jsonDecode: %v", err)
 					}
+					// Reject trailing data (e.g., "{} {}")
+					if dec.More() {
+						return types.NewErr("jsonDecode: unexpected trailing data after JSON value")
+					}
 					return types.DefaultTypeAdapter.NativeToValue(normalizeJSONNumbers(result))
 				}),
 			),
