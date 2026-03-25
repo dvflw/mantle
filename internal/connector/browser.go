@@ -104,11 +104,16 @@ func (c *BrowserRunConnector) Execute(ctx context.Context, params map[string]any
 	)
 
 	switch language {
-	case "javascript", "typescript":
+	case "javascript":
 		containerImage = playwrightNodeImage
 		wrapperScript = buildJSWrapper(script)
 		// Pass the wrapper via stdin; `node` reads from stdin when no file argument is given.
 		containerCmd = []string{"node"}
+	case "typescript":
+		containerImage = playwrightNodeImage
+		wrapperScript = buildJSWrapper(script)
+		// Use --experimental-strip-types so Node can execute TypeScript directly.
+		containerCmd = []string{"node", "--experimental-strip-types"}
 	case "python":
 		containerImage = playwrightPythonImage
 		wrapperScript = buildPythonWrapper(script)

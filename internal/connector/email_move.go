@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"math"
 
 	"github.com/emersion/go-imap/v2"
 )
@@ -74,18 +75,18 @@ func extractUID(params map[string]any, key string) (uint32, error) {
 		}
 		return v, nil
 	case float64:
-		if v <= 0 {
-			return 0, fmt.Errorf("%s must be a non-zero UID", key)
+		if math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 || v > math.MaxUint32 || v != math.Floor(v) {
+			return 0, fmt.Errorf("%s must be a non-zero UID (valid uint32 integer)", key)
 		}
 		return uint32(v), nil
 	case int:
-		if v <= 0 {
-			return 0, fmt.Errorf("%s must be a non-zero UID", key)
+		if v <= 0 || v > math.MaxUint32 {
+			return 0, fmt.Errorf("%s must be a non-zero UID (valid uint32)", key)
 		}
 		return uint32(v), nil
 	case int64:
-		if v <= 0 {
-			return 0, fmt.Errorf("%s must be a non-zero UID", key)
+		if v <= 0 || v > math.MaxUint32 {
+			return 0, fmt.Errorf("%s must be a non-zero UID (valid uint32)", key)
 		}
 		return uint32(v), nil
 	default:

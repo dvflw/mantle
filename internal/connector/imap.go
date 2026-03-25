@@ -50,7 +50,10 @@ func imapDial(cfg *imapConfig) (*imapclient.Client, error) {
 	var err error
 	if cfg.UseTLS {
 		client, err = imapclient.DialTLS(addr, &imapclient.Options{
-			TLSConfig: &tls.Config{ServerName: cfg.Host},
+			TLSConfig: &tls.Config{
+				ServerName: cfg.Host,
+				MinVersion: tls.VersionTLS12,
+			},
 		})
 	} else {
 		client, err = imapclient.DialInsecure(addr, nil)

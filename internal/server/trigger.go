@@ -131,7 +131,8 @@ func ListEmailTriggers(ctx context.Context, db *sql.DB) ([]TriggerRecord, error)
 	return scanEmailTriggers(rows)
 }
 
-// scanEmailTriggers scans rows from ListEmailTriggers (12 columns).
+// scanEmailTriggers scans rows from ListEmailTriggers (10 columns:
+// id, workflow_name, workflow_version, type, mailbox, folder, filter, poll_interval, enabled, team_id).
 func scanEmailTriggers(rows *sql.Rows) ([]TriggerRecord, error) {
 	var triggers []TriggerRecord
 	for rows.Next() {

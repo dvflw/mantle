@@ -737,10 +737,11 @@ Runs browser automation scripts (JavaScript, TypeScript, or Python) using Playwr
     output_format: json
     script: |
       import os
+      import json
 
-      page = await browser.new_page()
-      await page.goto('https://example.com/report')
-      await page.pdf(path='/mantle/artifacts/report.pdf')
+      page = browser.new_page()
+      page.goto('https://example.com/report')
+      page.pdf(path='/mantle/artifacts/report.pdf')
 
       file_size = os.path.getsize('/mantle/artifacts/report.pdf')
       print(json.dumps({'generated': True, 'size_bytes': file_size}))
