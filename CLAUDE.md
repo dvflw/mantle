@@ -4,9 +4,7 @@ Headless AI workflow automation platform — BYOK, IaC-first, enterprise-grade, 
 
 ## Project Tracking
 
-- **Linear project:** https://linear.app/dvflw/project/mantle-76a8271f19e8
-- **Linear team:** dvflw
-- **Issue prefix:** DVFLW
+- **Issues & milestones:** GitHub Issues (https://github.com/dvflw/mantle/issues)
 - **Implementation plan:** `plans/mantle.md`
 
 ## Tech Stack
