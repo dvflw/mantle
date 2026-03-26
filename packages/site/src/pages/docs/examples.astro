@@ -4,7 +4,7 @@ import path from 'node:path';
 import Docs from '../../layouts/Docs.astro';
 import { Code } from 'astro:components';
 
-const examplesDir = new URL('../../../../examples', import.meta.url).pathname;
+const examplesDir = new URL('../../content/examples', import.meta.url).pathname;
 
 function readExample(name: string): string {
   return fs.readFileSync(path.join(examplesDir, name), 'utf-8');
