@@ -69,6 +69,32 @@ func TestParseCredential(t *testing.T) {
 		}
 	})
 
+	t.Run("missing username", func(t *testing.T) {
+		params := map[string]any{
+			"_credential": map[string]string{
+				"host":     "mail.example.com",
+				"password": "secret",
+			},
+		}
+		_, err := ParseCredential(params)
+		if err == nil {
+			t.Fatal("expected error for missing username")
+		}
+	})
+
+	t.Run("missing password", func(t *testing.T) {
+		params := map[string]any{
+			"_credential": map[string]string{
+				"host":     "mail.example.com",
+				"username": "user",
+			},
+		}
+		_, err := ParseCredential(params)
+		if err == nil {
+			t.Fatal("expected error for missing password")
+		}
+	})
+
 	t.Run("default port", func(t *testing.T) {
 		params := map[string]any{
 			"_credential": map[string]string{
@@ -89,8 +115,10 @@ func TestParseCredential(t *testing.T) {
 	t.Run("use_tls false", func(t *testing.T) {
 		params := map[string]any{
 			"_credential": map[string]string{
-				"host":    "mail.example.com",
-				"use_tls": "false",
+				"host":     "mail.example.com",
+				"username": "user",
+				"password": "pass",
+				"use_tls":  "false",
 			},
 		}
 		cfg, err := ParseCredential(params)
@@ -105,7 +133,9 @@ func TestParseCredential(t *testing.T) {
 	t.Run("use_tls defaults to true when absent", func(t *testing.T) {
 		params := map[string]any{
 			"_credential": map[string]string{
-				"host": "mail.example.com",
+				"host":     "mail.example.com",
+				"username": "user",
+				"password": "pass",
 			},
 		}
 		cfg, err := ParseCredential(params)

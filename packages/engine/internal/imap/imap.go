@@ -44,6 +44,12 @@ func ParseCredentialMap(cred map[string]string) (*Config, error) {
 	if cfg.Host == "" {
 		return nil, fmt.Errorf("IMAP credential must include 'host'")
 	}
+	if cfg.Username == "" {
+		return nil, fmt.Errorf("IMAP credential must include 'username'")
+	}
+	if cfg.Password == "" {
+		return nil, fmt.Errorf("IMAP credential must include 'password'")
+	}
 	if cfg.Port == "" {
 		cfg.Port = "993"
 	}

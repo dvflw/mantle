@@ -197,8 +197,10 @@ func TestParseIMAPCredential(t *testing.T) {
 	t.Run("use_tls=false disables TLS", func(t *testing.T) {
 		params := map[string]any{
 			"_credential": map[string]string{
-				"host":    "imap.example.com",
-				"use_tls": "false",
+				"host":     "imap.example.com",
+				"username": "user",
+				"password": "pass",
+				"use_tls":  "false",
 			},
 		}
 		cfg, err := parseIMAPCredential(params)
@@ -223,8 +225,10 @@ func TestParseIMAPCredential(t *testing.T) {
 	t.Run("explicit port is preserved", func(t *testing.T) {
 		params := map[string]any{
 			"_credential": map[string]string{
-				"host": "imap.example.com",
-				"port": "143",
+				"host":     "imap.example.com",
+				"port":     "143",
+				"username": "user",
+				"password": "pass",
 			},
 		}
 		cfg, err := parseIMAPCredential(params)
