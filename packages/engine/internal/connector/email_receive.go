@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	imaplib "github.com/dvflw/mantle/internal/imap"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 )
@@ -74,7 +75,7 @@ func (c *EmailReceiveConnector) Execute(ctx context.Context, params map[string]a
 	}
 
 	// Build search criteria based on the filter.
-	criteria := buildSearchCriteria(filter)
+	criteria := imaplib.BuildSearchCriteria(filter)
 
 	// Use UID search so we can build a UIDSet for Fetch.
 	searchData, err := client.UIDSearch(criteria, nil).Wait()
@@ -138,27 +139,6 @@ func (c *EmailReceiveConnector) Execute(ctx context.Context, params map[string]a
 		"message_count": len(messages),
 		"messages":      messages,
 	}, nil
-}
-
-// buildSearchCriteria constructs IMAP search criteria for the given filter name.
-func buildSearchCriteria(filter string) *imap.SearchCriteria {
-	switch filter {
-	case "unseen":
-		return &imap.SearchCriteria{
-			NotFlag: []imap.Flag{imap.FlagSeen},
-		}
-	case "flagged":
-		return &imap.SearchCriteria{
-			Flag: []imap.Flag{imap.FlagFlagged},
-		}
-	case "recent":
-		// \Recent is an IMAP4rev1 flag; use string literal.
-		return &imap.SearchCriteria{
-			Flag: []imap.Flag{imap.Flag(`\Recent`)},
-		}
-	default: // "all"
-		return &imap.SearchCriteria{}
-	}
 }
 
 // fetchMessages executes the FETCH command and converts the results into the

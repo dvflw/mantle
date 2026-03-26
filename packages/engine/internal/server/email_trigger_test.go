@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	imaplib "github.com/dvflw/mantle/internal/imap"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 )
@@ -112,30 +113,30 @@ func TestEmailTriggerPoller_ReloadAddsAndRemoves(t *testing.T) {
 // TestBuildEmailSearchCriteria verifies that the filter strings map to the
 // expected IMAP search criteria shapes.
 func TestBuildEmailSearchCriteria_Unseen(t *testing.T) {
-	c := buildEmailSearchCriteria("unseen")
+	c := imaplib.BuildSearchCriteria("unseen")
 	if len(c.NotFlag) == 0 {
 		t.Error("unseen filter should set NotFlag")
 	}
 }
 
 func TestBuildEmailSearchCriteria_All(t *testing.T) {
-	c := buildEmailSearchCriteria("all")
+	c := imaplib.BuildSearchCriteria("all")
 	if len(c.Flag) != 0 || len(c.NotFlag) != 0 {
 		t.Error("all filter should have empty criteria")
 	}
 }
 
 func TestBuildEmailSearchCriteria_Flagged(t *testing.T) {
-	c := buildEmailSearchCriteria("flagged")
+	c := imaplib.BuildSearchCriteria("flagged")
 	if len(c.Flag) == 0 {
 		t.Error("flagged filter should set Flag")
 	}
 }
 
-func TestBuildEmailSearchCriteria_UnknownDefaultsToUnseen(t *testing.T) {
-	c := buildEmailSearchCriteria("something-unknown")
-	if len(c.NotFlag) == 0 {
-		t.Error("unknown filter should default to unseen (NotFlag set)")
+func TestBuildEmailSearchCriteria_UnknownDefaultsToAll(t *testing.T) {
+	c := imaplib.BuildSearchCriteria("something-unknown")
+	if len(c.Flag) != 0 || len(c.NotFlag) != 0 {
+		t.Error("unknown filter should default to all (empty criteria)")
 	}
 }
 

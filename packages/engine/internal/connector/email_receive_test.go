@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	imaplib "github.com/dvflw/mantle/internal/imap"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -90,7 +91,7 @@ func TestEmailReceiveFilterCriteria(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.filter, func(t *testing.T) {
-			c := buildSearchCriteria(tt.filter)
+			c := imaplib.BuildSearchCriteria(tt.filter)
 			if c == nil {
 				t.Fatal("buildSearchCriteria returned nil")
 			}

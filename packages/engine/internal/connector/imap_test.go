@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	imaplib "github.com/dvflw/mantle/internal/imap"
 	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -65,7 +66,7 @@ func TestIMAPDial(t *testing.T) {
 
 	host, port := setupGreenMail(t)
 
-	cfg := &imapConfig{
+	cfg := &imaplib.Config{
 		Host:     host,
 		Port:     port,
 		Username: "testuser@example.com",
