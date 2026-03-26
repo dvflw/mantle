@@ -731,6 +731,18 @@ Runs browser automation scripts (JavaScript, TypeScript, or Python) using Playwr
       console.log(JSON.stringify({ submitted: true, confirmation_id: confirmationId }));
 ```
 
+:::caution[TypeScript Limitations]
+TypeScript support uses Node.js `--experimental-strip-types`, which **only strips type annotations**. The following TypeScript features are **not supported**:
+
+- **Enums** (`enum Direction { Up, Down }`)
+- **Namespaces** (`namespace Foo { }`)
+- **Decorators** (`@decorator`)
+- **`import =` / `export =`** syntax
+- **npm imports** — the container does not have `node_modules` beyond Playwright itself
+
+Use TypeScript for type annotations only. If you need advanced TypeScript features, use JavaScript instead.
+:::
+
 **Example -- Python with PDF generation:**
 
 ```yaml
