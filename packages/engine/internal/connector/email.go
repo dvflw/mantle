@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/smtp"
@@ -63,14 +64,74 @@ func (c *EmailSendConnector) Execute(ctx context.Context, params map[string]any)
 	msg := buildMessage(from, recipients, subject, body, isHTML)
 
 	addr := net.JoinHostPort(host, port)
+	tlsCfg := &tls.Config{ServerName: host} //nolint:gosec // MinVersion not set; Go's default is TLS 1.2+
 
-	var auth smtp.Auth
+	var client *smtp.Client
+
+	if port == "465" {
+		// Implicit TLS (SMTPS): dial with TLS directly.
+		tlsConn, dialErr := tls.Dial("tcp", addr, tlsCfg)
+		if dialErr != nil {
+			return nil, fmt.Errorf("email/send: TLS dial to %s: %w", addr, dialErr)
+		}
+		c, newErr := smtp.NewClient(tlsConn, host)
+		if newErr != nil {
+			_ = tlsConn.Close()
+			return nil, fmt.Errorf("email/send: SMTP handshake: %w", newErr)
+		}
+		client = c
+	} else {
+		// Explicit TLS (STARTTLS): connect plaintext, then upgrade.
+		conn, dialErr := net.Dial("tcp", addr)
+		if dialErr != nil {
+			return nil, fmt.Errorf("email/send: dial %s: %w", addr, dialErr)
+		}
+		c, newErr := smtp.NewClient(conn, host)
+		if newErr != nil {
+			_ = conn.Close()
+			return nil, fmt.Errorf("email/send: SMTP handshake: %w", newErr)
+		}
+		ok, _ := c.Extension("STARTTLS")
+		if !ok {
+			_ = c.Close()
+			return nil, fmt.Errorf("email/send: server %s does not support STARTTLS; refusing to send credentials in plaintext", host)
+		}
+		if startErr := c.StartTLS(tlsCfg); startErr != nil {
+			_ = c.Close()
+			return nil, fmt.Errorf("email/send: STARTTLS negotiation with %s: %w", host, startErr)
+		}
+		client = c
+	}
+	defer client.Close() //nolint:errcheck
+
 	if username != "" {
-		auth = smtp.PlainAuth("", username, password, host)
+		auth := smtp.PlainAuth("", username, password, host)
+		if authErr := client.Auth(auth); authErr != nil {
+			return nil, fmt.Errorf("email/send: SMTP auth: %w", authErr)
+		}
 	}
 
-	if err := smtp.SendMail(addr, auth, from, recipients, msg); err != nil {
-		return nil, fmt.Errorf("email/send: %w", err)
+	if err := client.Mail(from); err != nil {
+		return nil, fmt.Errorf("email/send: MAIL FROM: %w", err)
+	}
+	for _, rcpt := range recipients {
+		if err := client.Rcpt(rcpt); err != nil {
+			return nil, fmt.Errorf("email/send: RCPT TO <%s>: %w", rcpt, err)
+		}
+	}
+	wc, err := client.Data()
+	if err != nil {
+		return nil, fmt.Errorf("email/send: DATA command: %w", err)
+	}
+	if _, err = wc.Write(msg); err != nil {
+		_ = wc.Close()
+		return nil, fmt.Errorf("email/send: writing message body: %w", err)
+	}
+	if err = wc.Close(); err != nil {
+		return nil, fmt.Errorf("email/send: closing DATA writer: %w", err)
+	}
+	if err = client.Quit(); err != nil {
+		return nil, fmt.Errorf("email/send: QUIT: %w", err)
 	}
 
 	return map[string]any{
