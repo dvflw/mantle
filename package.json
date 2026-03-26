@@ -1,8 +1,13 @@
 {
   "name": "mantle",
   "private": true,
-  "scripts": {},
+  "scripts": {
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "changeset publish"
+  },
   "devDependencies": {
+    "@changesets/cli": "^2.30.0",
     "nx": "^22.6.1"
   }
 }
