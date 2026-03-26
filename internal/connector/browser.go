@@ -62,7 +62,7 @@ func indentLines(s, prefix string) string {
 //   - language      (string)           "javascript" | "typescript" | "python" (default "javascript")
 //   - script        (string, required) the user's Playwright script
 //   - output_format (string)           "json" | "text" (default "text")
-//   - env           (map[string]string) environment variables
+//   - env           (map[string]any)    environment variables (keys and values coerced to strings by docker/run)
 //   - pull          (string)           image pull policy passed to docker/run
 //   - memory        (string)           memory limit (default "1g")
 //   - _credential   (any)              passed to docker/run for Docker daemon access
@@ -116,7 +116,7 @@ func (c *BrowserRunConnector) Execute(ctx context.Context, params map[string]any
 		containerImage = playwrightNodeImage
 		wrapperScript = buildJSWrapper(script)
 		// Same as JS but with TypeScript type-stripping enabled.
-		containerCmd = []string{"sh", "-c", "npm install --no-save --silent playwright@" + playwrightVersion + " 2>/dev/null && node --experimental-strip-types"}
+		containerCmd = []string{"sh", "-c", "npm install --no-save --silent playwright@" + playwrightVersion + " && node --experimental-strip-types"}
 	case "python":
 		containerImage = playwrightPythonImage
 		wrapperScript = buildPythonWrapper(script)
@@ -160,8 +160,9 @@ func (c *BrowserRunConnector) Execute(ctx context.Context, params map[string]any
 		"stderr":    result["stderr"],
 	}
 
-	// Optionally parse stdout as JSON.
-	if outputFormat == "json" {
+	// Optionally parse stdout as JSON — but only when the script succeeded.
+	// On failure, return exit_code/stderr as-is for continue_on_error consumers.
+	if outputFormat == "json" && result["exit_code"] == int64(0) {
 		stdout, _ := result["stdout"].(string)
 		stdout = strings.TrimSpace(stdout)
 		if stdout != "" {

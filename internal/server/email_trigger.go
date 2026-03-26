@@ -569,11 +569,10 @@ func buildEmailTriggerInputs(buf *imapclient.FetchMessageBuffer, folder string) 
 	}
 
 	// Extract body text from the TEXT body section.
+	// Do NOT fall back to buf.BodySection[0] — that could be the HEADER section.
 	bodySection := &imap.FetchItemBodySection{Specifier: imap.PartSpecifierText}
 	if rawText := buf.FindBodySection(bodySection); rawText != nil {
 		trigger["body"] = extractEmailBody(rawText)
-	} else if len(buf.BodySection) > 0 {
-		trigger["body"] = extractEmailBody(buf.BodySection[0].Bytes)
 	}
 
 	// Extract headers from the HEADER body section.
