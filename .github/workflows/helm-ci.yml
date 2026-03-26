@@ -1,0 +1,19 @@
+name: Helm CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/helm-chart/**'
+  pull_request:
+    paths:
+      - 'packages/helm-chart/**'
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: helm lint packages/helm-chart/
