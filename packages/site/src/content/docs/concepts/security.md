@@ -84,3 +84,9 @@ To keep all data within the EU:
 2. **Use EU-region AI endpoints** -- AWS Bedrock in `eu-west-1`, Azure OpenAI in `westeurope`, or a self-hosted model in your EU infrastructure
 3. **Restrict endpoints** with `engine.allowed_base_urls` to prevent calls to US-based APIs
 4. **Deploy the Mantle binary in the same EU region** to avoid cross-border traffic between the application and the database
+
+## Script Injection
+
+The `browser/run` connector concatenates the `script` param into a wrapper template. If the script value contains CEL expressions that resolve untrusted external data (trigger bodies, webhook payloads), structural injection is possible inside the container sandbox.
+
+**Mitigation:** Pass untrusted data via the `env` param, not the `script` field. Environment variables are treated as string values, not executable code.
