@@ -319,6 +319,8 @@ mantle secrets create --name smtp-creds --type basic \
   --field port=587
 ```
 
+**TLS:** The email connector enforces TLS for all SMTP connections. Port 465 uses implicit TLS (SMTPS); all other ports use STARTTLS and fail if the server does not support TLS. Plaintext SMTP is not supported.
+
 ## email/receive
 
 Reads messages from an email mailbox. Supports filtering by folder and read status.
