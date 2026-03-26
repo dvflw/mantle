@@ -1,0 +1,14 @@
+{
+  "name": "helm-chart",
+  "root": "packages/helm-chart",
+  "targets": {
+    "lint": {
+      "command": "helm lint .",
+      "options": { "cwd": "packages/helm-chart" }
+    },
+    "template": {
+      "command": "helm template mantle .",
+      "options": { "cwd": "packages/helm-chart" }
+    }
+  }
+}

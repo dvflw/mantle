@@ -1,0 +1,2 @@
+> go build -o mantle ./cmd/mantle
+

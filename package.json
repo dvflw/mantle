@@ -1,0 +1,8 @@
+{
+  "name": "mantle",
+  "private": true,
+  "scripts": {},
+  "devDependencies": {
+    "nx": "^22.6.1"
+  }
+}

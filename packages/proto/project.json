@@ -1,0 +1,5 @@
+{
+  "name": "proto",
+  "root": "packages/proto",
+  "targets": {}
+}

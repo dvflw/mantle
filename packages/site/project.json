@@ -1,0 +1,15 @@
+{
+  "name": "site",
+  "root": "packages/site",
+  "targets": {
+    "dev": {
+      "command": "npm run dev",
+      "options": { "cwd": "packages/site" }
+    },
+    "build": {
+      "command": "npm run build",
+      "options": { "cwd": "packages/site" },
+      "inputs": ["site"]
+    }
+  }
+}

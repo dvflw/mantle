@@ -1,0 +1,21 @@
+{
+  "name": "engine",
+  "root": "packages/engine",
+  "targets": {
+    "build": {
+      "command": "go build -o mantle ./cmd/mantle",
+      "options": { "cwd": "packages/engine" },
+      "inputs": ["engine"]
+    },
+    "test": {
+      "command": "go test -race -short ./...",
+      "options": { "cwd": "packages/engine" },
+      "inputs": ["engine"]
+    },
+    "lint": {
+      "command": "golangci-lint run",
+      "options": { "cwd": "packages/engine" },
+      "inputs": ["engine"]
+    }
+  }
+}

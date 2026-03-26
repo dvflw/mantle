@@ -1,0 +1,1373 @@
+{
+  "version": "6.0",
+  "nxVersion": "22.6.1",
+  "pathMappings": {},
+  "nxJsonPlugins": [],
+  "fileMap": {
+    "nonProjectFiles": [
+      {
+        "file": ".github/ISSUE_TEMPLATE/bug_report.md",
+        "hash": "17728064812031098911"
+      },
+      {
+        "file": ".github/ISSUE_TEMPLATE/feature_request.md",
+        "hash": "6594643906991089165"
+      },
+      {
+        "file": ".github/PULL_REQUEST_TEMPLATE.md",
+        "hash": "5636313383103700709"
+      },
+      {
+        "file": ".github/workflows/ci.yml",
+        "hash": "7126027355170228185"
+      },
+      {
+        "file": ".github/workflows/release.yml",
+        "hash": "4074117731161956344"
+      },
+      {
+        "file": ".gitignore",
+        "hash": "14342051801509693361"
+      },
+      {
+        "file": ".release-reviews/RELEASE-REVIEW-2026-03-25-R2.md",
+        "hash": "4281303829380758385"
+      },
+      {
+        "file": ".release-reviews/RELEASE-REVIEW-2026-03-25-v030.md",
+        "hash": "17809315749491628213"
+      },
+      {
+        "file": ".release-reviews/RELEASE-REVIEW-2026-03-25.md",
+        "hash": "16154364039822081806"
+      },
+      {
+        "file": "CHANGELOG.md",
+        "hash": "18258884152789910757"
+      },
+      {
+        "file": "CLAUDE.md",
+        "hash": "14503552130376176912"
+      },
+      {
+        "file": "CODE_OF_CONDUCT.md",
+        "hash": "9484165851077118810"
+      },
+      {
+        "file": "CONTRIBUTING.md",
+        "hash": "8135386185268341391"
+      },
+      {
+        "file": "LICENSE",
+        "hash": "7721618124383501801"
+      },
+      {
+        "file": "Makefile",
+        "hash": "1371041093161563740"
+      },
+      {
+        "file": "README.md",
+        "hash": "6472144021701358530"
+      },
+      {
+        "file": "SECURITY.md",
+        "hash": "12874431472826577311"
+      },
+      {
+        "file": "bun.lock",
+        "hash": "14463774582729004689"
+      },
+      {
+        "file": "go.work",
+        "hash": "4244126444380424438"
+      },
+      {
+        "file": "go.work.sum",
+        "hash": "4177689902673030706"
+      },
+      {
+        "file": "marketing/growth-strategy.md",
+        "hash": "15381691169424303451"
+      },
+      {
+        "file": "marketing/launch-plan.md",
+        "hash": "11735293628695508317"
+      },
+      {
+        "file": "marketing/website-brief.md",
+        "hash": "243500350975905922"
+      },
+      {
+        "file": "nx.json",
+        "hash": "1934198639429421327"
+      },
+      {
+        "file": "package.json",
+        "hash": "3602322360692715119"
+      }
+    ],
+    "projectFileMap": {
+      "proto": [
+        {
+          "file": "packages/proto/connector.proto",
+          "hash": "6704599913479022316"
+        },
+        {
+          "file": "packages/proto/project.json",
+          "hash": "8280785944377435827"
+        }
+      ],
+      "site": [
+        {
+          "file": "packages/site/.gitignore",
+          "hash": "8477840112809883345"
+        },
+        {
+          "file": "packages/site/astro.config.mjs",
+          "hash": "16821088682098943142"
+        },
+        {
+          "file": "packages/site/package-lock.json",
+          "hash": "17475763868043375608"
+        },
+        {
+          "file": "packages/site/package.json",
+          "hash": "2574892893525487799"
+        },
+        {
+          "file": "packages/site/project.json",
+          "hash": "9972688888932228077"
+        },
+        {
+          "file": "packages/site/public/favicon.svg",
+          "hash": "2807380403353959335"
+        },
+        {
+          "file": "packages/site/public/robots.txt",
+          "hash": "7574171550640216787"
+        },
+        {
+          "file": "packages/site/src/components/Comparison.astro",
+          "hash": "5127955617316139737"
+        },
+        {
+          "file": "packages/site/src/components/Connectors.astro",
+          "hash": "4826188135960823402"
+        },
+        {
+          "file": "packages/site/src/components/DocsSearch.astro",
+          "hash": "10824415254109036568"
+        },
+        {
+          "file": "packages/site/src/components/DocsSidebar.astro",
+          "hash": "5124338204021576370"
+        },
+        {
+          "file": "packages/site/src/components/DocsToc.astro",
+          "hash": "914788462976846742"
+        },
+        {
+          "file": "packages/site/src/components/Enterprise.astro",
+          "hash": "8223078665722205"
+        },
+        {
+          "file": "packages/site/src/components/Features.astro",
+          "hash": "5777312714736038749"
+        },
+        {
+          "file": "packages/site/src/components/Footer.astro",
+          "hash": "14662439584941685889"
+        },
+        {
+          "file": "packages/site/src/components/GetStarted.astro",
+          "hash": "11063684635217091781"
+        },
+        {
+          "file": "packages/site/src/components/Hero.astro",
+          "hash": "4846404899050696263"
+        },
+        {
+          "file": "packages/site/src/components/HowItWorks.astro",
+          "hash": "9619700521874074644"
+        },
+        {
+          "file": "packages/site/src/components/Nav.astro",
+          "hash": "7736724289656646847"
+        },
+        {
+          "file": "packages/site/src/components/SearchModal.astro",
+          "hash": "11045834052438014528"
+        },
+        {
+          "file": "packages/site/src/content.config.ts",
+          "hash": "14114085165816361796"
+        },
+        {
+          "file": "packages/site/src/content/docs/ai-cost-controls.md",
+          "hash": "5776711613890536079"
+        },
+        {
+          "file": "packages/site/src/content/docs/authentication-guide.md",
+          "hash": "9455476382482355539"
+        },
+        {
+          "file": "packages/site/src/content/docs/cli-reference/admin-commands.md",
+          "hash": "541202360157642476"
+        },
+        {
+          "file": "packages/site/src/content/docs/cli-reference/auth-commands.md",
+          "hash": "9904328761905487993"
+        },
+        {
+          "file": "packages/site/src/content/docs/cli-reference/index.md",
+          "hash": "3717057896151230770"
+        },
+        {
+          "file": "packages/site/src/content/docs/cli-reference/server-commands.md",
+          "hash": "14222427867935393513"
+        },
+        {
+          "file": "packages/site/src/content/docs/cli-reference/workflow-commands.md",
+          "hash": "2494796467900178131"
+        },
+        {
+          "file": "packages/site/src/content/docs/comparison.md",
+          "hash": "3999216334043644718"
+        },
+        {
+          "file": "packages/site/src/content/docs/concepts/artifacts.md",
+          "hash": "7351294560149484042"
+        },
+        {
+          "file": "packages/site/src/content/docs/concepts/execution.md",
+          "hash": "13555018976215652180"
+        },
+        {
+          "file": "packages/site/src/content/docs/concepts/expressions.md",
+          "hash": "1216763974942508091"
+        },
+        {
+          "file": "packages/site/src/content/docs/concepts/index.md",
+          "hash": "5472035575801018471"
+        },
+        {
+          "file": "packages/site/src/content/docs/concepts/security.md",
+          "hash": "14135583824075568217"
+        },
+        {
+          "file": "packages/site/src/content/docs/configuration.md",
+          "hash": "9243511127302019274"
+        },
+        {
+          "file": "packages/site/src/content/docs/deployment-guide.md",
+          "hash": "1473198059869681014"
+        },
+        {
+          "file": "packages/site/src/content/docs/getting-started/ai-workflows.md",
+          "hash": "13141878103122868075"
+        },
+        {
+          "file": "packages/site/src/content/docs/getting-started/data-passing.md",
+          "hash": "8586018312219993018"
+        },
+        {
+          "file": "packages/site/src/content/docs/getting-started/data-transformations.md",
+          "hash": "11623660898936839888"
+        },
+        {
+          "file": "packages/site/src/content/docs/getting-started/docker-workflows.md",
+          "hash": "4569778443179884452"
+        },
+        {
+          "file": "packages/site/src/content/docs/getting-started/index.md",
+          "hash": "15035322285756177646"
+        },
+        {
+          "file": "packages/site/src/content/docs/getting-started/production.md",
+          "hash": "7863840393775928506"
+        },
+        {
+          "file": "packages/site/src/content/docs/observability-guide.md",
+          "hash": "16351996052435871411"
+        },
+        {
+          "file": "packages/site/src/content/docs/plugins-guide.md",
+          "hash": "2061069240309706429"
+        },
+        {
+          "file": "packages/site/src/content/docs/secrets-guide.md",
+          "hash": "10591579267596365373"
+        },
+        {
+          "file": "packages/site/src/content/docs/server-guide/api.md",
+          "hash": "10670534779754748410"
+        },
+        {
+          "file": "packages/site/src/content/docs/server-guide/index.md",
+          "hash": "7734319458297551465"
+        },
+        {
+          "file": "packages/site/src/content/docs/server-guide/operations.md",
+          "hash": "12381763088191435707"
+        },
+        {
+          "file": "packages/site/src/content/docs/server-guide/triggers.md",
+          "hash": "9928461279171315456"
+        },
+        {
+          "file": "packages/site/src/content/docs/workflow-reference/connectors.md",
+          "hash": "6134956564029160314"
+        },
+        {
+          "file": "packages/site/src/content/docs/workflow-reference/index.md",
+          "hash": "7982798508040719956"
+        },
+        {
+          "file": "packages/site/src/content/docs/workflow-reference/tools.md",
+          "hash": "7694679673448021194"
+        },
+        {
+          "file": "packages/site/src/content/examples/ai-data-enrichment.yaml",
+          "hash": "17876347592749709436"
+        },
+        {
+          "file": "packages/site/src/content/examples/ai-structured-extraction.yaml",
+          "hash": "477447640487817523"
+        },
+        {
+          "file": "packages/site/src/content/examples/ai-tool-use.yaml",
+          "hash": "8376482466934419845"
+        },
+        {
+          "file": "packages/site/src/content/examples/api-with-auth.yaml",
+          "hash": "17388688269152864962"
+        },
+        {
+          "file": "packages/site/src/content/examples/browser-form-submit.yaml",
+          "hash": "8014059749218230133"
+        },
+        {
+          "file": "packages/site/src/content/examples/browser-scrape.yaml",
+          "hash": "4060208515107991745"
+        },
+        {
+          "file": "packages/site/src/content/examples/chained-requests.yaml",
+          "hash": "9213587631174798907"
+        },
+        {
+          "file": "packages/site/src/content/examples/conditional-workflow.yaml",
+          "hash": "13599121992781815020"
+        },
+        {
+          "file": "packages/site/src/content/examples/cron-and-webhook.yaml",
+          "hash": "10410023165816443592"
+        },
+        {
+          "file": "packages/site/src/content/examples/data-pipeline.yaml",
+          "hash": "2904649577478921244"
+        },
+        {
+          "file": "packages/site/src/content/examples/data-transform-api-to-db.yaml",
+          "hash": "2285875215523075379"
+        },
+        {
+          "file": "packages/site/src/content/examples/db-backup.yaml",
+          "hash": "15388312077135498276"
+        },
+        {
+          "file": "packages/site/src/content/examples/db-to-slack.yaml",
+          "hash": "5544414955970855790"
+        },
+        {
+          "file": "packages/site/src/content/examples/docker-data-transform.yaml",
+          "hash": "3728908895715388901"
+        },
+        {
+          "file": "packages/site/src/content/examples/docker-volume-backup.yaml",
+          "hash": "4593843144856531504"
+        },
+        {
+          "file": "packages/site/src/content/examples/email-inbox-triage.yaml",
+          "hash": "4622725043593649586"
+        },
+        {
+          "file": "packages/site/src/content/examples/email-report.yaml",
+          "hash": "9001507085955703791"
+        },
+        {
+          "file": "packages/site/src/content/examples/error-notification.yaml",
+          "hash": "8408007224511039644"
+        },
+        {
+          "file": "packages/site/src/content/examples/fetch-and-summarize.yaml",
+          "hash": "7784422309973436318"
+        },
+        {
+          "file": "packages/site/src/content/examples/hello-world.yaml",
+          "hash": "11586025783225803810"
+        },
+        {
+          "file": "packages/site/src/content/examples/library-workflow.sh",
+          "hash": "3384765268522790478"
+        },
+        {
+          "file": "packages/site/src/content/examples/multi-model-comparison.yaml",
+          "hash": "4158613309987933192"
+        },
+        {
+          "file": "packages/site/src/content/examples/multi-team-setup.sh",
+          "hash": "15430601993979483646"
+        },
+        {
+          "file": "packages/site/src/content/examples/parallel-fanout.yaml",
+          "hash": "2756433809292073195"
+        },
+        {
+          "file": "packages/site/src/content/examples/quickstart.sh",
+          "hash": "11445839334469425566"
+        },
+        {
+          "file": "packages/site/src/content/examples/s3-backup.yaml",
+          "hash": "6966307302856608103"
+        },
+        {
+          "file": "packages/site/src/content/examples/scheduled-health-check.yaml",
+          "hash": "11766014444607015988"
+        },
+        {
+          "file": "packages/site/src/content/examples/slack-notification.yaml",
+          "hash": "8147124304601992705"
+        },
+        {
+          "file": "packages/site/src/content/examples/webhook-processor.yaml",
+          "hash": "8082180396758415522"
+        },
+        {
+          "file": "packages/site/src/data/docs-nav.ts",
+          "hash": "17657048649065184956"
+        },
+        {
+          "file": "packages/site/src/layouts/Base.astro",
+          "hash": "3007600442723808696"
+        },
+        {
+          "file": "packages/site/src/layouts/Docs.astro",
+          "hash": "10671862046002332280"
+        },
+        {
+          "file": "packages/site/src/pages/404.astro",
+          "hash": "8222899264888228559"
+        },
+        {
+          "file": "packages/site/src/pages/docs/[...slug].astro",
+          "hash": "16864829984709721539"
+        },
+        {
+          "file": "packages/site/src/pages/docs/examples.astro",
+          "hash": "761551455896440361"
+        },
+        {
+          "file": "packages/site/src/pages/index.astro",
+          "hash": "10284113367504427445"
+        },
+        {
+          "file": "packages/site/src/styles/global.css",
+          "hash": "15843716371808944997"
+        },
+        {
+          "file": "packages/site/tsconfig.json",
+          "hash": "3453046232242178260"
+        }
+      ],
+      "helm-chart": [
+        {
+          "file": "packages/helm-chart/Chart.yaml",
+          "hash": "13505909717385320954"
+        },
+        {
+          "file": "packages/helm-chart/project.json",
+          "hash": "5773816893211027183"
+        },
+        {
+          "file": "packages/helm-chart/templates/NOTES.txt",
+          "hash": "14401622206962073840"
+        },
+        {
+          "file": "packages/helm-chart/templates/_helpers.tpl",
+          "hash": "5074612549107695423"
+        },
+        {
+          "file": "packages/helm-chart/templates/deployment.yaml",
+          "hash": "4497854610713925920"
+        },
+        {
+          "file": "packages/helm-chart/templates/hpa.yaml",
+          "hash": "3745027806469434512"
+        },
+        {
+          "file": "packages/helm-chart/templates/ingress.yaml",
+          "hash": "8207090026372911076"
+        },
+        {
+          "file": "packages/helm-chart/templates/migration-job.yaml",
+          "hash": "3502814787313163869"
+        },
+        {
+          "file": "packages/helm-chart/templates/pdb.yaml",
+          "hash": "7394161047415770046"
+        },
+        {
+          "file": "packages/helm-chart/templates/secret.yaml",
+          "hash": "16014262478375969761"
+        },
+        {
+          "file": "packages/helm-chart/templates/service.yaml",
+          "hash": "17054377682463460890"
+        },
+        {
+          "file": "packages/helm-chart/templates/serviceaccount.yaml",
+          "hash": "6825879737844907578"
+        },
+        {
+          "file": "packages/helm-chart/templates/servicemonitor.yaml",
+          "hash": "9831277951027680955"
+        },
+        {
+          "file": "packages/helm-chart/values.yaml",
+          "hash": "7962483597879584224"
+        }
+      ],
+      "engine": [
+        {
+          "file": "packages/engine/.dockerignore",
+          "hash": "10380161805676667278"
+        },
+        {
+          "file": "packages/engine/.golangci.yml",
+          "hash": "7133326224514370192"
+        },
+        {
+          "file": "packages/engine/Dockerfile",
+          "hash": "17284444163876297165"
+        },
+        {
+          "file": "packages/engine/Makefile",
+          "hash": "4261433298030398895"
+        },
+        {
+          "file": "packages/engine/cmd/mantle/main.go",
+          "hash": "7627527003685326240"
+        },
+        {
+          "file": "packages/engine/docker-compose.yml",
+          "hash": "9064338464338514972"
+        },
+        {
+          "file": "packages/engine/go.mod",
+          "hash": "11725374923469068252"
+        },
+        {
+          "file": "packages/engine/go.sum",
+          "hash": "15991357906460384380"
+        },
+        {
+          "file": "packages/engine/internal/api/health/health.go",
+          "hash": "6946667236731128777"
+        },
+        {
+          "file": "packages/engine/internal/api/health/health_test.go",
+          "hash": "5385358183088351864"
+        },
+        {
+          "file": "packages/engine/internal/artifact/context.go",
+          "hash": "7804193354639656408"
+        },
+        {
+          "file": "packages/engine/internal/artifact/reaper.go",
+          "hash": "13654935579843671613"
+        },
+        {
+          "file": "packages/engine/internal/artifact/reaper_test.go",
+          "hash": "13164908133623372205"
+        },
+        {
+          "file": "packages/engine/internal/artifact/store.go",
+          "hash": "3296138617815986065"
+        },
+        {
+          "file": "packages/engine/internal/artifact/store_test.go",
+          "hash": "1811087789897285852"
+        },
+        {
+          "file": "packages/engine/internal/artifact/test_helpers_test.go",
+          "hash": "10806211497936678677"
+        },
+        {
+          "file": "packages/engine/internal/artifact/tmp.go",
+          "hash": "14486734828779520516"
+        },
+        {
+          "file": "packages/engine/internal/artifact/tmp_test.go",
+          "hash": "18162080204841191230"
+        },
+        {
+          "file": "packages/engine/internal/audit/audit.go",
+          "hash": "2496341254987597932"
+        },
+        {
+          "file": "packages/engine/internal/audit/audit_test.go",
+          "hash": "12058979344791766346"
+        },
+        {
+          "file": "packages/engine/internal/audit/log.go",
+          "hash": "6859584790128543167"
+        },
+        {
+          "file": "packages/engine/internal/audit/noop.go",
+          "hash": "9494909911958978695"
+        },
+        {
+          "file": "packages/engine/internal/audit/postgres.go",
+          "hash": "13932041908526934261"
+        },
+        {
+          "file": "packages/engine/internal/auth/apikey.go",
+          "hash": "16605201672185087281"
+        },
+        {
+          "file": "packages/engine/internal/auth/auth_test.go",
+          "hash": "8958669942606962881"
+        },
+        {
+          "file": "packages/engine/internal/auth/middleware.go",
+          "hash": "9712117455782469645"
+        },
+        {
+          "file": "packages/engine/internal/auth/models.go",
+          "hash": "15985899952462971944"
+        },
+        {
+          "file": "packages/engine/internal/auth/oidc.go",
+          "hash": "4886386700303085303"
+        },
+        {
+          "file": "packages/engine/internal/auth/oidc_test.go",
+          "hash": "14887622465754233463"
+        },
+        {
+          "file": "packages/engine/internal/auth/store.go",
+          "hash": "1452941156028940089"
+        },
+        {
+          "file": "packages/engine/internal/auth/test_helpers_test.go",
+          "hash": "16185960034769718279"
+        },
+        {
+          "file": "packages/engine/internal/budget/budget.go",
+          "hash": "10194895167098642783"
+        },
+        {
+          "file": "packages/engine/internal/budget/budget_test.go",
+          "hash": "3833669578969206482"
+        },
+        {
+          "file": "packages/engine/internal/budget/store.go",
+          "hash": "15943428064885591515"
+        },
+        {
+          "file": "packages/engine/internal/budget/store_test.go",
+          "hash": "7559901442779275386"
+        },
+        {
+          "file": "packages/engine/internal/cel/cel.go",
+          "hash": "16161348010350552284"
+        },
+        {
+          "file": "packages/engine/internal/cel/cel_test.go",
+          "hash": "4058578538626461775"
+        },
+        {
+          "file": "packages/engine/internal/cel/functions.go",
+          "hash": "1010567722486576132"
+        },
+        {
+          "file": "packages/engine/internal/cel/functions_test.go",
+          "hash": "9700742414558053538"
+        },
+        {
+          "file": "packages/engine/internal/cel/macros_test.go",
+          "hash": "11387868884854401548"
+        },
+        {
+          "file": "packages/engine/internal/cli/apply.go",
+          "hash": "11661372411750507862"
+        },
+        {
+          "file": "packages/engine/internal/cli/audit.go",
+          "hash": "8055864823769591298"
+        },
+        {
+          "file": "packages/engine/internal/cli/browser_darwin.go",
+          "hash": "14630129479382877227"
+        },
+        {
+          "file": "packages/engine/internal/cli/browser_linux.go",
+          "hash": "8136722009080483176"
+        },
+        {
+          "file": "packages/engine/internal/cli/browser_windows.go",
+          "hash": "4125785194925062558"
+        },
+        {
+          "file": "packages/engine/internal/cli/budget.go",
+          "hash": "2479666199951436420"
+        },
+        {
+          "file": "packages/engine/internal/cli/cancel.go",
+          "hash": "3072286553719971760"
+        },
+        {
+          "file": "packages/engine/internal/cli/cleanup.go",
+          "hash": "13249556770291148505"
+        },
+        {
+          "file": "packages/engine/internal/cli/credentials.go",
+          "hash": "13975923862863407721"
+        },
+        {
+          "file": "packages/engine/internal/cli/credentials_test.go",
+          "hash": "4276987252542067283"
+        },
+        {
+          "file": "packages/engine/internal/cli/docker.go",
+          "hash": "12574006291119545348"
+        },
+        {
+          "file": "packages/engine/internal/cli/docker_test.go",
+          "hash": "15309491664889653162"
+        },
+        {
+          "file": "packages/engine/internal/cli/init.go",
+          "hash": "12377720098681188991"
+        },
+        {
+          "file": "packages/engine/internal/cli/init_test.go",
+          "hash": "37375191546268970"
+        },
+        {
+          "file": "packages/engine/internal/cli/interactive.go",
+          "hash": "4142997313520950154"
+        },
+        {
+          "file": "packages/engine/internal/cli/library.go",
+          "hash": "12556733728626746075"
+        },
+        {
+          "file": "packages/engine/internal/cli/login.go",
+          "hash": "5763088149388326942"
+        },
+        {
+          "file": "packages/engine/internal/cli/logs.go",
+          "hash": "12187838364398257607"
+        },
+        {
+          "file": "packages/engine/internal/cli/migrate.go",
+          "hash": "3088069860097698692"
+        },
+        {
+          "file": "packages/engine/internal/cli/plan.go",
+          "hash": "2216193100830257469"
+        },
+        {
+          "file": "packages/engine/internal/cli/plugins.go",
+          "hash": "9237125937422032298"
+        },
+        {
+          "file": "packages/engine/internal/cli/roles.go",
+          "hash": "10516343052002969608"
+        },
+        {
+          "file": "packages/engine/internal/cli/root.go",
+          "hash": "16101704935411433597"
+        },
+        {
+          "file": "packages/engine/internal/cli/root_test.go",
+          "hash": "14124020190362665914"
+        },
+        {
+          "file": "packages/engine/internal/cli/rotate_key.go",
+          "hash": "3120443724184077224"
+        },
+        {
+          "file": "packages/engine/internal/cli/run.go",
+          "hash": "17596491546853456191"
+        },
+        {
+          "file": "packages/engine/internal/cli/secrets.go",
+          "hash": "16620151046241538003"
+        },
+        {
+          "file": "packages/engine/internal/cli/serve.go",
+          "hash": "11433886165515022726"
+        },
+        {
+          "file": "packages/engine/internal/cli/status.go",
+          "hash": "10599620053706652549"
+        },
+        {
+          "file": "packages/engine/internal/cli/teams.go",
+          "hash": "11647720129253761664"
+        },
+        {
+          "file": "packages/engine/internal/cli/users.go",
+          "hash": "5326620021554508300"
+        },
+        {
+          "file": "packages/engine/internal/cli/utils_test.go",
+          "hash": "1588044477229716121"
+        },
+        {
+          "file": "packages/engine/internal/cli/validate.go",
+          "hash": "18315322758304207347"
+        },
+        {
+          "file": "packages/engine/internal/cli/version.go",
+          "hash": "12763389385809936042"
+        },
+        {
+          "file": "packages/engine/internal/cli/version_test.go",
+          "hash": "7310737222099549053"
+        },
+        {
+          "file": "packages/engine/internal/config/config.go",
+          "hash": "9590151212409196670"
+        },
+        {
+          "file": "packages/engine/internal/config/config_cloud_test.go",
+          "hash": "1936364838877693226"
+        },
+        {
+          "file": "packages/engine/internal/config/config_oidc_test.go",
+          "hash": "2071243809883833361"
+        },
+        {
+          "file": "packages/engine/internal/config/config_test.go",
+          "hash": "13114509796067704571"
+        },
+        {
+          "file": "packages/engine/internal/connector/ai.go",
+          "hash": "2297103711082048395"
+        },
+        {
+          "file": "packages/engine/internal/connector/ai_test.go",
+          "hash": "7366367745120954590"
+        },
+        {
+          "file": "packages/engine/internal/connector/awsclient.go",
+          "hash": "4129356454440974410"
+        },
+        {
+          "file": "packages/engine/internal/connector/awsclient_test.go",
+          "hash": "8455208775189869339"
+        },
+        {
+          "file": "packages/engine/internal/connector/browser.go",
+          "hash": "2464307845060936733"
+        },
+        {
+          "file": "packages/engine/internal/connector/browser_test.go",
+          "hash": "4526022013210107531"
+        },
+        {
+          "file": "packages/engine/internal/connector/connector.go",
+          "hash": "3019721859522508851"
+        },
+        {
+          "file": "packages/engine/internal/connector/docker.go",
+          "hash": "1129953237485094427"
+        },
+        {
+          "file": "packages/engine/internal/connector/docker_test.go",
+          "hash": "17416120300737248469"
+        },
+        {
+          "file": "packages/engine/internal/connector/email.go",
+          "hash": "3021766720096840011"
+        },
+        {
+          "file": "packages/engine/internal/connector/email_delete.go",
+          "hash": "16099544344160146771"
+        },
+        {
+          "file": "packages/engine/internal/connector/email_delete_test.go",
+          "hash": "10093821887458464250"
+        },
+        {
+          "file": "packages/engine/internal/connector/email_flag.go",
+          "hash": "15763803768343312664"
+        },
+        {
+          "file": "packages/engine/internal/connector/email_flag_test.go",
+          "hash": "12398920490218105360"
+        },
+        {
+          "file": "packages/engine/internal/connector/email_move.go",
+          "hash": "4590493864695326743"
+        },
+        {
+          "file": "packages/engine/internal/connector/email_move_test.go",
+          "hash": "6906988059380327628"
+        },
+        {
+          "file": "packages/engine/internal/connector/email_receive.go",
+          "hash": "11409510829615071826"
+        },
+        {
+          "file": "packages/engine/internal/connector/email_receive_test.go",
+          "hash": "350410769241329299"
+        },
+        {
+          "file": "packages/engine/internal/connector/email_test.go",
+          "hash": "2389148900399661069"
+        },
+        {
+          "file": "packages/engine/internal/connector/http.go",
+          "hash": "8305521246058613254"
+        },
+        {
+          "file": "packages/engine/internal/connector/http_test.go",
+          "hash": "2814304070517381804"
+        },
+        {
+          "file": "packages/engine/internal/connector/imap.go",
+          "hash": "15927066557656370284"
+        },
+        {
+          "file": "packages/engine/internal/connector/imap_test.go",
+          "hash": "3103367096720343423"
+        },
+        {
+          "file": "packages/engine/internal/connector/postgres.go",
+          "hash": "10207333154187722654"
+        },
+        {
+          "file": "packages/engine/internal/connector/postgres_test.go",
+          "hash": "2749579673049420998"
+        },
+        {
+          "file": "packages/engine/internal/connector/provider.go",
+          "hash": "2155815667560374264"
+        },
+        {
+          "file": "packages/engine/internal/connector/provider_bedrock.go",
+          "hash": "12374675853135435622"
+        },
+        {
+          "file": "packages/engine/internal/connector/provider_bedrock_test.go",
+          "hash": "6835336415882357203"
+        },
+        {
+          "file": "packages/engine/internal/connector/provider_openai.go",
+          "hash": "12153202782146547296"
+        },
+        {
+          "file": "packages/engine/internal/connector/provider_openai_test.go",
+          "hash": "8900714383799833535"
+        },
+        {
+          "file": "packages/engine/internal/connector/s3.go",
+          "hash": "7516687919042441461"
+        },
+        {
+          "file": "packages/engine/internal/connector/s3_test.go",
+          "hash": "18282913909925024729"
+        },
+        {
+          "file": "packages/engine/internal/connector/slack.go",
+          "hash": "11333568504748292984"
+        },
+        {
+          "file": "packages/engine/internal/connector/slack_test.go",
+          "hash": "6741613333114006763"
+        },
+        {
+          "file": "packages/engine/internal/connector/tools.go",
+          "hash": "1165566485519734523"
+        },
+        {
+          "file": "packages/engine/internal/connector/tools_test.go",
+          "hash": "8675875387452479921"
+        },
+        {
+          "file": "packages/engine/internal/db/db.go",
+          "hash": "858541629971477375"
+        },
+        {
+          "file": "packages/engine/internal/db/db_test.go",
+          "hash": "4435113781945180119"
+        },
+        {
+          "file": "packages/engine/internal/db/migrate.go",
+          "hash": "18001233020408827078"
+        },
+        {
+          "file": "packages/engine/internal/db/migrate_test.go",
+          "hash": "15051644081309740425"
+        },
+        {
+          "file": "packages/engine/internal/db/migrations/001_initial_schema.sql",
+          "hash": "2440938748073963198"
+        },
+        {
+          "file": "packages/engine/internal/db/migrations/002_credentials.sql",
+          "hash": "8008233058005554322"
+        },
+        {
+          "file": "packages/engine/internal/db/migrations/003_triggers.sql",
+          "hash": "12109643275263139657"
+        },
+        {
+          "file": "packages/engine/internal/db/migrations/004_multi_tenancy.sql",
+          "hash": "10476111290821362826"
+        },
+        {
+          "file": "packages/engine/internal/db/migrations/005_audit_events.sql",
+          "hash": "12414754487760493983"
+        },
+        {
+          "file": "packages/engine/internal/db/migrations/006_shared_library.sql",
+          "hash": "7604868262491882153"
+        },
+        {
+          "file": "packages/engine/internal/db/migrations/007_multi_node.sql",
+          "hash": "5657536467627427686"
+        },
+        {
+          "file": "packages/engine/internal/db/migrations/008_indexes_and_constraints.sql",
+          "hash": "396170356034119351"
+        },
+        {
+          "file": "packages/engine/internal/db/migrations/009_tool_use.sql",
+          "hash": "16617004720583447295"
+        },
+        {
+          "file": "packages/engine/internal/db/migrations/010_apikey_lifecycle.sql",
+          "hash": "10445461827222969387"
+        },
+        {
+          "file": "packages/engine/internal/db/migrations/011_webhook_secret.sql",
+          "hash": "15007546943208149758"
+        },
+        {
+          "file": "packages/engine/internal/db/migrations/012_ai_cost_controls.sql",
+          "hash": "18231327489818282941"
+        },
+        {
+          "file": "packages/engine/internal/db/migrations/013_execution_artifacts.sql",
+          "hash": "12093272158498563589"
+        },
+        {
+          "file": "packages/engine/internal/db/migrations/014_continue_on_error.sql",
+          "hash": "16769560342581937851"
+        },
+        {
+          "file": "packages/engine/internal/db/migrations/015_email_triggers.sql",
+          "hash": "11361750402755606359"
+        },
+        {
+          "file": "packages/engine/internal/dbdefaults/dbdefaults.go",
+          "hash": "11313571348427634252"
+        },
+        {
+          "file": "packages/engine/internal/engine/claim.go",
+          "hash": "7656593042634334653"
+        },
+        {
+          "file": "packages/engine/internal/engine/claim_test.go",
+          "hash": "16687360180982936695"
+        },
+        {
+          "file": "packages/engine/internal/engine/dag.go",
+          "hash": "8688234354862213903"
+        },
+        {
+          "file": "packages/engine/internal/engine/dag_test.go",
+          "hash": "13265861929957459443"
+        },
+        {
+          "file": "packages/engine/internal/engine/distributed_test.go",
+          "hash": "14446286086214211730"
+        },
+        {
+          "file": "packages/engine/internal/engine/engine.go",
+          "hash": "14268481779465443885"
+        },
+        {
+          "file": "packages/engine/internal/engine/engine_test.go",
+          "hash": "15165543210592827025"
+        },
+        {
+          "file": "packages/engine/internal/engine/orchestrator.go",
+          "hash": "14568678860239251625"
+        },
+        {
+          "file": "packages/engine/internal/engine/orchestrator_test.go",
+          "hash": "7061524930472640756"
+        },
+        {
+          "file": "packages/engine/internal/engine/reaper.go",
+          "hash": "15616330133481462041"
+        },
+        {
+          "file": "packages/engine/internal/engine/reaper_test.go",
+          "hash": "10088608670821600580"
+        },
+        {
+          "file": "packages/engine/internal/engine/retention.go",
+          "hash": "11814113047407699099"
+        },
+        {
+          "file": "packages/engine/internal/engine/retention_test.go",
+          "hash": "13730875192280149436"
+        },
+        {
+          "file": "packages/engine/internal/engine/test_helpers_test.go",
+          "hash": "7763962474631352681"
+        },
+        {
+          "file": "packages/engine/internal/engine/toolsteps.go",
+          "hash": "9549556766874023201"
+        },
+        {
+          "file": "packages/engine/internal/engine/toolsteps_test.go",
+          "hash": "3824668294252350150"
+        },
+        {
+          "file": "packages/engine/internal/engine/tooluse.go",
+          "hash": "8348173765231705767"
+        },
+        {
+          "file": "packages/engine/internal/engine/worker.go",
+          "hash": "8805054815490481176"
+        },
+        {
+          "file": "packages/engine/internal/engine/worker_test.go",
+          "hash": "10904602218188013357"
+        },
+        {
+          "file": "packages/engine/internal/library/library.go",
+          "hash": "16034096116515070926"
+        },
+        {
+          "file": "packages/engine/internal/logging/logging.go",
+          "hash": "15549022143442059647"
+        },
+        {
+          "file": "packages/engine/internal/logging/logging_test.go",
+          "hash": "5794415723585365819"
+        },
+        {
+          "file": "packages/engine/internal/metrics/metrics.go",
+          "hash": "7956803950879771916"
+        },
+        {
+          "file": "packages/engine/internal/metrics/metrics_test.go",
+          "hash": "9344242684563077458"
+        },
+        {
+          "file": "packages/engine/internal/netutil/loopback.go",
+          "hash": "16253032766285054903"
+        },
+        {
+          "file": "packages/engine/internal/netutil/loopback_test.go",
+          "hash": "7476386934361458348"
+        },
+        {
+          "file": "packages/engine/internal/plugin/buffer.go",
+          "hash": "6292156660640511984"
+        },
+        {
+          "file": "packages/engine/internal/plugin/plugin.go",
+          "hash": "18160153903218519161"
+        },
+        {
+          "file": "packages/engine/internal/plugin/plugin_test.go",
+          "hash": "965171042801541704"
+        },
+        {
+          "file": "packages/engine/internal/secret/aws.go",
+          "hash": "4390781221483002383"
+        },
+        {
+          "file": "packages/engine/internal/secret/aws_test.go",
+          "hash": "4806986361658917643"
+        },
+        {
+          "file": "packages/engine/internal/secret/azure.go",
+          "hash": "1558680420347684922"
+        },
+        {
+          "file": "packages/engine/internal/secret/azure_test.go",
+          "hash": "8339293712613233118"
+        },
+        {
+          "file": "packages/engine/internal/secret/encrypt.go",
+          "hash": "2851384539032722887"
+        },
+        {
+          "file": "packages/engine/internal/secret/encrypt_test.go",
+          "hash": "7454649146723423651"
+        },
+        {
+          "file": "packages/engine/internal/secret/gcp.go",
+          "hash": "13099262419433622301"
+        },
+        {
+          "file": "packages/engine/internal/secret/gcp_test.go",
+          "hash": "761255230438411467"
+        },
+        {
+          "file": "packages/engine/internal/secret/resolver.go",
+          "hash": "9379797582622968885"
+        },
+        {
+          "file": "packages/engine/internal/secret/secret.go",
+          "hash": "14756488090383815086"
+        },
+        {
+          "file": "packages/engine/internal/secret/store.go",
+          "hash": "17923419171745024581"
+        },
+        {
+          "file": "packages/engine/internal/secret/store_test.go",
+          "hash": "9684591296327985198"
+        },
+        {
+          "file": "packages/engine/internal/secret/types.go",
+          "hash": "2569972090008798955"
+        },
+        {
+          "file": "packages/engine/internal/secret/types_test.go",
+          "hash": "5044674776302509211"
+        },
+        {
+          "file": "packages/engine/internal/server/api.go",
+          "hash": "5429201156724714026"
+        },
+        {
+          "file": "packages/engine/internal/server/cron.go",
+          "hash": "6777789492720396579"
+        },
+        {
+          "file": "packages/engine/internal/server/cron_test.go",
+          "hash": "9315502206110575404"
+        },
+        {
+          "file": "packages/engine/internal/server/email_trigger.go",
+          "hash": "3902457843645436041"
+        },
+        {
+          "file": "packages/engine/internal/server/email_trigger_test.go",
+          "hash": "9341201184694385448"
+        },
+        {
+          "file": "packages/engine/internal/server/ratelimit.go",
+          "hash": "7865832976034849138"
+        },
+        {
+          "file": "packages/engine/internal/server/ratelimit_test.go",
+          "hash": "5662266011073235221"
+        },
+        {
+          "file": "packages/engine/internal/server/server.go",
+          "hash": "6411282405626654129"
+        },
+        {
+          "file": "packages/engine/internal/server/server_test.go",
+          "hash": "13665220554253599448"
+        },
+        {
+          "file": "packages/engine/internal/server/trigger.go",
+          "hash": "15514624257352789968"
+        },
+        {
+          "file": "packages/engine/internal/server/webhook.go",
+          "hash": "5030246273674490398"
+        },
+        {
+          "file": "packages/engine/internal/server/webhook_test.go",
+          "hash": "11469541439922642930"
+        },
+        {
+          "file": "packages/engine/internal/version/version.go",
+          "hash": "1537957139886239979"
+        },
+        {
+          "file": "packages/engine/internal/version/version_test.go",
+          "hash": "1429720119555800088"
+        },
+        {
+          "file": "packages/engine/internal/workflow/diff.go",
+          "hash": "11692306404302577801"
+        },
+        {
+          "file": "packages/engine/internal/workflow/diff_test.go",
+          "hash": "1827924322672809977"
+        },
+        {
+          "file": "packages/engine/internal/workflow/parse.go",
+          "hash": "17985796473593866488"
+        },
+        {
+          "file": "packages/engine/internal/workflow/parse_test.go",
+          "hash": "5018348201433278256"
+        },
+        {
+          "file": "packages/engine/internal/workflow/store.go",
+          "hash": "1430980185389320661"
+        },
+        {
+          "file": "packages/engine/internal/workflow/store_test.go",
+          "hash": "1546290390410842871"
+        },
+        {
+          "file": "packages/engine/internal/workflow/validate.go",
+          "hash": "8344747036274625387"
+        },
+        {
+          "file": "packages/engine/internal/workflow/validate_test.go",
+          "hash": "14363407417037597970"
+        },
+        {
+          "file": "packages/engine/internal/workflow/workflow.go",
+          "hash": "14901509484560010888"
+        },
+        {
+          "file": "packages/engine/internal/workflow/workflow_test.go",
+          "hash": "14635513328072610102"
+        },
+        {
+          "file": "packages/engine/mantle",
+          "hash": "18224247943546692937"
+        },
+        {
+          "file": "packages/engine/project.json",
+          "hash": "14831909923439266870"
+        },
+        {
+          "file": "packages/engine/testdata/conditional-workflow.yaml",
+          "hash": "13599121992781815020"
+        },
+        {
+          "file": "packages/engine/testdata/error-notification.yaml",
+          "hash": "8408007224511039644"
+        },
+        {
+          "file": "packages/engine/testdata/hello-world.yaml",
+          "hash": "11586025783225803810"
+        }
+      ]
+    }
+  },
+  "externalNodesHash": "13306464901760627319"
+}

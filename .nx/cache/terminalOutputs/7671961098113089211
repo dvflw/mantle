@@ -1,0 +1,34 @@
+> go test -race -short ./...
+
+?   	github.com/dvflw/mantle/cmd/mantle	[no test files]
+# github.com/dvflw/mantle/internal/cli.test
+ld: warning: '/private/var/folders/wl/k4ckm7q14z56m12kkr2j0r100000gn/T/go-link-3009464441/000013.o' has malformed LC_DYSYMTAB, expected 98 undefined symbols to start at index 1626, found 95 undefined symbols starting at index 1626
+ok  	github.com/dvflw/mantle/internal/api/health	(cached)
+# github.com/dvflw/mantle/internal/metrics.test
+ld: warning: '/private/var/folders/wl/k4ckm7q14z56m12kkr2j0r100000gn/T/go-link-1460784437/000013.o' has malformed LC_DYSYMTAB, expected 98 undefined symbols to start at index 1626, found 95 undefined symbols starting at index 1626
+# github.com/dvflw/mantle/internal/server.test
+ld: warning: '/private/var/folders/wl/k4ckm7q14z56m12kkr2j0r100000gn/T/go-link-110301347/000013.o' has malformed LC_DYSYMTAB, expected 98 undefined symbols to start at index 1626, found 95 undefined symbols starting at index 1626
+# github.com/dvflw/mantle/internal/connector.test
+ld: warning: '/private/var/folders/wl/k4ckm7q14z56m12kkr2j0r100000gn/T/go-link-1781735755/000013.o' has malformed LC_DYSYMTAB, expected 98 undefined symbols to start at index 1626, found 95 undefined symbols starting at index 1626
+ok  	github.com/dvflw/mantle/internal/artifact	(cached)
+ok  	github.com/dvflw/mantle/internal/audit	(cached)
+ok  	github.com/dvflw/mantle/internal/auth	(cached)
+ok  	github.com/dvflw/mantle/internal/budget	(cached)
+ok  	github.com/dvflw/mantle/internal/cel	(cached)
+ok  	github.com/dvflw/mantle/internal/cli	(cached)
+ok  	github.com/dvflw/mantle/internal/config	(cached)
+ok  	github.com/dvflw/mantle/internal/connector	(cached)
+ok  	github.com/dvflw/mantle/internal/db	(cached)
+?   	github.com/dvflw/mantle/internal/dbdefaults	[no test files]
+# github.com/dvflw/mantle/internal/engine.test
+ld: warning: '/private/var/folders/wl/k4ckm7q14z56m12kkr2j0r100000gn/T/go-link-2969202817/000013.o' has malformed LC_DYSYMTAB, expected 98 undefined symbols to start at index 1626, found 95 undefined symbols starting at index 1626
+ok  	github.com/dvflw/mantle/internal/engine	52.451s
+?   	github.com/dvflw/mantle/internal/library	[no test files]
+ok  	github.com/dvflw/mantle/internal/logging	(cached)
+ok  	github.com/dvflw/mantle/internal/metrics	(cached)
+ok  	github.com/dvflw/mantle/internal/netutil	(cached)
+ok  	github.com/dvflw/mantle/internal/plugin	(cached)
+ok  	github.com/dvflw/mantle/internal/secret	(cached)
+ok  	github.com/dvflw/mantle/internal/server	(cached)
+ok  	github.com/dvflw/mantle/internal/version	(cached)
+ok  	github.com/dvflw/mantle/internal/workflow	(cached)
