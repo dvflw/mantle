@@ -51,6 +51,12 @@ docs/superpowers/
 plans/
 marketing/variants/
 
-# Node (site/)
+# Node / Bun
 node_modules/
+bun.lock
+
+# Nx
+.nx/
+
+# Astro
 .astro/
