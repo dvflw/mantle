@@ -1,0 +1,35 @@
+name: browser-form-submit
+description: >
+  Log into a web portal and submit a form using TypeScript.
+
+inputs:
+  username:
+    type: string
+  password:
+    type: string
+
+steps:
+  - name: submit-form
+    action: browser/run
+    timeout: "2m"
+    params:
+      language: typescript
+      output_format: json
+      env:
+        PORTAL_USER: "{{ inputs.username }}"
+        PORTAL_PASS: "{{ inputs.password }}"
+      script: |
+        const page = await browser.newPage();
+        await page.goto('https://portal.example.com/login');
+        await page.fill('#username', process.env.PORTAL_USER);
+        await page.fill('#password', process.env.PORTAL_PASS);
+        await page.click('#login-button');
+        await page.waitForSelector('nav.main-menu');
+
+        await page.goto('https://portal.example.com/submit');
+        await page.fill('#report-field', 'Automated report submission');
+        await page.click('#submit-button');
+        await page.waitForSelector('.success-message');
+
+        const confirmationId = await page.textContent('.confirmation-id');
+        console.log(JSON.stringify({ submitted: true, confirmation_id: confirmationId }));

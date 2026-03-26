@@ -319,6 +319,156 @@ mantle secrets create --name smtp-creds --type basic \
   --field port=587
 ```
 
+## email/receive
+
+Reads messages from an email mailbox. Supports filtering by folder and read status.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `folder` | string | No | Folder to read from (e.g., `INBOX`, `Archive`, `[Gmail]/Sent Mail`). Default: `INBOX`. |
+| `filter` | string | No | Filter messages by status: `all`, `unseen`, `recent`, `flagged`. Default: `unseen`. |
+| `limit` | number | No | Maximum number of messages to return. Default: `10`. |
+| `mark_seen` | boolean | No | Mark retrieved messages as seen. Default: `false`. |
+
+**Output:**
+
+| Field | Type | Description |
+|---|---|---|
+| `message_count` | number | Number of messages returned. |
+| `messages` | array | Array of message objects. Each message contains: `message_id` (string), `from` (string), `to` (string), `cc` (string), `subject` (string), `body` (string), `date` (RFC 3339 timestamp), `headers` (map), `flags` (array of strings), `uid` (number, IMAP UID). |
+
+**Authentication:** Credentials are provided via the step-level `credential` field. The email connector reads `username`, `password`, `host`, and `port` from the credential (IMAP-compatible).
+
+**Example:**
+
+```yaml
+- name: read-inbox
+  action: email/receive
+  credential: company-inbox
+  params:
+    folder: INBOX
+    filter: unseen
+    limit: 20
+    mark_seen: true
+```
+
+## email/move
+
+Moves an email message to a different folder.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `uid` | number | Yes | IMAP UID of the message. |
+| `source_folder` | string | No | Source folder (for reference). Default: `INBOX`. |
+| `target_folder` | string | Yes | Destination folder path (e.g., `Archive`, `[Gmail]/All Mail`). |
+
+**Output:**
+
+| Field | Type | Description |
+|---|---|---|
+| `moved` | boolean | `true` if the move was successful. |
+| `uid` | number | The IMAP UID of the moved message. |
+| `target_folder` | string | The folder the message was moved to. |
+
+**Authentication:** Credentials are provided via the step-level `credential` field.
+
+**Note:** Gmail's "archive" action is implemented as a move to `[Gmail]/All Mail`.
+
+**Example:**
+
+```yaml
+- name: archive-message
+  action: email/move
+  credential: company-inbox
+  params:
+    uid: "{{ trigger.uid }}"
+    source_folder: INBOX
+    target_folder: Archive
+```
+
+## email/delete
+
+Deletes an email message.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `uid` | number | Yes | IMAP UID of the message. |
+| `folder` | string | No | Folder containing the message. Default: `INBOX`. |
+
+**Output:**
+
+| Field | Type | Description |
+|---|---|---|
+| `deleted` | boolean | `true` if the deletion was successful. |
+| `uid` | number | The IMAP UID of the deleted message. |
+
+**Authentication:** Credentials are provided via the step-level `credential` field.
+
+**Example:**
+
+```yaml
+- name: delete-spam
+  action: email/delete
+  credential: company-inbox
+  params:
+    uid: "{{ trigger.uid }}"
+    folder: INBOX
+```
+
+## email/flag
+
+Adds or removes flags (labels) on an email message.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `uid` | number | Yes | IMAP UID of the message. |
+| `flags` | array | Yes | List of flag names to modify (e.g., `["flagged", "important"]`). |
+| `action` | string | Yes | `add` to set flags, `remove` to unset flags. |
+| `folder` | string | No | Folder containing the message. Default: `INBOX`. |
+
+**Standard IMAP Flags:**
+
+| Flag | Description |
+|---|---|
+| `seen` | Message has been read. |
+| `flagged` | Message is flagged for follow-up. |
+| `answered` | Message has been replied to. |
+| `deleted` | Message is marked for deletion. |
+| `draft` | Message is a draft. |
+
+**Custom Keywords:** Most email providers support custom flag names beyond the standard set. These are often used as tags or labels (e.g., `important`, `urgent`, `client-xyz`).
+
+**Output:**
+
+| Field | Type | Description |
+|---|---|---|
+| `updated` | boolean | `true` if the flag operation was successful. |
+| `action` | string | The operation performed: `add` or `remove`. |
+| `uid` | number | The IMAP UID of the message. |
+| `flags` | array | The flags that were modified. |
+
+**Authentication:** Credentials are provided via the step-level `credential` field.
+
+**Example:**
+
+```yaml
+- name: flag-important
+  action: email/flag
+  credential: company-inbox
+  params:
+    uid: "{{ trigger.uid }}"
+    flags: ["flagged", "important"]
+    action: add
+```
+
 ## s3/put
 
 Uploads an object to an S3-compatible storage bucket.
@@ -489,3 +639,127 @@ Runs a Docker container to completion and captures its output. The container is 
     memory: "512m"
     cpus: 1.0
 ```
+
+## browser/run
+
+Runs browser automation scripts (JavaScript, TypeScript, or Python) using Playwright. Scripts run in a containerized browser environment and can interact with web pages, perform DOM queries, take screenshots, and generate structured output.
+
+**Params:**
+
+| Param | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `language` | string | No | `javascript` | Script language: `javascript`, `typescript`, or `python`. |
+| `script` | string | Yes | — | Browser automation script. The global `browser` object is a Playwright `Browser` instance. |
+| `output_format` | string | No | `text` | Output format: `json` or `text`. JSON output is automatically parsed. |
+| `env` | object | No | — | Environment variables accessible in the script via `process.env` (JS/TS) or `os.environ` (Python). |
+| `pull` | string | No | `missing` | Image pull policy: `always`, `missing`, `never`. |
+| `memory` | string | No | `1g` | Memory limit (e.g., `512m`, `1g`). |
+
+**Output:**
+
+| Field | Type | Description |
+|---|---|---|
+| `exit_code` | integer | Script exit code (0 = success). |
+| `stdout` | string | Script stdout output (capped at 10MB). |
+| `stderr` | string | Script stderr output (capped at 10MB). |
+| `json` | any | Parsed JSON output. Only present when `output_format: json` and stdout is valid JSON. |
+
+**Container Images:**
+
+- **JavaScript/TypeScript:** `mcr.microsoft.com/playwright:v1.52.0-noble`
+- **Python:** `mcr.microsoft.com/playwright/python:v1.52.0-noble`
+
+**Artifacts:** Scripts can write files to `/mantle/artifacts/` directory for screenshots, PDFs, HAR files, and other outputs. Declare artifacts in the step to register them with the execution.
+
+**Credentials:** Secrets are injected as environment variables via the `env` param. Access them in scripts using `process.env.VAR_NAME` (JS/TS) or `os.environ['VAR_NAME']` (Python).
+
+**Security:** Containers run with all Linux capabilities dropped (`CAP_DROP ALL`), `no-new-privileges`, and a PID limit. Same security hardening as `docker/run`.
+
+**Example -- JavaScript with login and screenshot:**
+
+```yaml
+- name: scrape-portal
+  action: browser/run
+  timeout: "2m"
+  params:
+    language: javascript
+    output_format: json
+    env:
+      USERNAME: "{{ inputs.username }}"
+      PASSWORD: "{{ inputs.password }}"
+    script: |
+      const page = await browser.newPage();
+      await page.goto('https://portal.example.com/login');
+      await page.fill('#username', process.env.USERNAME);
+      await page.fill('#password', process.env.PASSWORD);
+      await page.click('#login-button');
+      await page.waitForSelector('.dashboard');
+
+      const data = await page.evaluate(() => {
+        const rows = document.querySelectorAll('.data-table tr');
+        return Array.from(rows).map(row => ({
+          name: row.querySelector('.name')?.textContent,
+          value: row.querySelector('.value')?.textContent,
+        }));
+      });
+
+      await page.screenshot({ path: '/mantle/artifacts/dashboard.png' });
+      console.log(JSON.stringify({ records: data, count: data.length }));
+  artifacts:
+    - path: dashboard.png
+      name: dashboard-screenshot
+```
+
+**Example -- TypeScript with form submission:**
+
+```yaml
+- name: submit-form
+  action: browser/run
+  timeout: "2m"
+  params:
+    language: typescript
+    output_format: json
+    script: |
+      const page = await browser.newPage();
+      await page.goto('https://portal.example.com/form');
+      await page.fill('#email', 'user@example.com');
+      await page.fill('#message', 'Automated submission');
+      await page.click('#submit-button');
+      await page.waitForSelector('.success-message');
+
+      const confirmationId = await page.textContent('.confirmation-id');
+      console.log(JSON.stringify({ submitted: true, confirmation_id: confirmationId }));
+```
+
+**Example -- Python with PDF generation:**
+
+```yaml
+- name: generate-pdf
+  action: browser/run
+  timeout: "2m"
+  params:
+    language: python
+    output_format: json
+    script: |
+      import os
+      import json
+
+      page.goto('https://example.com/report')
+      page.pdf(path='/mantle/artifacts/report.pdf')
+
+      file_size = os.path.getsize('/mantle/artifacts/report.pdf')
+      print(json.dumps({'generated': True, 'size_bytes': file_size}))
+  artifacts:
+    - path: report.pdf
+      name: generated-report
+```
+
+**Playwright API Reference:**
+
+Within `browser/run` scripts, use the standard [Playwright API](https://playwright.dev):
+
+- **Page navigation:** `page.goto(url)`, `page.goBack()`, `page.goForward()`, `page.reload()`
+- **Interactions:** `page.fill(selector, text)`, `page.click(selector)`, `page.selectOption(selector, value)`, `page.press(key)`
+- **Waiting:** `page.waitForSelector(selector)`, `page.waitForNavigation()`, `page.waitForFunction(fn)`
+- **DOM queries:** `page.textContent(selector)`, `page.getAttribute(selector, name)`, `page.evaluate(fn)`
+- **Screenshots/exports:** `page.screenshot(options)`, `page.pdf(options)`, `page.recordHar(path)`

@@ -29,6 +29,7 @@ steps:
   - name: upload-to-s3
     action: s3/put
     credential: aws-prod
+    continue_on_error: true
     timeout: "5m"
     params:
       bucket: my-backups
@@ -36,10 +37,18 @@ steps:
       content: "{{ artifacts['backup-archive'].url }}"
       content_type: "application/gzip"
 
+  - name: notify-failure
+    action: slack/send
+    credential: slack-token
+    if: "steps['upload-to-s3'].error != null"
+    params:
+      channel: "#ops-alerts"
+      text: "Volume backup upload failed: {{ steps['upload-to-s3'].error }}"
+
   - name: notify-success
     action: slack/send
     credential: slack-token
-    depends_on: [upload-to-s3]
+    if: "steps['upload-to-s3'].error == null"
     params:
       channel: "#ops-alerts"
       text: "Volume backup completed — {{ artifacts['backup-archive'].size }} bytes uploaded to s3://my-backups/volumes/my-app-data/"

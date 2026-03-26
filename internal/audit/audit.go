@@ -14,8 +14,9 @@ const (
 	ActionStepStarted        Action = "step.started"
 	ActionStepCompleted      Action = "step.completed"
 	ActionStepFailed         Action = "step.failed"
-	ActionStepSkipped        Action = "step.skipped"
-	ActionExecutionCancelled  Action = "execution.cancelled"
+	ActionStepSkipped           Action = "step.skipped"
+	ActionStepContinuedOnError  Action = "step.continued_on_error"
+	ActionExecutionCancelled    Action = "execution.cancelled"
 	ActionArtifactPersisted  Action = "artifact.persisted"
 
 	// Admin operations.
@@ -30,6 +31,11 @@ const (
 	ActionCredentialDeleted Action = "credential.deleted"
 	ActionCredentialRotated Action = "credential.rotated"
 	ActionAuthFailed        Action = "auth.failed"
+
+	// Email trigger operations.
+	ActionEmailTriggerFired          Action = "email.trigger.fired"
+	ActionEmailConnectionEstablished Action = "email.connection.established"
+	ActionEmailConnectionFailed      Action = "email.connection.failed"
 
 	// Budget operations.
 	ActionBudgetExceeded Action = "budget.exceeded"

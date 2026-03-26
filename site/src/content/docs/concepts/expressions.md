@@ -30,6 +30,7 @@ Every CEL expression has access to four namespaces:
 | Namespace | Example | Description |
 |---|---|---|
 | `steps.<name>.output` | `steps.fetch.output.json.title` | Output from a previously completed step. |
+| `steps.<name>.error` | `steps.fetch.error` | Error message from a failed step (null if successful or skipped). |
 | `inputs.<name>` | `inputs.url` | Values passed when the workflow is triggered. |
 | `env.<name>` | `env.API_BASE_URL` | Environment variables (restricted to `MANTLE_ENV_*` prefix). |
 | `trigger.payload` | `trigger.payload.repository.full_name` | Webhook trigger data (server mode only). |
@@ -44,6 +45,47 @@ summary: "{{ steps.fetch.output.json.title }}"
 
 # Bracket notation — required when step names contain hyphens
 url: "{{ steps['get-user'].output.json.profile_url }}"
+```
+
+### Step errors
+
+Every step exposes an `error` field:
+
+- **`null`** — The step succeeded or was skipped (its `if` condition was false).
+- **String message** — The step failed. The error message is populated from the connector.
+
+The `error` field is always present in the CEL context for any step. However, it is only practically useful when the referenced step has `continue_on_error: true`. Without that flag, a step failure halts the entire workflow before any downstream step can run — so there is no opportunity to check the error. Use `continue_on_error: true` on any step whose failure you want to handle in subsequent steps:
+
+```yaml
+steps:
+  - name: try-primary-api
+    action: http/request
+    continue_on_error: true
+    params:
+      method: GET
+      url: https://primary-api.example.com/data
+
+  - name: handle-error
+    action: slack/send
+    credential: slack-token
+    if: "steps['try-primary-api'].error != null"
+    params:
+      channel: "#ops-alerts"
+      text: "Primary API failed: {{ steps['try-primary-api'].error }}"
+```
+
+You can also use error checking in template expressions:
+
+```yaml
+steps:
+  - name: process
+    action: http/request
+    params:
+      method: POST
+      url: https://api.example.com/process
+      body:
+        # Include error details if the previous step failed
+        error_info: "{{ steps.backup.error }}"
 ```
 
 ### Workflow inputs

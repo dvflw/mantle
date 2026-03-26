@@ -287,6 +287,91 @@ func TestDistributed_MultipleSimultaneousCrashes(t *testing.T) {
 	cancel()
 }
 
+func TestDistributed_ContinueOnError(t *testing.T) {
+	db := setupTestDB(t)
+	execID := createTestExecution(t, db)
+
+	// Define a two-step workflow: step-1 has continue_on_error=true and will fail;
+	// step-2 depends on step-1 and should still be scheduled and complete.
+	steps := []workflowStep{
+		{Name: "step-1", ContinueOnError: true},
+		{Name: "step-2", DependsOn: []string{"step-1"}},
+	}
+
+	orchestrator := &Orchestrator{
+		DB:            db,
+		NodeID:        "orchestrator-coe",
+		LeaseDuration: 30 * time.Second,
+		PollInterval:  100 * time.Millisecond,
+		Logger:        slog.Default(),
+	}
+
+	// Bootstrap: schedule the initial ready steps (step-1 has no deps).
+	_, err := orchestrator.AdvanceExecution(context.Background(), execID, steps)
+	require.NoError(t, err)
+
+	// Worker executor: step-1 returns an error; step-2 succeeds.
+	executor := func(ctx context.Context, stepName string, attempt int) (map[string]any, error) {
+		if stepName == "step-1" {
+			return nil, fmt.Errorf("deliberate failure")
+		}
+		return map[string]any{"result": "ok"}, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	claimer := &Claimer{
+		DB:            db,
+		NodeID:        "worker-coe",
+		LeaseDuration: 5 * time.Second,
+	}
+	worker := &Worker{
+		Claimer:            claimer,
+		StepExecutor:       executor,
+		PollInterval:       50 * time.Millisecond,
+		MaxBackoff:         200 * time.Millisecond,
+		LeaseRenewInterval: 2 * time.Second,
+		Logger:             slog.Default(),
+	}
+	go worker.Run(ctx)
+
+	// Wait for step-1 to reach failed status.
+	require.Eventually(t, func() bool {
+		var status string
+		err := db.QueryRow(
+			"SELECT status FROM step_executions WHERE execution_id = $1 AND step_name = 'step-1'",
+			execID,
+		).Scan(&status)
+		return err == nil && status == "failed"
+	}, 15*time.Second, 100*time.Millisecond, "step-1 should be marked failed")
+
+	// Advance the orchestrator — step-1 failed with continue_on_error, so step-2 should be scheduled.
+	scheduled, err := orchestrator.AdvanceExecution(context.Background(), execID, steps)
+	require.NoError(t, err)
+	require.Contains(t, scheduled, "step-2", "step-2 should be scheduled after step-1 failed with continue_on_error")
+
+	// Wait for step-2 to complete.
+	require.Eventually(t, func() bool {
+		var status string
+		err := db.QueryRow(
+			"SELECT status FROM step_executions WHERE execution_id = $1 AND step_name = 'step-2'",
+			execID,
+		).Scan(&status)
+		return err == nil && status == "completed"
+	}, 15*time.Second, 100*time.Millisecond, "step-2 should complete")
+
+	// Verify step-1 is still marked failed (not altered by orchestrator).
+	var step1Status string
+	require.NoError(t, db.QueryRow(
+		"SELECT status FROM step_executions WHERE execution_id = $1 AND step_name = 'step-1'",
+		execID,
+	).Scan(&step1Status))
+	require.Equal(t, "failed", step1Status, "step-1 should remain failed in the DB")
+
+	cancel()
+}
+
 // retryFailedSteps checks for failed steps that have remaining attempts and creates retries.
 func retryFailedSteps(t *testing.T, db *sql.DB, orch *Orchestrator, execID string) {
 	t.Helper()

@@ -179,6 +179,225 @@ func (o *Orchestrator) GetStepStatuses(ctx context.Context, executionID string) 
 	return statuses, nil
 }
 
+// AdvanceExecution inspects the current step statuses for an execution and
+// schedules the next ready steps, respecting continue_on_error semantics.
+//
+// Steps with continue_on_error=true that have failed are treated as resolved
+// (equivalent to completed) for dependency resolution purposes, so their
+// downstream steps can still be scheduled. They do NOT propagate cancellations.
+//
+// Returns the names of newly-created pending steps, or nil if none were ready.
+func (o *Orchestrator) AdvanceExecution(ctx context.Context, executionID string, steps []workflowStep) ([]string, error) {
+	statuses, err := o.GetStepStatuses(ctx, executionID)
+	if err != nil {
+		return nil, fmt.Errorf("getting step statuses: %w", err)
+	}
+
+	// Build a status map for DAG queries, remapping failed-but-continued steps
+	// to "completed" so the DAG treats them as resolved.
+	continuedNames := make(map[string]bool)
+	for _, s := range steps {
+		if s.ContinueOnError {
+			continuedNames[s.Name] = true
+		}
+	}
+
+	dagStatuses := make(map[string]string, len(statuses))
+	for name, ss := range statuses {
+		st := ss.Status
+		if st == "failed" && continuedNames[name] {
+			st = "completed"
+		}
+		dagStatuses[name] = st
+	}
+
+	// Convert workflowStep slice to workflow.Step slice for DAG construction.
+	wfSteps := make([]workflowStepForDAG, len(steps))
+	for i, s := range steps {
+		wfSteps[i] = workflowStepForDAG{Name: s.Name, DependsOn: s.DependsOn}
+	}
+	dag, err := buildDAGFromSteps(wfSteps)
+	if err != nil {
+		return nil, fmt.Errorf("building DAG: %w", err)
+	}
+
+	// Cascade cancellations for non-continued failures.
+	toCancel := dag.CascadeCancellations(dagStatuses)
+	if len(toCancel) > 0 {
+		if err := o.CancelPendingSteps(ctx, executionID, toCancel); err != nil {
+			return nil, fmt.Errorf("cascading cancellations: %w", err)
+		}
+		for _, name := range toCancel {
+			dagStatuses[name] = "cancelled"
+		}
+	}
+
+	// Determine which steps are now ready.
+	ready := dag.ReadySteps(dagStatuses)
+	if len(ready) == 0 {
+		return nil, nil
+	}
+
+	// Build maxAttempts map.
+	maxAttempts := make(map[string]int, len(steps))
+	for _, s := range steps {
+		if s.MaxAttempts > 0 {
+			maxAttempts[s.Name] = s.MaxAttempts
+		}
+	}
+
+	if err := o.CreatePendingSteps(ctx, executionID, ready, maxAttempts); err != nil {
+		return nil, fmt.Errorf("creating pending steps: %w", err)
+	}
+	return ready, nil
+}
+
+// workflowStep is a minimal step descriptor used by AdvanceExecution to avoid
+// importing the workflow package directly in orchestrator logic.
+type workflowStep struct {
+	Name            string
+	DependsOn       []string
+	ContinueOnError bool
+	MaxAttempts     int
+}
+
+// workflowStepForDAG is used internally to build a DAG from minimal step info.
+type workflowStepForDAG struct {
+	Name      string
+	DependsOn []string
+}
+
+// buildDAGFromSteps builds a DAG from the minimal step descriptors.
+func buildDAGFromSteps(steps []workflowStepForDAG) (*dagForAdvance, error) {
+	d := &dagForAdvance{
+		deps:  make(map[string][]string, len(steps)),
+		rdeps: make(map[string][]string, len(steps)),
+	}
+	names := make(map[string]bool, len(steps))
+	for _, s := range steps {
+		names[s.Name] = true
+		d.deps[s.Name] = nil
+		d.rdeps[s.Name] = nil
+	}
+	for _, s := range steps {
+		for _, dep := range s.DependsOn {
+			if !names[dep] {
+				return nil, fmt.Errorf("step %q depends on undefined step %q", s.Name, dep)
+			}
+			d.deps[s.Name] = append(d.deps[s.Name], dep)
+			d.rdeps[dep] = append(d.rdeps[dep], s.Name)
+		}
+	}
+	order, err := topoSortSimple(d.deps, d.rdeps, names)
+	if err != nil {
+		return nil, err
+	}
+	d.order = order
+	return d, nil
+}
+
+// dagForAdvance is a lightweight DAG used by AdvanceExecution.
+type dagForAdvance struct {
+	deps  map[string][]string
+	rdeps map[string][]string
+	order []string
+}
+
+// ReadySteps returns step names whose dependencies are all resolved
+// (completed or skipped) and that do not yet have a status entry.
+func (d *dagForAdvance) ReadySteps(statuses map[string]string) []string {
+	var ready []string
+	for _, name := range d.order {
+		if _, has := statuses[name]; has {
+			continue
+		}
+		allResolved := true
+		for _, dep := range d.deps[name] {
+			st, ok := statuses[dep]
+			if !ok || (st != "completed" && st != "skipped") {
+				allResolved = false
+				break
+			}
+		}
+		if allResolved {
+			ready = append(ready, name)
+		}
+	}
+	return ready
+}
+
+// CascadeCancellations returns step names that should be cancelled because a
+// dependency failed (and was not remapped to completed by continue_on_error).
+func (d *dagForAdvance) CascadeCancellations(statuses map[string]string) []string {
+	poisoned := make(map[string]bool)
+	for name, st := range statuses {
+		if st == "failed" {
+			poisoned[name] = true
+		}
+	}
+	var cancelled []string
+	for _, name := range d.order {
+		if poisoned[name] {
+			continue
+		}
+		for _, dep := range d.deps[name] {
+			if poisoned[dep] {
+				poisoned[name] = true
+				break
+			}
+		}
+		if poisoned[name] {
+			if _, has := statuses[name]; !has {
+				cancelled = append(cancelled, name)
+			}
+		}
+	}
+	return cancelled
+}
+
+// topoSortSimple performs Kahn's topological sort over a name-keyed dep graph.
+func topoSortSimple(deps, rdeps map[string][]string, names map[string]bool) ([]string, error) {
+	inDegree := make(map[string]int, len(names))
+	for name := range names {
+		inDegree[name] = len(deps[name])
+	}
+	var queue []string
+	for name, deg := range inDegree {
+		if deg == 0 {
+			queue = append(queue, name)
+		}
+	}
+	// Sort for deterministic ordering.
+	sortStrings(queue)
+
+	var order []string
+	for len(queue) > 0 {
+		node := queue[0]
+		queue = queue[1:]
+		order = append(order, node)
+		for _, dependent := range rdeps[node] {
+			inDegree[dependent]--
+			if inDegree[dependent] == 0 {
+				queue = append(queue, dependent)
+				sortStrings(queue)
+			}
+		}
+	}
+	if len(order) != len(names) {
+		return nil, fmt.Errorf("cycle detected in step dependencies")
+	}
+	return order, nil
+}
+
+// sortStrings sorts a slice of strings in-place (insertion sort for small slices).
+func sortStrings(s []string) {
+	for i := 1; i < len(s); i++ {
+		for j := i; j > 0 && s[j] < s[j-1]; j-- {
+			s[j], s[j-1] = s[j-1], s[j]
+		}
+	}
+}
+
 // CancelPendingSteps sets all pending steps with the given names to cancelled status.
 func (o *Orchestrator) CancelPendingSteps(ctx context.Context, executionID string, stepNames []string) error {
 	if len(stepNames) == 0 {

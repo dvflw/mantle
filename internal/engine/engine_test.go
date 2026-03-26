@@ -477,3 +477,311 @@ func TestCheckOutputSize_EmptyMap(t *testing.T) {
 		t.Errorf("checkOutputSize() unexpected error for empty map: %v", err)
 	}
 }
+
+func TestEngine_StepErrorInCELContext(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Step 1: succeeds and returns some output.
+	step1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		json.NewEncoder(w).Encode(map[string]any{"result": "ok"})
+	}))
+	defer step1Server.Close()
+
+	// Step 2: should execute (not be skipped) because step-1's error is null.
+	step2Called := false
+	step2Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		step2Called = true
+		w.WriteHeader(200)
+		json.NewEncoder(w).Encode(map[string]any{"done": true})
+	}))
+	defer step2Server.Close()
+
+	wfYAML := []byte(`name: test-step-error-cel
+description: Test steps.<name>.error is null for successful steps
+steps:
+  - name: step-1
+    action: http/request
+    params:
+      method: GET
+      url: "` + step1Server.URL + `"
+  - name: step-2
+    action: http/request
+    if: "steps['step-1'].error == null"
+    params:
+      method: GET
+      url: "` + step2Server.URL + `"
+`)
+	version := applyWorkflow(t, database, wfYAML)
+
+	eng, err := New(database)
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	result, err := eng.Execute(context.Background(), "test-step-error-cel", version, nil)
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+
+	if result.Status != "completed" {
+		t.Errorf("status = %q, want %q (error: %s)", result.Status, "completed", result.Error)
+	}
+	if !step2Called {
+		t.Error("step-2 should have been called because steps['step-1'].error == null, but it was not called")
+	}
+	if result.Steps["step-2"].Status != "completed" {
+		t.Errorf("step-2 status = %q, want %q", result.Steps["step-2"].Status, "completed")
+	}
+}
+
+func TestEngine_ContinueOnError(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Step 1: always returns 500 (will fail after retries).
+	step1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		w.Write([]byte("internal server error"))
+	}))
+	defer step1Server.Close()
+
+	// Step 2: should be called because step-1 has continue_on_error: true.
+	step2Called := false
+	step2Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		step2Called = true
+		w.WriteHeader(200)
+		json.NewEncoder(w).Encode(map[string]any{"recovered": true})
+	}))
+	defer step2Server.Close()
+
+	wfYAML := []byte(`name: test-continue-on-error
+description: Test continue_on_error behavior
+steps:
+  - name: step-1
+    action: http/request
+    continue_on_error: true
+    params:
+      method: GET
+      url: "` + step1Server.URL + `"
+  - name: step-2
+    action: http/request
+    if: "steps['step-1'].error != null"
+    params:
+      method: GET
+      url: "` + step2Server.URL + `"
+`)
+	version := applyWorkflow(t, database, wfYAML)
+
+	eng, err := New(database)
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	result, err := eng.Execute(context.Background(), "test-continue-on-error", version, nil)
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+
+	// Overall workflow should complete, not fail.
+	if result.Status != "completed" {
+		t.Errorf("workflow status = %q, want %q (error: %s)", result.Status, "completed", result.Error)
+	}
+
+	// Step 1 should be marked as failed.
+	if result.Steps["step-1"].Status != "failed" {
+		t.Errorf("step-1 status = %q, want %q", result.Steps["step-1"].Status, "failed")
+	}
+
+	// Step 1 error should be non-empty.
+	if result.Steps["step-1"].Error == "" {
+		t.Error("step-1 error should be non-empty")
+	}
+
+	// Step 2 should have been called (error exposed via CEL).
+	if !step2Called {
+		t.Error("step-2 should have been called because steps['step-1'].error != null, but it was not called")
+	}
+	if result.Steps["step-2"].Status != "completed" {
+		t.Errorf("step-2 status = %q, want %q", result.Steps["step-2"].Status, "completed")
+	}
+}
+
+// mockConnector is a test connector that invokes a provided function when executed.
+type mockConnector struct {
+	fn func(ctx context.Context, params map[string]any) (map[string]any, error)
+}
+
+func (m *mockConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
+	return m.fn(ctx, params)
+}
+
+// TestV030_Integration exercises continue_on_error + email connector together:
+//   - Step 1 (http/request) fails with continue_on_error:true
+//   - Step 2 (email/send mock) runs and receives steps['step-1'].error via CEL interpolation
+//   - Step 3 (test/noop mock) is skipped because steps['step-1'].error != null
+func TestV030_Integration(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Step 1: real http/request connector hitting a closed server — will fail with
+	// a connection-refused error, which is exactly what we need.
+	step1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+	}))
+	step1URL := step1Server.URL
+	step1Server.Close() // close immediately so the request fails
+
+	// Step 2: mock email/send — captures the params so we can assert the body.
+	var emailParams map[string]any
+	emailMock := &mockConnector{
+		fn: func(_ context.Context, params map[string]any) (map[string]any, error) {
+			emailParams = params
+			return map[string]any{"sent": true}, nil
+		},
+	}
+
+	// Step 3: custom action "test/noop" — must NOT be invoked because the if-condition
+	// evaluates to false when step-1 failed.
+	step3Called := false
+	noopMock := &mockConnector{
+		fn: func(_ context.Context, _ map[string]any) (map[string]any, error) {
+			step3Called = true
+			return map[string]any{"done": true}, nil
+		},
+	}
+
+	wfYAML := []byte(`name: test-v030-integration
+description: v0.3.0 integration — continue_on_error + email connector
+steps:
+  - name: step-1
+    action: http/request
+    continue_on_error: true
+    params:
+      method: GET
+      url: "` + step1URL + `"
+  - name: step-2
+    action: email/send
+    params:
+      to: ops@example.com
+      subject: Step 1 failed
+      body: "{{ steps['step-1'].error }}"
+  - name: step-3
+    action: test/noop
+    if: "steps['step-1'].error == null"
+    params:
+      msg: all good
+`)
+	version := applyWorkflow(t, database, wfYAML)
+
+	eng, err := New(database)
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	// Register mock connectors. http/request is left as the real connector so
+	// step-1 actually fails against the closed server.
+	eng.Registry.Register("email/send", emailMock)
+	eng.Registry.Register("test/noop", noopMock)
+
+	result, err := eng.Execute(context.Background(), "test-v030-integration", version, nil)
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+
+	// Overall workflow must complete, not fail.
+	if result.Status != "completed" {
+		t.Errorf("workflow status = %q, want %q (error: %s)", result.Status, "completed", result.Error)
+	}
+
+	// Step 1 must be marked failed and carry a non-empty error string.
+	if result.Steps["step-1"].Status != "failed" {
+		t.Errorf("step-1 status = %q, want %q", result.Steps["step-1"].Status, "failed")
+	}
+	if result.Steps["step-1"].Error == "" {
+		t.Error("step-1 error should be non-empty")
+	}
+
+	// Step 2 must have executed and its body param must contain the step-1 error.
+	if result.Steps["step-2"].Status != "completed" {
+		t.Errorf("step-2 status = %q, want %q", result.Steps["step-2"].Status, "completed")
+	}
+	if emailParams == nil {
+		t.Fatal("email/send was not called")
+	}
+	body, _ := emailParams["body"].(string)
+	if body == "" {
+		t.Error("email body should contain the step-1 error message, got empty string")
+	}
+	step1Err := result.Steps["step-1"].Error
+	if !strings.Contains(body, step1Err) {
+		t.Errorf("email body = %q, want it to contain step-1 error %q", body, step1Err)
+	}
+
+	// Step 3 must be skipped because steps['step-1'].error != null.
+	if result.Steps["step-3"].Status != "skipped" {
+		t.Errorf("step-3 status = %q, want %q", result.Steps["step-3"].Status, "skipped")
+	}
+	if step3Called {
+		t.Error("step-3 (test/noop) should not have been called because steps['step-1'].error != null")
+	}
+}
+
+func TestEngine_ContinueOnError_PreservesExistingBehavior(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Step 1: always returns 500 (will fail), without continue_on_error.
+	step1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		w.Write([]byte("internal server error"))
+	}))
+	defer step1Server.Close()
+
+	// Step 2: should NOT be called because step-1 fails without continue_on_error.
+	step2Called := false
+	step2Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		step2Called = true
+		w.WriteHeader(200)
+		json.NewEncoder(w).Encode(map[string]any{"done": true})
+	}))
+	defer step2Server.Close()
+
+	wfYAML := []byte(`name: test-no-continue-on-error
+description: Test that step failure without continue_on_error halts workflow
+steps:
+  - name: step-1
+    action: http/request
+    params:
+      method: GET
+      url: "` + step1Server.URL + `"
+  - name: step-2
+    action: http/request
+    params:
+      method: GET
+      url: "` + step2Server.URL + `"
+`)
+	version := applyWorkflow(t, database, wfYAML)
+
+	eng, err := New(database)
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	result, err := eng.Execute(context.Background(), "test-no-continue-on-error", version, nil)
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+
+	// Overall workflow should fail.
+	if result.Status != "failed" {
+		t.Errorf("workflow status = %q, want %q", result.Status, "failed")
+	}
+
+	// Step 1 should be marked as failed.
+	if result.Steps["step-1"].Status != "failed" {
+		t.Errorf("step-1 status = %q, want %q", result.Steps["step-1"].Status, "failed")
+	}
+
+	// Step 2 should NOT have been called.
+	if step2Called {
+		t.Error("step-2 should NOT have been called because step-1 failed without continue_on_error")
+	}
+}

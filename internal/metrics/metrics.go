@@ -38,6 +38,11 @@ var (
 		Name: "mantle_steps_total",
 		Help: "Total step executions by status",
 	}, []string{"workflow", "step", "status"})
+
+	StepsContinuedOnErrorTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_steps_continued_on_error_total",
+		Help: "Total steps that failed but continued due to continue_on_error",
+	}, []string{"workflow", "step"})
 )
 
 // Queue and distribution metrics.
@@ -122,6 +127,35 @@ func RecordClaimDuration(d time.Duration) { ClaimDurationSeconds.Observe(d.Secon
 func RecordLeaseRenewal()                { LeaseRenewalsTotal.Inc() }
 func RecordLeaseExpiration()             { LeaseExpirationsTotal.Inc() }
 func RecordReaperReclaimed(n int)        { ReaperReclaimedTotal.Add(float64(n)) }
+
+// Email trigger metrics.
+var (
+	EmailConnectionsActive = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "mantle_email_connections_active",
+		Help: "Number of active IMAP connections",
+	})
+	EmailPollDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "mantle_email_poll_duration_seconds",
+		Help:    "Email trigger poll duration in seconds",
+		Buckets: []float64{0.1, 0.5, 1, 5, 10, 30},
+	}, []string{"workflow", "folder"})
+	EmailPollErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_email_poll_errors_total",
+		Help: "Total email polling errors",
+	}, []string{"workflow", "error_type"})
+	EmailTriggersTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_email_triggers_total",
+		Help: "Total email-triggered workflow executions",
+	}, []string{"workflow"})
+	EmailConnectionErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_email_connection_errors_total",
+		Help: "Total IMAP connection errors",
+	}, []string{"workflow"})
+	EmailTriggersSkippedTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "mantle_email_triggers_skipped_total",
+		Help: "Total email triggers skipped due to connection limit",
+	})
+)
 
 // Budget metrics.
 var (

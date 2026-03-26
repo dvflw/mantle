@@ -31,10 +31,15 @@ func NewRegistry() *Registry {
 	r.Register("slack/history", &SlackHistoryConnector{})
 	r.Register("postgres/query", &PostgresQueryConnector{})
 	r.Register("email/send", &EmailSendConnector{})
+	r.Register("email/receive", &EmailReceiveConnector{})
+	r.Register("email/move", &EmailMoveConnector{})
+	r.Register("email/delete", &EmailDeleteConnector{})
+	r.Register("email/flag", &EmailFlagConnector{})
 	r.Register("s3/put", &S3PutConnector{})
 	r.Register("s3/get", &S3GetConnector{})
 	r.Register("s3/list", &S3ListConnector{})
 	r.Register("docker/run", &DockerRunConnector{})
+	r.Register("browser/run", &BrowserRunConnector{})
 	return r
 }
 

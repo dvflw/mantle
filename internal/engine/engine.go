@@ -140,7 +140,18 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 		return nil, fmt.Errorf("loading completed steps: %w", err)
 	}
 	for name, output := range completedSteps {
-		celCtx.Steps[name] = map[string]any{"output": output}
+		celCtx.Steps[name] = map[string]any{"output": output, "error": nil}
+	}
+
+	// Load failed-continued steps for checkpoint recovery.
+	// These steps failed with continue_on_error=true; their error/output must be
+	// re-exposed so downstream CEL expressions evaluate correctly on resume.
+	failedContinuedSteps, err := e.loadFailedContinuedSteps(ctx, execID)
+	if err != nil {
+		return nil, fmt.Errorf("loading failed-continued steps: %w", err)
+	}
+	for name, fcs := range failedContinuedSteps {
+		celCtx.Steps[name] = map[string]any{"output": fcs.output, "error": fcs.errMsg}
 	}
 
 	// Load artifacts for CEL context.
@@ -175,27 +186,54 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 			continue
 		}
 
+		// Skip steps that already failed with continue_on_error=true (checkpoint recovery).
+		if fcs, done := failedContinuedSteps[step.Name]; done {
+			result.Steps[step.Name] = StepResult{
+				Status: "failed",
+				Output: fcs.output,
+				Error:  fcs.errMsg,
+			}
+			continue
+		}
+
 		stepStart := time.Now()
 		stepResult := e.executeStep(ctx, execID, workflowName, step, celCtx, sc)
 		stepResult.Duration = time.Since(stepStart)
 		result.Steps[step.Name] = stepResult
 
 		if stepResult.Status == "completed" {
-			celCtx.Steps[step.Name] = map[string]any{"output": stepResult.Output}
+			celCtx.Steps[step.Name] = map[string]any{"output": stepResult.Output, "error": nil}
 			sc.CompletedSteps[step.Name] = stepResult.Output
 			e.loadArtifactsIntoCELContext(ctx, execID, celCtx)
 		} else if stepResult.Status == "skipped" {
-			celCtx.Steps[step.Name] = map[string]any{"output": map[string]any{}}
+			celCtx.Steps[step.Name] = map[string]any{"output": map[string]any{}, "error": nil}
 		} else if stepResult.Status == "failed" {
-			result.Status = "failed"
-			result.Error = fmt.Sprintf("step %q failed: %s", step.Name, stepResult.Error)
-			result.Duration = time.Since(execStart)
-			if err := e.updateExecutionStatus(ctx, execID, "failed", result.Error); err != nil {
-				return nil, fmt.Errorf("checkpoint: %w", err)
+			if step.ContinueOnError {
+				// Step failed but workflow continues — expose error and partial output to downstream steps.
+				celCtx.Steps[step.Name] = map[string]any{
+					"output": stepResult.Output,
+					"error":  stepResult.Error,
+				}
+				e.Auditor.Emit(ctx, audit.Event{
+					Timestamp: time.Now(),
+					Actor:     "engine",
+					Action:    audit.ActionStepContinuedOnError,
+					Resource:  audit.Resource{Type: "step_execution", ID: step.Name},
+					Metadata:  map[string]string{"error": stepResult.Error},
+				})
+				metrics.StepsContinuedOnErrorTotal.WithLabelValues(workflowName, step.Name).Inc()
+			} else {
+				// Original behavior — halt execution.
+				result.Status = "failed"
+				result.Error = fmt.Sprintf("step %q failed: %s", step.Name, stepResult.Error)
+				result.Duration = time.Since(execStart)
+				if err := e.updateExecutionStatus(ctx, execID, "failed", result.Error); err != nil {
+					return nil, fmt.Errorf("checkpoint: %w", err)
+				}
+				metrics.ExecutionsTotal.WithLabelValues(workflowName, "failed").Inc()
+				metrics.ExecutionDuration.WithLabelValues(workflowName).Observe(time.Since(execStart).Seconds())
+				return result, nil
 			}
-			metrics.ExecutionsTotal.WithLabelValues(workflowName, "failed").Inc()
-			metrics.ExecutionDuration.WithLabelValues(workflowName).Observe(time.Since(execStart).Seconds())
-			return result, nil
 		}
 	}
 
@@ -228,13 +266,13 @@ func (e *Engine) executeStep(ctx context.Context, execID string, workflowName st
 	if step.If != "" {
 		shouldRun, err := e.CEL.EvalBool(step.If, celCtx)
 		if err != nil {
-			if cpErr := e.recordStep(ctx, execID, step.Name, "failed", nil, err.Error()); cpErr != nil {
+			if cpErr := e.recordStep(ctx, execID, step.Name, "failed", nil, err.Error(), step.ContinueOnError); cpErr != nil {
 				return StepResult{Status: "failed", Error: fmt.Sprintf("checkpoint failure: %v (original: evaluating if condition: %v)", cpErr, err)}
 			}
 			return StepResult{Status: "failed", Error: fmt.Sprintf("evaluating if condition: %v", err)}
 		}
 		if !shouldRun {
-			if cpErr := e.recordStep(ctx, execID, step.Name, "skipped", nil, ""); cpErr != nil {
+			if cpErr := e.recordStep(ctx, execID, step.Name, "skipped", nil, "", step.ContinueOnError); cpErr != nil {
 				metrics.StepsTotal.WithLabelValues(workflowName, step.Name, "failed").Inc()
 				return StepResult{Status: "failed", Error: fmt.Sprintf("checkpoint failure: %v", cpErr)}
 			}
@@ -250,7 +288,7 @@ func (e *Engine) executeStep(ctx context.Context, execID string, workflowName st
 	}
 
 	// Record step as running.
-	if cpErr := e.recordStep(ctx, execID, step.Name, "running", nil, ""); cpErr != nil {
+	if cpErr := e.recordStep(ctx, execID, step.Name, "running", nil, "", step.ContinueOnError); cpErr != nil {
 		return StepResult{Status: "failed", Error: fmt.Sprintf("checkpoint failure: %v", cpErr)}
 	}
 	e.Auditor.Emit(ctx, audit.Event{
@@ -265,7 +303,7 @@ func (e *Engine) executeStep(ctx context.Context, execID string, workflowName st
 
 	if lastErr != nil {
 		errMsg := lastErr.Error()
-		if cpErr := e.updateStep(ctx, execID, step.Name, "failed", output, errMsg); cpErr != nil {
+		if cpErr := e.updateStep(ctx, execID, step.Name, "failed", output, errMsg, step.ContinueOnError); cpErr != nil {
 			return StepResult{Status: "failed", Output: output, Error: fmt.Sprintf("checkpoint failure: %v (original: %s)", cpErr, errMsg)}
 		}
 		e.Auditor.Emit(ctx, audit.Event{
@@ -281,7 +319,7 @@ func (e *Engine) executeStep(ctx context.Context, execID string, workflowName st
 	// Validate output size before persisting.
 	if err := checkOutputSize(output, defaultMaxOutputBytes); err != nil {
 		errMsg := err.Error()
-		if cpErr := e.updateStep(ctx, execID, step.Name, "failed", nil, errMsg); cpErr != nil {
+		if cpErr := e.updateStep(ctx, execID, step.Name, "failed", nil, errMsg, step.ContinueOnError); cpErr != nil {
 			return StepResult{Status: "failed", Error: fmt.Sprintf("checkpoint failure: %v (original: %s)", cpErr, errMsg)}
 		}
 		e.Auditor.Emit(ctx, audit.Event{
@@ -295,7 +333,7 @@ func (e *Engine) executeStep(ctx context.Context, execID string, workflowName st
 	}
 
 	// Checkpoint: record completed step with output.
-	if cpErr := e.updateStep(ctx, execID, step.Name, "completed", output, ""); cpErr != nil {
+	if cpErr := e.updateStep(ctx, execID, step.Name, "completed", output, "", step.ContinueOnError); cpErr != nil {
 		return StepResult{Status: "failed", Error: fmt.Sprintf("checkpoint failure: %v", cpErr)}
 	}
 	e.Auditor.Emit(ctx, audit.Event{
@@ -687,6 +725,18 @@ func (e *Engine) MakeGlobalStepExecutor() StepExecutor {
 			celCtx.Steps[name] = map[string]any{"output": output}
 		}
 
+		// Load failed-but-continued steps for CEL context.
+		failedContinuedSteps, err := e.loadFailedContinuedSteps(ctx, execID)
+		if err != nil {
+			return nil, fmt.Errorf("loading failed continued steps: %w", err)
+		}
+		for name, fcs := range failedContinuedSteps {
+			celCtx.Steps[name] = map[string]any{
+				"output": fcs.output,
+				"error":  fcs.errMsg,
+			}
+		}
+
 		// Load artifacts for CEL context.
 		e.loadArtifactsIntoCELContext(ctx, execID, celCtx)
 
@@ -791,7 +841,7 @@ func (e *Engine) updateExecutionStatus(ctx context.Context, execID, status, errM
 }
 
 // recordStep inserts a new step_executions row.
-func (e *Engine) recordStep(ctx context.Context, execID, stepName, status string, output map[string]any, errMsg string) error {
+func (e *Engine) recordStep(ctx context.Context, execID, stepName, status string, output map[string]any, errMsg string, continueOnError bool) error {
 	outputJSON, err := json.Marshal(output)
 	if err != nil {
 		return fmt.Errorf("marshaling step %s output: %w", stepName, err)
@@ -803,10 +853,10 @@ func (e *Engine) recordStep(ctx context.Context, execID, stepName, status string
 	}
 
 	_, err = e.DB.ExecContext(ctx,
-		`INSERT INTO step_executions (execution_id, step_name, status, output, error, started_at)
-		 VALUES ($1, $2, $3, $4, $5, NOW())
+		`INSERT INTO step_executions (execution_id, step_name, status, output, error, continue_on_error, started_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, NOW())
 		 ON CONFLICT (execution_id, step_name, attempt) DO NOTHING`,
-		execID, stepName, status, outputJSON, errorVal,
+		execID, stepName, status, outputJSON, errorVal, continueOnError,
 	)
 	if err != nil {
 		return fmt.Errorf("recording step %s: %w", stepName, err)
@@ -815,7 +865,7 @@ func (e *Engine) recordStep(ctx context.Context, execID, stepName, status string
 }
 
 // updateStep updates an existing step_executions row.
-func (e *Engine) updateStep(ctx context.Context, execID, stepName, status string, output map[string]any, errMsg string) error {
+func (e *Engine) updateStep(ctx context.Context, execID, stepName, status string, output map[string]any, errMsg string, continueOnError bool) error {
 	outputJSON, err := json.Marshal(output)
 	if err != nil {
 		return fmt.Errorf("marshaling step %s output: %w", stepName, err)
@@ -832,14 +882,48 @@ func (e *Engine) updateStep(ctx context.Context, execID, stepName, status string
 	}
 
 	_, err = e.DB.ExecContext(ctx,
-		`UPDATE step_executions SET status = $1, output = $2, error = $3, completed_at = $4, updated_at = NOW()
-		 WHERE execution_id = $5 AND step_name = $6 AND attempt = 1`,
-		status, outputJSON, errorVal, completedAt, execID, stepName,
+		`UPDATE step_executions SET status = $1, output = $2, error = $3, completed_at = $4, continue_on_error = $5, updated_at = NOW()
+		 WHERE execution_id = $6 AND step_name = $7 AND attempt = 1`,
+		status, outputJSON, errorVal, completedAt, continueOnError, execID, stepName,
 	)
 	if err != nil {
 		return fmt.Errorf("updating step %s: %w", stepName, err)
 	}
 	return nil
+}
+
+// loadFailedContinuedSteps loads steps that failed but had continue_on_error=true,
+// for checkpoint recovery — their error and partial output must be re-exposed in CEL.
+type failedContinuedStep struct {
+	output map[string]any
+	errMsg string
+}
+
+func (e *Engine) loadFailedContinuedSteps(ctx context.Context, execID string) (map[string]failedContinuedStep, error) {
+	rows, err := e.DB.QueryContext(ctx,
+		`SELECT step_name, COALESCE(output::text, '{}'), COALESCE(error, '')
+		 FROM step_executions
+		 WHERE execution_id = $1 AND status = 'failed' AND continue_on_error = true`,
+		execID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]failedContinuedStep)
+	for rows.Next() {
+		var name, outputStr, errMsg string
+		if err := rows.Scan(&name, &outputStr, &errMsg); err != nil {
+			return nil, err
+		}
+		var output map[string]any
+		if err := json.Unmarshal([]byte(outputStr), &output); err != nil {
+			return nil, fmt.Errorf("unmarshaling step %q output: %w", name, err)
+		}
+		result[name] = failedContinuedStep{output: output, errMsg: errMsg}
+	}
+	return result, rows.Err()
 }
 
 // loadCompletedSteps loads outputs of already-completed steps for checkpoint recovery.

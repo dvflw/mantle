@@ -595,3 +595,227 @@ steps:
 		t.Errorf("unexpected artifact validation errors: %v", artifactErrs)
 	}
 }
+
+func TestValidate_EmailTrigger(t *testing.T) {
+	result := mustParse(t, `
+name: email-triggered
+triggers:
+  - type: email
+    mailbox: my-imap-cred
+    folder: INBOX
+    filter: unseen
+    poll_interval: 30s
+steps:
+  - name: process
+    action: http/request
+    params:
+      url: "https://example.com/process"
+`)
+	errs := Validate(result)
+	assertNoErrors(t, errs)
+	if result.Workflow.Triggers[0].Type != "email" {
+		t.Errorf("expected trigger type %q, got %q", "email", result.Workflow.Triggers[0].Type)
+	}
+	if result.Workflow.Triggers[0].Mailbox != "my-imap-cred" {
+		t.Errorf("expected mailbox %q, got %q", "my-imap-cred", result.Workflow.Triggers[0].Mailbox)
+	}
+}
+
+func TestValidate_EmailTrigger_MissingMailbox(t *testing.T) {
+	result := mustParse(t, `
+name: email-triggered
+triggers:
+  - type: email
+steps:
+  - name: process
+    action: http/request
+    params:
+      url: "https://example.com"
+`)
+	errs := Validate(result)
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors, got none")
+	}
+	assertHasError(t, errs, "triggers[0].mailbox")
+}
+
+func TestValidate_EmailTrigger_InvalidFilter(t *testing.T) {
+	result := mustParse(t, `
+name: email-triggered
+triggers:
+  - type: email
+    mailbox: my-cred
+    filter: invalid-filter
+steps:
+  - name: process
+    action: http/request
+    params:
+      url: "https://example.com"
+`)
+	errs := Validate(result)
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors, got none")
+	}
+	assertHasError(t, errs, "triggers[0].filter")
+}
+
+func TestValidate_EmailTrigger_InvalidPollInterval(t *testing.T) {
+	result := mustParse(t, `
+name: email-triggered
+triggers:
+  - type: email
+    mailbox: my-cred
+    poll_interval: not-a-duration
+steps:
+  - name: process
+    action: http/request
+    params:
+      url: "https://example.com"
+`)
+	errs := Validate(result)
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors, got none")
+	}
+	assertHasError(t, errs, "triggers[0].poll_interval")
+}
+
+func TestValidate_EmailTrigger_InvalidTriggerType(t *testing.T) {
+	result := mustParse(t, `
+name: email-triggered
+triggers:
+  - type: unknown
+steps:
+  - name: process
+    action: http/request
+    params:
+      url: "https://example.com"
+`)
+	errs := Validate(result)
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors, got none")
+	}
+	assertHasError(t, errs, "triggers[0].type")
+}
+
+func TestValidate_ContinueOnError(t *testing.T) {
+	result := mustParse(t, `
+name: test-continue
+steps:
+  - name: risky-step
+    action: http/request
+    continue_on_error: true
+    params:
+      url: https://example.com
+  - name: notify
+    action: slack/send
+    if: "steps['risky-step'].error != null"
+    params:
+      channel: "#alerts"
+      text: "Step failed"
+`)
+	errs := Validate(result)
+	assertNoErrors(t, errs)
+	if result.Workflow.Steps[0].ContinueOnError != true {
+		t.Errorf("expected ContinueOnError to be true for steps[0], got %v", result.Workflow.Steps[0].ContinueOnError)
+	}
+	if result.Workflow.Steps[1].ContinueOnError != false {
+		t.Errorf("expected ContinueOnError to be false for steps[1], got %v", result.Workflow.Steps[1].ContinueOnError)
+	}
+}
+
+func TestValidate_BrowserRun_Valid(t *testing.T) {
+	result := mustParse(t, `
+name: browser-test
+steps:
+  - name: run-browser
+    action: browser/run
+    params:
+      script: "console.log('hello')"
+      language: javascript
+      output_format: text
+`)
+	errs := Validate(result)
+	assertNoErrors(t, errs)
+}
+
+func TestValidate_BrowserRun_ValidWithDefaults(t *testing.T) {
+	result := mustParse(t, `
+name: browser-test
+steps:
+  - name: run-browser
+    action: browser/run
+    params:
+      script: "console.log('hello')"
+`)
+	errs := Validate(result)
+	assertNoErrors(t, errs)
+}
+
+func TestValidate_BrowserRun_MissingScript(t *testing.T) {
+	result := mustParse(t, `
+name: browser-test
+steps:
+  - name: run-browser
+    action: browser/run
+    params:
+      language: javascript
+`)
+	errs := Validate(result)
+	assertHasError(t, errs, "steps[0].params.script")
+}
+
+func TestValidate_BrowserRun_EmptyScript(t *testing.T) {
+	result := mustParse(t, `
+name: browser-test
+steps:
+  - name: run-browser
+    action: browser/run
+    params:
+      script: ""
+`)
+	errs := Validate(result)
+	assertHasError(t, errs, "steps[0].params.script")
+}
+
+func TestValidate_BrowserRun_InvalidLanguage(t *testing.T) {
+	result := mustParse(t, `
+name: browser-test
+steps:
+  - name: run-browser
+    action: browser/run
+    params:
+      script: "console.log('hello')"
+      language: ruby
+`)
+	errs := Validate(result)
+	assertHasError(t, errs, "steps[0].params.language")
+}
+
+func TestValidate_BrowserRun_InvalidOutputFormat(t *testing.T) {
+	result := mustParse(t, `
+name: browser-test
+steps:
+  - name: run-browser
+    action: browser/run
+    params:
+      script: "console.log('hello')"
+      output_format: xml
+`)
+	errs := Validate(result)
+	assertHasError(t, errs, "steps[0].params.output_format")
+}
+
+func TestValidate_BrowserRun_ValidPython(t *testing.T) {
+	result := mustParse(t, `
+name: browser-test
+steps:
+  - name: run-browser
+    action: browser/run
+    params:
+      script: "print('hello')"
+      language: python
+      output_format: json
+`)
+	errs := Validate(result)
+	assertNoErrors(t, errs)
+}
