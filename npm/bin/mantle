@@ -1,3 +1,0 @@
-#!/bin/sh
-echo "Error: mantle binary not installed. Run 'npm install' or 'npx @dvflw/mantle' to download it." >&2
-exit 1
