@@ -146,7 +146,6 @@ Every additional installation method removes friction. Prioritize by audience ov
 | Helm chart | P0 (done) | None | K8s is the deployment target |
 | Binary releases (GitHub Releases) | P0 | Low | goreleaser config, covers Linux/macOS/Windows |
 | Homebrew tap | P1 | Low | macOS developers, easy to maintain a tap |
-| npm wrapper | P2 | Low | Enables `npx mantle` for polyglot teams |
 | Nix package | P3 | Medium | Nix users are vocal advocates, good word-of-mouth |
 | AUR (Arch Linux) | P3 | Low | Small but passionate community |
 
