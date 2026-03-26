@@ -67,7 +67,7 @@ services:
       AWS_ENDPOINT_URL: http://minio:9000
     command: ["serve"]
     volumes:
-      - ./examples:/home/mantle/examples:ro
+      - ../site/src/content/examples:/home/mantle/examples:ro
 
 volumes:
   pgdata:
