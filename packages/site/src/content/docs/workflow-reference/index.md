@@ -254,6 +254,15 @@ steps:
 ### Available Error Fields
 
 - **`steps['name'].error`** — `null` for successful or skipped steps; a string error message for failed steps. The field is always present in the CEL context, but is only practically reachable on a step that has `continue_on_error: true` — without that flag, a step failure halts the workflow before any downstream step can inspect the error.
+
+:::caution[Error String Contents]
+Error strings in `steps['name'].error` may contain internal infrastructure details such as database hostnames, S3 bucket names, Docker image paths, or IMAP server banners. Avoid forwarding raw error strings to external services (Slack, email, webhooks) without sanitization. If error details must be exposed, use a conditional expression that provides a user-friendly message:
+
+```yaml
+text: "{{ steps.backup.error != null ? 'Backup step failed — check logs for details' : 'Backup succeeded' }}"
+```
+:::
+
 - **`steps['name'].output`** — Partial output available from the failed step if the connector provided it. Structure depends on the connector.
 
 ### Example: Fallback Pattern

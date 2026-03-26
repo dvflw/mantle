@@ -90,3 +90,15 @@ To keep all data within the EU:
 The `browser/run` connector concatenates the `script` param into a wrapper template. If the script value contains CEL expressions that resolve untrusted external data (trigger bodies, webhook payloads), structural injection is possible inside the container sandbox.
 
 **Mitigation:** Pass untrusted data via the `env` param, not the `script` field. Environment variables are treated as string values, not executable code.
+
+## Error String Leakage
+
+When `continue_on_error: true` is used, the `steps.<name>.error` field contains the raw error message from the failed connector. These strings may include infrastructure details:
+
+- Database hostnames and connection strings
+- S3 bucket names and object paths
+- Docker image names and container IDs
+- IMAP/SMTP server banners
+- File system paths
+
+**Mitigation:** Do not forward raw error strings to external notification channels. Use conditional expressions that provide user-friendly messages, and rely on `mantle logs` for detailed diagnostics.
