@@ -5,7 +5,21 @@ Headless AI workflow automation platform — BYOK, IaC-first, enterprise-grade, 
 ## Project Tracking
 
 - **Issues & milestones:** GitHub Issues (https://github.com/dvflw/mantle/issues)
-- **Implementation plan:** `plans/mantle.md`
+- **Implementation plans:** `docs/superpowers/plans/`
+
+## Monorepo Structure
+
+```
+packages/
+  engine/              Go binary (cmd/, internal/, go.mod)
+  site/                Astro documentation site + examples
+  helm-chart/          Helm chart
+  proto/               Protobuf definitions
+```
+
+**Engine development happens in `packages/engine/`.** Run `go test ./...` and `go build ./cmd/mantle` from that directory. The root `go.work` file enables `go` commands from the repo root via workspace resolution.
+
+**Build tools:** Nx for task orchestration (`bunx nx run engine:test`), changesets for versioning, bun as package manager.
 
 ## Tech Stack
 
@@ -16,7 +30,9 @@ Headless AI workflow automation platform — BYOK, IaC-first, enterprise-grade, 
 - **Plugin protocol:** gRPC over subprocess (HashiCorp go-plugin)
 - **Config:** mantle.yaml with CLI flag and env var overrides
 - **Testing:** testcontainers for integration tests against real Postgres
-- **CI:** GitHub Actions (go test, go vet, golangci-lint)
+- **CI:** GitHub Actions (per-package workflows with path filters)
+- **Site:** Astro (static site generator)
+- **Monorepo:** Nx + changesets + bun
 
 ## Architecture Principles
 
@@ -24,34 +40,26 @@ Headless AI workflow automation platform — BYOK, IaC-first, enterprise-grade, 
 - **IaC lifecycle** — `mantle validate` (offline) → `mantle plan` (diff) → `mantle apply` (versioned)
 - **Checkpoint-and-resume** — NOT "exactly-once." External side effects cannot be guaranteed exactly-once without idempotency keys. Steps checkpoint to Postgres; crash recovery resumes from last completed step.
 - **Secrets as opaque handles** — secrets are resolved by the engine at connector invocation time, never exposed as raw values in CEL expressions
-- **Audit from day one** — every state-changing operation emits an audit event via the AuditEmitter interface (no-op in V1, Postgres-backed in V1.1)
-- **Single-tenant in V1** — no auth, no teams. Multi-tenancy and RBAC added in Phase 6 as a retrofit.
-
-## Project Structure (target)
-
-```
-cmd/mantle/          CLI entrypoint (Cobra commands)
-internal/
-  config/            Config file loading, env var overrides
-  engine/            Step execution loop, checkpoint logic
-  workflow/          YAML parser, JSON Schema validation, CEL evaluation
-  connector/         Built-in connectors (HTTP, AI)
-  secret/            Credential storage, encryption, opaque handle resolution
-  api/               REST API server
-  audit/             Audit event emission interface
-charts/mantle/       Helm chart
-plans/               Implementation plans
-```
+- **Audit from day one** — every state-changing operation emits an audit event via the AuditEmitter interface
 
 ## Key Commands
 
 ```bash
-# Local dev
-docker-compose up -d          # Start Postgres
-make migrate                  # Run migrations
+# From repo root (delegates to engine)
+make build                    # Build binary
 make test                     # Unit + integration tests
 make lint                     # golangci-lint
-make build                    # Build binary
+
+# From packages/engine/
+cd packages/engine
+docker compose up -d          # Start Postgres + MinIO
+make migrate                  # Run migrations
+go test ./...                 # Run tests directly
+
+# Nx orchestration
+bunx nx run engine:test
+bunx nx run engine:build
+bunx nx run-many --target=build --all
 
 # Mantle CLI
 mantle version                # Print version
@@ -64,17 +72,8 @@ mantle cancel <execution-id>  # Cancel running workflow
 mantle logs <execution-id>    # View execution logs
 mantle status <execution-id>  # View execution state
 mantle secrets create         # Create typed credential
-mantle serve                  # Start persistent server (Phase 5+)
+mantle serve                  # Start persistent server
 ```
-
-## V1 Phasing
-
-1. **Core Engine & First Demoable Workflow** — scaffold, config, validate/plan/apply/run, HTTP connector, CEL, checkpointing, retry/timeout/cancel, health endpoints, CI, testing
-2. **Secrets Management** — typed credentials, AES-256-GCM encryption, opaque handles, env var backend
-3. **AI/LLM Connector** — OpenAI-compatible completion + structured output (no tool use until V1.1)
-4. **Packaging & Distribution** — Dockerfile, Helm chart, binary releases, npm wrapper
-5. **Triggers & Server Mode** — `mantle serve`, cron scheduler, webhook ingestion
-6. **Multi-tenancy & RBAC** — teams, users, roles, API keys, team scoping retrofit
 
 ## License
 
