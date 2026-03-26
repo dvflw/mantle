@@ -23,7 +23,7 @@ import (
 )
 
 // blockedMountTargets lists container paths that are never allowed as mount targets.
-var blockedMountTargets = []string{"/proc", "/sys", "/dev", "/var/run/docker.sock"}
+var blockedMountTargets = []string{"/proc", "/sys", "/dev", "/var/run/docker.sock", "/tmp"}
 
 // DockerRunConnector runs a container to completion and captures output.
 type DockerRunConnector struct{}

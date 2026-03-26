@@ -65,14 +65,20 @@ func (c *EmailSendConnector) Execute(ctx context.Context, params map[string]any)
 
 	addr := net.JoinHostPort(host, port)
 	tlsCfg := &tls.Config{ServerName: host} //nolint:gosec // MinVersion not set; Go's default is TLS 1.2+
+	dialer := &net.Dialer{}
 
 	var client *smtp.Client
 
 	if port == "465" {
-		// Implicit TLS (SMTPS): dial with TLS directly.
-		tlsConn, dialErr := tls.Dial("tcp", addr, tlsCfg)
+		// Implicit TLS (SMTPS): dial with TLS directly, respecting context deadline.
+		conn, dialErr := dialer.DialContext(ctx, "tcp", addr)
 		if dialErr != nil {
-			return nil, fmt.Errorf("email/send: TLS dial to %s: %w", addr, dialErr)
+			return nil, fmt.Errorf("email/send: dial %s: %w", addr, dialErr)
+		}
+		tlsConn := tls.Client(conn, tlsCfg)
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			_ = conn.Close()
+			return nil, fmt.Errorf("email/send: TLS handshake with %s: %w", addr, err)
 		}
 		c, newErr := smtp.NewClient(tlsConn, host)
 		if newErr != nil {
@@ -82,7 +88,7 @@ func (c *EmailSendConnector) Execute(ctx context.Context, params map[string]any)
 		client = c
 	} else {
 		// Explicit TLS (STARTTLS): connect plaintext, then upgrade.
-		conn, dialErr := net.Dial("tcp", addr)
+		conn, dialErr := dialer.DialContext(ctx, "tcp", addr)
 		if dialErr != nil {
 			return nil, fmt.Errorf("email/send: dial %s: %w", addr, dialErr)
 		}

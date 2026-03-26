@@ -261,6 +261,7 @@ Error strings in `steps['name'].error` may contain internal infrastructure detai
 ```yaml
 text: "{{ steps.backup.error != null ? 'Backup step failed — check logs for details' : 'Backup succeeded' }}"
 ```
+
 :::
 
 - **`steps['name'].output`** — Partial output available from the failed step if the connector provided it. Structure depends on the connector.
