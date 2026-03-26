@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	imaplib "github.com/dvflw/mantle/internal/imap"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 )
@@ -74,7 +75,7 @@ func (c *EmailReceiveConnector) Execute(ctx context.Context, params map[string]a
 	}
 
 	// Build search criteria based on the filter.
-	criteria := buildSearchCriteria(filter)
+	criteria := imaplib.BuildSearchCriteria(filter)
 
 	// Use UID search so we can build a UIDSet for Fetch.
 	searchData, err := client.UIDSearch(criteria, nil).Wait()
@@ -115,7 +116,7 @@ func (c *EmailReceiveConnector) Execute(ctx context.Context, params map[string]a
 		},
 	}
 
-	messages, err := fetchMessages(client, uidSet, fetchOptions)
+	messages, err := fetchMessages(client, uidSet, fetchOptions, !markSeen)
 	if err != nil {
 		return nil, fmt.Errorf("email/receive: fetch failed: %w", err)
 	}
@@ -140,30 +141,9 @@ func (c *EmailReceiveConnector) Execute(ctx context.Context, params map[string]a
 	}, nil
 }
 
-// buildSearchCriteria constructs IMAP search criteria for the given filter name.
-func buildSearchCriteria(filter string) *imap.SearchCriteria {
-	switch filter {
-	case "unseen":
-		return &imap.SearchCriteria{
-			NotFlag: []imap.Flag{imap.FlagSeen},
-		}
-	case "flagged":
-		return &imap.SearchCriteria{
-			Flag: []imap.Flag{imap.FlagFlagged},
-		}
-	case "recent":
-		// \Recent is an IMAP4rev1 flag; use string literal.
-		return &imap.SearchCriteria{
-			Flag: []imap.Flag{imap.Flag(`\Recent`)},
-		}
-	default: // "all"
-		return &imap.SearchCriteria{}
-	}
-}
-
 // fetchMessages executes the FETCH command and converts the results into the
 // output map format expected by the connector.
-func fetchMessages(client *imapclient.Client, uidSet imap.UIDSet, opts *imap.FetchOptions) ([]map[string]any, error) {
+func fetchMessages(client *imapclient.Client, uidSet imap.UIDSet, opts *imap.FetchOptions, peek bool) ([]map[string]any, error) {
 	cmd := client.Fetch(uidSet, opts)
 
 	var out []map[string]any
@@ -179,7 +159,7 @@ func fetchMessages(client *imapclient.Client, uidSet imap.UIDSet, opts *imap.Fet
 			return nil, err
 		}
 
-		msg := messageBufferToMap(buf)
+		msg := messageBufferToMap(buf, peek)
 		out = append(out, msg)
 	}
 
@@ -191,7 +171,9 @@ func fetchMessages(client *imapclient.Client, uidSet imap.UIDSet, opts *imap.Fet
 }
 
 // messageBufferToMap converts a FetchMessageBuffer into the output map format.
-func messageBufferToMap(buf *imapclient.FetchMessageBuffer) map[string]any {
+// peek must match the Peek value used in the FetchItemBodySection so that
+// FindBodySection can locate the correct section by exact struct comparison.
+func messageBufferToMap(buf *imapclient.FetchMessageBuffer, peek bool) map[string]any {
 	msg := map[string]any{
 		"message_id": "",
 		"from":       "",
@@ -230,7 +212,7 @@ func messageBufferToMap(buf *imapclient.FetchMessageBuffer) map[string]any {
 
 	// Populate body text from the TEXT body section, and extract headers from
 	// the raw bytes if a full body section is present.
-	bodySection := &imap.FetchItemBodySection{Specifier: imap.PartSpecifierText}
+	bodySection := &imap.FetchItemBodySection{Specifier: imap.PartSpecifierText, Peek: peek}
 	rawText := buf.FindBodySection(bodySection)
 	if rawText != nil {
 		msg["body"] = extractBodyText(rawText)

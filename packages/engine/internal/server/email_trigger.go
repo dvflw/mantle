@@ -4,15 +4,14 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/tls"
 	"fmt"
-	"net"
 	"net/textproto"
 	"sync"
 	"time"
 
 	"github.com/dvflw/mantle/internal/audit"
 	"github.com/dvflw/mantle/internal/auth"
+	imaplib "github.com/dvflw/mantle/internal/imap"
 	"github.com/dvflw/mantle/internal/metrics"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
@@ -313,7 +312,7 @@ func (e *EmailTriggerPoller) pollLoop(
 func (e *EmailTriggerPoller) poll(ctx context.Context, t TriggerRecord, client *imapclient.Client, folder, filter string) error {
 	start := time.Now()
 
-	criteria := buildEmailSearchCriteria(filter)
+	criteria := imaplib.BuildSearchCriteria(filter)
 	searchData, err := client.UIDSearch(criteria, nil).Wait()
 	if err != nil {
 		metrics.EmailPollErrorsTotal.WithLabelValues(t.WorkflowName, "search").Inc()
@@ -468,74 +467,12 @@ func (e *EmailTriggerPoller) dialTrigger(ctx context.Context, t TriggerRecord) (
 		return nil, fmt.Errorf("resolving mailbox credential %q: %w", t.Mailbox, err)
 	}
 
-	cfg := &imapDialConfig{
-		Host:     cred["host"],
-		Port:     cred["port"],
-		Username: cred["username"],
-		Password: cred["password"],
-	}
-	if cfg.Host == "" {
-		return nil, fmt.Errorf("mailbox credential %q missing 'host' field", t.Mailbox)
-	}
-	if cfg.Port == "" {
-		cfg.Port = "993"
-	}
-	cfg.UseTLS = cred["use_tls"] != "false"
-
-	return dialIMAP(cfg)
-}
-
-// imapDialConfig holds parameters for dialling an IMAP server.
-// It mirrors connector.imapConfig but is defined here to avoid a cross-package
-// dependency on an unexported type.
-type imapDialConfig struct {
-	Host     string
-	Port     string
-	Username string
-	Password string
-	UseTLS   bool
-}
-
-// dialIMAP connects to an IMAP server and authenticates.
-func dialIMAP(cfg *imapDialConfig) (*imapclient.Client, error) {
-	addr := net.JoinHostPort(cfg.Host, cfg.Port)
-	var (
-		client *imapclient.Client
-		err    error
-	)
-	if cfg.UseTLS {
-		client, err = imapclient.DialTLS(addr, &imapclient.Options{
-			TLSConfig: &tls.Config{
-				ServerName: cfg.Host,
-				MinVersion: tls.VersionTLS12,
-			},
-		})
-	} else {
-		client, err = imapclient.DialInsecure(addr, nil)
-	}
+	cfg, err := imaplib.ParseCredentialMap(cred)
 	if err != nil {
-		return nil, fmt.Errorf("connecting to IMAP server %s: %w", addr, err)
+		return nil, fmt.Errorf("mailbox credential %q: %w", t.Mailbox, err)
 	}
-	if err := client.Login(cfg.Username, cfg.Password).Wait(); err != nil {
-		_ = client.Close()
-		return nil, fmt.Errorf("IMAP login failed: %w", err)
-	}
-	return client, nil
-}
 
-// buildEmailSearchCriteria constructs IMAP search criteria matching the
-// connector package's filter semantics.
-func buildEmailSearchCriteria(filter string) *imap.SearchCriteria {
-	switch filter {
-	case "flagged":
-		return &imap.SearchCriteria{Flag: []imap.Flag{imap.FlagFlagged}}
-	case "recent":
-		return &imap.SearchCriteria{Flag: []imap.Flag{imap.Flag(`\Recent`)}}
-	case "all":
-		return &imap.SearchCriteria{}
-	default: // "unseen"
-		return &imap.SearchCriteria{NotFlag: []imap.Flag{imap.FlagSeen}}
-	}
+	return imaplib.Dial(cfg)
 }
 
 // buildEmailTriggerInputs converts a fetched IMAP message buffer into the
@@ -570,13 +507,13 @@ func buildEmailTriggerInputs(buf *imapclient.FetchMessageBuffer, folder string) 
 
 	// Extract body text from the TEXT body section.
 	// Do NOT fall back to buf.BodySection[0] — that could be the HEADER section.
-	bodySection := &imap.FetchItemBodySection{Specifier: imap.PartSpecifierText}
+	bodySection := &imap.FetchItemBodySection{Specifier: imap.PartSpecifierText, Peek: true}
 	if rawText := buf.FindBodySection(bodySection); rawText != nil {
 		trigger["body"] = extractEmailBody(rawText)
 	}
 
 	// Extract headers from the HEADER body section.
-	headerSection := &imap.FetchItemBodySection{Specifier: imap.PartSpecifierHeader}
+	headerSection := &imap.FetchItemBodySection{Specifier: imap.PartSpecifierHeader, Peek: true}
 	if rawHeaders := buf.FindBodySection(headerSection); rawHeaders != nil {
 		trigger["headers"] = parseRawHeaders(rawHeaders)
 	}

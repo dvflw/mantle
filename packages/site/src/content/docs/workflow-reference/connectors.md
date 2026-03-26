@@ -319,6 +319,8 @@ mantle secrets create --name smtp-creds --type basic \
   --field port=587
 ```
 
+**TLS:** The email connector enforces TLS for all SMTP connections. Port 465 uses implicit TLS (SMTPS); all other ports use STARTTLS and fail if the server does not support TLS. Plaintext SMTP is not supported.
+
 ## email/receive
 
 Reads messages from an email mailbox. Supports filtering by folder and read status.
@@ -675,6 +677,12 @@ Runs browser automation scripts (JavaScript, TypeScript, or Python) using Playwr
 
 **Security:** Containers run with all Linux capabilities dropped (`CAP_DROP ALL`), `no-new-privileges`, and a PID limit. Same security hardening as `docker/run`.
 
+:::caution[Script Injection Risk]
+The `script` field is concatenated directly into a Playwright wrapper template. If the script content is derived from untrusted input (e.g., `script: "{{ trigger.body }}"`), an attacker could inject arbitrary code that executes inside the container. The container sandbox limits blast radius, but injected code can still make network requests, access environment variables, and consume resources.
+
+**Best practice:** Never interpolate untrusted input directly into the `script` field. Pass untrusted data via `env` variables and access them through `process.env` (JS/TS) or `os.environ` (Python), which treats them as string values rather than executable code.
+:::
+
 **Example -- JavaScript with login and screenshot:**
 
 ```yaml
@@ -730,6 +738,18 @@ Runs browser automation scripts (JavaScript, TypeScript, or Python) using Playwr
       const confirmationId = await page.textContent('.confirmation-id');
       console.log(JSON.stringify({ submitted: true, confirmation_id: confirmationId }));
 ```
+
+:::caution[TypeScript Limitations]
+TypeScript support uses Node.js `--experimental-strip-types`, which **only strips type annotations**. The following TypeScript features are **not supported**:
+
+- **Enums** (`enum Direction { Up, Down }`)
+- **Namespaces** (`namespace Foo { }`)
+- **Decorators** (`@decorator`)
+- **`import =` / `export =`** syntax
+- **npm imports** — the container does not have `node_modules` beyond Playwright itself
+
+Use TypeScript for type annotations only. If you need advanced TypeScript features, use JavaScript instead.
+:::
 
 **Example -- Python with PDF generation:**
 

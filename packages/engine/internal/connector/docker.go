@@ -23,7 +23,7 @@ import (
 )
 
 // blockedMountTargets lists container paths that are never allowed as mount targets.
-var blockedMountTargets = []string{"/proc", "/sys", "/dev", "/var/run/docker.sock"}
+var blockedMountTargets = []string{"/proc", "/sys", "/dev", "/var/run/docker.sock", "/tmp"}
 
 // DockerRunConnector runs a container to completion and captures output.
 type DockerRunConnector struct{}
@@ -294,6 +294,9 @@ func (c *DockerRunConnector) Execute(ctx context.Context, params map[string]any)
 		NetworkMode: container.NetworkMode(cfg.Network),
 		CapDrop:     []string{"ALL"},
 		SecurityOpt: []string{"no-new-privileges"},
+		Tmpfs: map[string]string{
+			"/tmp": "rw,noexec,nosuid,size=256m",
+		},
 		Resources: container.Resources{
 			PidsLimit: int64Ptr(512),
 		},

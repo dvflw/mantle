@@ -3,7 +3,7 @@ package connector
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/emersion/go-imap/v2"
 )
@@ -60,7 +60,10 @@ func (c *EmailDeleteConnector) Execute(ctx context.Context, params map[string]an
 		// Warning: EXPUNGE removes ALL messages currently marked \Deleted in the
 		// selected mailbox, not just the targeted UID. This may delete additional
 		// messages if other messages were marked \Deleted concurrently.
-		log.Printf("email/delete: UIDExpunge not supported (uid=%d), falling back to EXPUNGE which removes ALL \\Deleted messages: %v", uid, err)
+		slog.Warn("email/delete: UIDExpunge not supported, falling back to EXPUNGE which removes ALL \\Deleted messages",
+			"uid", uid,
+			"error", err,
+		)
 		if err2 := client.Expunge().Close(); err2 != nil {
 			return nil, fmt.Errorf("email/delete: expunging message: %w", err2)
 		}

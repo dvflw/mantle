@@ -6,6 +6,8 @@ import (
 	"net/smtp"
 	"testing"
 	"time"
+
+	imaplib "github.com/dvflw/mantle/internal/imap"
 )
 
 // TestEmailMoveParamValidation verifies that required parameters are enforced.
@@ -131,7 +133,7 @@ func TestEmailMove_MovesMessage(t *testing.T) {
 // Used in tests to ensure the target folder exists before moving messages.
 func createTargetFolder(t *testing.T, host, imapPort, username, password, folder string) {
 	t.Helper()
-	cfg := &imapConfig{
+	cfg := &imaplib.Config{
 		Host:     host,
 		Port:     imapPort,
 		Username: username,
