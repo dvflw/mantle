@@ -60,3 +60,4 @@ bun.lock
 
 # Astro
 .astro/
+/packages/engine/mantle
