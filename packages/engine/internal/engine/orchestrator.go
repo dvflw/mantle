@@ -179,12 +179,19 @@ func (o *Orchestrator) GetStepStatuses(ctx context.Context, executionID string) 
 	return statuses, nil
 }
 
-// AdvanceExecution inspects the current step statuses for an execution and
-// schedules the next ready steps, respecting continue_on_error semantics.
+// AdvanceExecution examines the current state of an execution and starts any
+// steps whose dependencies are satisfied.
 //
 // Steps with continue_on_error=true that have failed are treated as resolved
 // (equivalent to completed) for dependency resolution purposes, so their
 // downstream steps can still be scheduled. They do NOT propagate cancellations.
+//
+// CAVEAT: continue_on_error is resolved from the in-memory steps parameter,
+// not from the database. If a workflow definition is re-applied via
+// "mantle apply" while an execution is in flight, the orchestrator may use
+// a stale continue_on_error value for already-started executions. This is
+// by design — mid-execution definition changes are not guaranteed to take
+// effect until the next execution starts.
 //
 // Returns the names of newly-created pending steps, or nil if none were ready.
 func (o *Orchestrator) AdvanceExecution(ctx context.Context, executionID string, steps []workflowStep) ([]string, error) {
