@@ -33,6 +33,21 @@ func (p *PostgresEmitter) enrichFromContext(ctx context.Context, event Event) Ev
 func (p *PostgresEmitter) Emit(ctx context.Context, event Event) error {
 	// Enrich event metadata with auth context if available.
 	event = p.enrichFromContext(ctx, event)
+	return emitEvent(ctx, p.DB, event)
+}
+
+// execer abstracts ExecContext so both *sql.DB and *sql.Tx can emit audit events.
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// EmitTx emits an audit event using an existing transaction.
+// This ensures the audit record is committed atomically with the operation it describes.
+func EmitTx(ctx context.Context, tx *sql.Tx, event Event) error {
+	return emitEvent(ctx, tx, event)
+}
+
+func emitEvent(ctx context.Context, db execer, event Event) error {
 	beforeJSON, err := marshalNullableJSON(event.Before)
 	if err != nil {
 		return fmt.Errorf("marshaling before state: %w", err)
@@ -61,7 +76,7 @@ func (p *PostgresEmitter) Emit(ctx context.Context, event Event) error {
 		teamID = event.TeamID
 	}
 
-	_, err = p.DB.ExecContext(ctx,
+	_, err = db.ExecContext(ctx,
 		`INSERT INTO audit_events (timestamp, actor, action, resource_type, resource_id, before_state, after_state, metadata, team_id)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		ts, event.Actor, string(event.Action), event.Resource.Type, event.Resource.ID,

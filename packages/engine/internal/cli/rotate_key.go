@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/dvflw/mantle/internal/audit"
@@ -13,7 +15,8 @@ import (
 )
 
 func newSecretsRotateKeyCommand() *cobra.Command {
-	var newKey string
+	var newKeyFile string
+	var outputKey string
 
 	cmd := &cobra.Command{
 		Use:   "rotate-key",
@@ -34,8 +37,17 @@ func newSecretsRotateKeyCommand() *cobra.Command {
 				return fmt.Errorf("invalid current key: %w", err)
 			}
 
-			// Generate a new key if none was provided.
-			if newKey == "" {
+			// Resolve the new key: from file, or auto-generate.
+			var newKey string
+			userProvided := false
+			if newKeyFile != "" {
+				raw, err := os.ReadFile(newKeyFile)
+				if err != nil {
+					return fmt.Errorf("reading new key file: %w", err)
+				}
+				newKey = strings.TrimSpace(string(raw))
+				userProvided = true
+			} else {
 				generated, err := secret.GenerateKey()
 				if err != nil {
 					return fmt.Errorf("generating new key: %w", err)
@@ -65,32 +77,45 @@ func newSecretsRotateKeyCommand() *cobra.Command {
 				return fmt.Errorf("key rotation failed: %w", err)
 			}
 
-			if err := tx.Commit(); err != nil {
-				return fmt.Errorf("committing transaction: %w", err)
-			}
-
-			// Emit audit event after successful rotation.
-			auditor := &audit.PostgresEmitter{DB: database}
-			if err := auditor.Emit(cmd.Context(), audit.Event{
+			// Emit audit event inside the transaction so it commits atomically.
+			// Use context.Background() to prevent cancellation from dropping the audit record.
+			if err := audit.EmitTx(context.Background(), tx, audit.Event{
 				Timestamp: time.Now(),
 				Actor:     "cli",
 				Action:    audit.ActionSecretKeyRotated,
 				Resource:  audit.Resource{Type: "credentials", ID: "all"},
 				Metadata:  map[string]string{"count": fmt.Sprintf("%d", count)},
 			}); err != nil {
-				log.Printf("warning: failed to emit audit event: %v", err)
+				return fmt.Errorf("emitting audit event: %w", err)
+			}
+
+			if err := tx.Commit(); err != nil {
+				return fmt.Errorf("committing transaction: %w", err)
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Re-encrypted %d credential(s).\n", count)
-			fmt.Fprintln(cmd.ErrOrStderr(), "WARNING: The following key is sensitive. Store it securely and clear your terminal.")
-			fmt.Fprintf(cmd.OutOrStdout(), "New key: %s\n", newKey)
+
+			// Output the new key securely.
+			if !userProvided {
+				if outputKey != "" {
+					if err := os.WriteFile(outputKey, []byte(newKey+"\n"), 0600); err != nil {
+						return fmt.Errorf("writing key to file: %w", err)
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "New key written to: %s\n", outputKey)
+				} else {
+					fmt.Fprintln(cmd.ErrOrStderr(), "WARNING: The following key is sensitive. Store it securely and clear your terminal.")
+					fmt.Fprintf(cmd.OutOrStdout(), "New key: %s\n", newKey)
+				}
+			}
+
 			fmt.Fprintln(cmd.OutOrStdout(), "Update MANTLE_ENCRYPTION_KEY to the new key and restart.")
 
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&newKey, "new-key", "", "hex-encoded 32-byte new encryption key (auto-generated if omitted)")
+	cmd.Flags().StringVar(&newKeyFile, "new-key-file", "", "path to file containing hex-encoded 32-byte new encryption key (auto-generated if omitted)")
+	cmd.Flags().StringVar(&outputKey, "output-key", "", "path to write the auto-generated key (file permissions: 0600)")
 
 	return cmd
 }

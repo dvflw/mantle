@@ -194,6 +194,12 @@ func (s *Store) ReEncryptAll(ctx context.Context, newEncryptor *Encryptor) (int,
 // them with the new encryptor. Operates globally across all teams.
 // The caller provides an open transaction and is responsible for commit/rollback.
 func RotateAll(ctx context.Context, tx *sql.Tx, oldEncryptor, newEncryptor *Encryptor) (int, error) {
+	// Acquire advisory lock to serialize with credential writers.
+	// The fixed key 0x4D414E544C45 ("MANTLE" in ASCII) is used for all credential operations.
+	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", int64(0x4D414E544C45)); err != nil {
+		return 0, fmt.Errorf("acquiring advisory lock: %w", err)
+	}
+
 	rows, err := tx.QueryContext(ctx,
 		`SELECT id, name, encrypted_data, nonce FROM credentials FOR UPDATE`)
 	if err != nil {

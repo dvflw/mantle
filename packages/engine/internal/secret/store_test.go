@@ -274,15 +274,14 @@ func TestRotateAll_ReEncryptsAllCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BeginTx() error: %v", err)
 	}
+	defer tx.Rollback()
 
 	count, err := RotateAll(ctx, tx, oldEncryptor, newEnc)
 	if err != nil {
-		tx.Rollback()
 		t.Fatalf("RotateAll() error: %v", err)
 	}
 	if count != 2 {
-		tx.Rollback()
-		t.Errorf("RotateAll() count = %d, want 2", count)
+		t.Fatalf("RotateAll() count = %d, want 2", count)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -334,13 +333,12 @@ func TestRotateAll_RollbackOnDecryptFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BeginTx() error: %v", err)
 	}
+	defer tx.Rollback()
 
 	_, err = RotateAll(ctx, tx, wrongEnc, newEnc)
 	if err == nil {
-		tx.Rollback()
 		t.Fatal("RotateAll() with wrong old key should fail")
 	}
-	tx.Rollback()
 
 	// Original credentials should still be intact with the original encryptor.
 	data, err := store.Get(ctx, "cred-1")
@@ -402,15 +400,14 @@ func TestRotateAll_GlobalScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BeginTx() error: %v", err)
 	}
+	defer tx.Rollback()
 
 	count, err := RotateAll(ctx, tx, oldEncryptor, newEnc)
 	if err != nil {
-		tx.Rollback()
 		t.Fatalf("RotateAll() error: %v", err)
 	}
 	if count != 2 {
-		tx.Rollback()
-		t.Errorf("RotateAll() count = %d, want 2 (both teams)", count)
+		t.Fatalf("RotateAll() count = %d, want 2 (both teams)", count)
 	}
 
 	if err := tx.Commit(); err != nil {
