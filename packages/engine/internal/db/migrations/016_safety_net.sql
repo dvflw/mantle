@@ -1,5 +1,11 @@
 -- +goose Up
 
+-- Concurrency controls (#49): add 'queued' and 'timed_out' to execution status check.
+ALTER TABLE workflow_executions DROP CONSTRAINT IF EXISTS chk_execution_status;
+ALTER TABLE workflow_executions
+  ADD CONSTRAINT chk_execution_status
+  CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled', 'queued', 'timed_out'));
+
 -- Concurrency controls (#49): per-team execution limit override.
 ALTER TABLE teams ADD COLUMN max_concurrent_executions INT;
 
@@ -38,3 +44,8 @@ ALTER TABLE step_executions DROP COLUMN IF EXISTS hook_block;
 ALTER TABLE step_executions ADD CONSTRAINT step_executions_execution_id_step_name_attempt_key UNIQUE (execution_id, step_name, attempt);
 ALTER TABLE workflow_executions DROP COLUMN IF EXISTS retried_from_execution_id;
 ALTER TABLE teams DROP COLUMN IF EXISTS max_concurrent_executions;
+-- Restore original status constraint without queued/timed_out.
+ALTER TABLE workflow_executions DROP CONSTRAINT IF EXISTS chk_execution_status;
+ALTER TABLE workflow_executions
+  ADD CONSTRAINT chk_execution_status
+  CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled'));
