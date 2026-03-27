@@ -210,16 +210,16 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 
 		// Start artifact reaper if the artifact subsystem is configured.
-		if s.Engine.ArtifactStore != nil && s.Engine.TmpStorage != nil {
+		if s.Engine.ArtifactStore != nil && s.Engine.Storage != nil {
 			retention := 24 * time.Hour // default
-			if cfg.Tmp.Retention != "" {
-				if d, err := time.ParseDuration(cfg.Tmp.Retention); err == nil && d > 0 {
+			if cfg.Storage.Retention != "" {
+				if d, err := time.ParseDuration(cfg.Storage.Retention); err == nil && d > 0 {
 					retention = d
 				}
 			}
 			s.artifactReaper = &artifact.Reaper{
-				Store:      s.Engine.ArtifactStore,
-				TmpStorage: s.Engine.TmpStorage,
+				Store:   s.Engine.ArtifactStore,
+				Storage: s.Engine.Storage,
 				Retention:  retention,
 				Logger:     s.Logger,
 			}

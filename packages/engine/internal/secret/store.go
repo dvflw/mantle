@@ -31,15 +31,28 @@ func (s *Store) Create(ctx context.Context, name, typeName string, data map[stri
 		return nil, fmt.Errorf("marshaling credential data: %w", err)
 	}
 
+	teamID := auth.TeamIDFromContext(ctx)
+
+	// Use a transaction with the same advisory lock as RotateAll to serialize
+	// credential writes with key rotation. Encryption happens inside the lock
+	// to prevent a concurrent RotateAll from changing keys between encrypt and insert.
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("starting transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", int64(0x4D414E544C45)); err != nil {
+		return nil, fmt.Errorf("acquiring advisory lock: %w", err)
+	}
+
 	ciphertext, nonce, err := s.Encryptor.Encrypt(plaintext)
 	if err != nil {
 		return nil, fmt.Errorf("encrypting credential: %w", err)
 	}
 
-	teamID := auth.TeamIDFromContext(ctx)
-
 	var cred Credential
-	err = s.DB.QueryRowContext(ctx,
+	err = tx.QueryRowContext(ctx,
 		`INSERT INTO credentials (name, type, encrypted_data, nonce, team_id)
 		 VALUES ($1, $2, $3, $4, $5)
 		 RETURNING id, name, type, created_at, updated_at`,
@@ -47,6 +60,10 @@ func (s *Store) Create(ctx context.Context, name, typeName string, data map[stri
 	).Scan(&cred.ID, &cred.Name, &cred.Type, &cred.CreatedAt, &cred.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("storing credential: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("committing credential: %w", err)
 	}
 
 	return &cred, nil
@@ -123,6 +140,9 @@ func (s *Store) Delete(ctx context.Context, name string) error {
 
 // ReEncryptAll decrypts all credentials with the current encryptor and
 // re-encrypts them with a new encryptor. Used for key rotation.
+//
+// Deprecated: Use the package-level RotateAll function instead, which accepts
+// a caller-managed transaction and operates globally across all teams.
 func (s *Store) ReEncryptAll(ctx context.Context, newEncryptor *Encryptor) (int, error) {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -182,6 +202,67 @@ func (s *Store) ReEncryptAll(ctx context.Context, newEncryptor *Encryptor) (int,
 
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("committing: %w", err)
+	}
+
+	return len(toUpdate), nil
+}
+
+// RotateAll decrypts all credentials with the old encryptor and re-encrypts
+// them with the new encryptor. Operates globally across all teams.
+// The caller provides an open transaction and is responsible for commit/rollback.
+func RotateAll(ctx context.Context, tx *sql.Tx, oldEncryptor, newEncryptor *Encryptor) (int, error) {
+	// Acquire advisory lock to serialize with credential writers.
+	// The fixed key 0x4D414E544C45 ("MANTLE" in ASCII) is used for all credential operations.
+	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", int64(0x4D414E544C45)); err != nil {
+		return 0, fmt.Errorf("acquiring advisory lock: %w", err)
+	}
+
+	rows, err := tx.QueryContext(ctx,
+		`SELECT id, name, encrypted_data, nonce FROM credentials FOR UPDATE`)
+	if err != nil {
+		return 0, fmt.Errorf("querying credentials: %w", err)
+	}
+
+	type row struct {
+		id    string
+		name  string
+		data  []byte
+		nonce []byte
+	}
+	var toUpdate []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.name, &r.data, &r.nonce); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("scanning credential: %w", err)
+		}
+		toUpdate = append(toUpdate, r)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	for _, r := range toUpdate {
+		// Decrypt with old key.
+		plaintext, err := oldEncryptor.Decrypt(r.data, r.nonce)
+		if err != nil {
+			return 0, fmt.Errorf("decrypting credential %q (id: %s): %w", r.name, r.id, err)
+		}
+
+		// Re-encrypt with new key.
+		newData, newNonce, err := newEncryptor.Encrypt(plaintext)
+		if err != nil {
+			return 0, fmt.Errorf("re-encrypting credential %q (id: %s): %w", r.name, r.id, err)
+		}
+
+		_, err = tx.ExecContext(ctx,
+			`UPDATE credentials SET encrypted_data = $1, nonce = $2, updated_at = $3 WHERE id = $4`,
+			newData, newNonce, time.Now(), r.id,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("updating credential %q (id: %s): %w", r.name, r.id, err)
+		}
 	}
 
 	return len(toUpdate), nil

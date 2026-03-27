@@ -17,6 +17,7 @@ const (
 	ActionStepSkipped           Action = "step.skipped"
 	ActionStepContinuedOnError  Action = "step.continued_on_error"
 	ActionExecutionCancelled    Action = "execution.cancelled"
+	ActionExecutionRetried      Action = "execution.retried"
 	ActionArtifactPersisted  Action = "artifact.persisted"
 
 	// Admin operations.
@@ -29,7 +30,8 @@ const (
 	ActionAPIKeyRevoked     Action = "apikey.revoked"
 	ActionCredentialCreated Action = "credential.created"
 	ActionCredentialDeleted Action = "credential.deleted"
-	ActionCredentialRotated Action = "credential.rotated"
+	ActionCredentialRotated  Action = "credential.rotated"
+	ActionSecretKeyRotated   Action = "secret.key_rotated"
 	ActionAuthFailed        Action = "auth.failed"
 
 	// Email trigger operations.
@@ -37,10 +39,21 @@ const (
 	ActionEmailConnectionEstablished Action = "email.connection.established"
 	ActionEmailConnectionFailed      Action = "email.connection.failed"
 
+	// Hook operations.
+	ActionHookStepStarted   Action = "hook.step.started"
+	ActionHookStepCompleted Action = "hook.step.completed"
+	ActionHookStepFailed    Action = "hook.step.failed"
+
 	// Budget operations.
 	ActionBudgetExceeded Action = "budget.exceeded"
 	ActionBudgetWarning  Action = "budget.warning"
 	ActionBudgetUpdated  Action = "budget.updated"
+
+	// Promotion operations.
+	ActionExecutionPromoted Action = "execution.promoted"
+
+	// Rollback operations.
+	ActionWorkflowRolledBack Action = "workflow.rolled_back"
 )
 
 // Resource identifies the target of an audit event.

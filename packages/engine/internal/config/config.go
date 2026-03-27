@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/url"
 	"os"
 	"strings"
@@ -20,6 +21,7 @@ import (
 
 // Config holds all engine configuration.
 type Config struct {
+	Version    int              `mapstructure:"version"`
 	Database   DatabaseConfig   `mapstructure:"database"`
 	API        APIConfig        `mapstructure:"api"`
 	Log        LogConfig        `mapstructure:"log"`
@@ -30,7 +32,7 @@ type Config struct {
 	AWS        AWSConfig        `mapstructure:"aws"`
 	GCP        GCPConfig        `mapstructure:"gcp"`
 	Azure      AzureConfig      `mapstructure:"azure"`
-	Tmp        TmpConfig        `mapstructure:"tmp"`
+	Storage    StorageConfig    `mapstructure:"storage"`
 	Env        map[string]string `mapstructure:"env"`
 }
 
@@ -56,8 +58,8 @@ type AzureConfig struct {
 	Region string `mapstructure:"region"`
 }
 
-// TmpConfig configures ephemeral storage for workflow artifacts.
-type TmpConfig struct {
+// StorageConfig configures ephemeral storage for workflow artifacts.
+type StorageConfig struct {
 	Type      string `mapstructure:"type"`      // "s3" or "filesystem"
 	Bucket    string `mapstructure:"bucket"`    // S3 bucket name (for type: s3)
 	Prefix    string `mapstructure:"prefix"`    // Key prefix (for type: s3)
@@ -133,6 +135,7 @@ type EngineConfig struct {
 	AllowedBaseURLs             []string      `mapstructure:"allowed_base_urls"`
 	AllowedModels               []string      `mapstructure:"allowed_models"`       // empty = all allowed
 	MaxToolRoundsLimit          int           `mapstructure:"max_tool_rounds_limit"` // 0 = no limit
+	MaxConcurrentExecutionsPerTeam int        `mapstructure:"max_concurrent_executions_per_team"`
 	Budget                      BudgetConfig  `mapstructure:"budget"`
 }
 
@@ -231,12 +234,12 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	_ = v.BindEnv("retention.execution_days", "MANTLE_RETENTION_EXECUTION_DAYS")
 	_ = v.BindEnv("retention.audit_days", "MANTLE_RETENTION_AUDIT_DAYS")
 
-	// Tmp env var bindings
-	_ = v.BindEnv("tmp.type", "MANTLE_TMP_TYPE")
-	_ = v.BindEnv("tmp.bucket", "MANTLE_TMP_BUCKET")
-	_ = v.BindEnv("tmp.prefix", "MANTLE_TMP_PREFIX")
-	_ = v.BindEnv("tmp.path", "MANTLE_TMP_PATH")
-	_ = v.BindEnv("tmp.retention", "MANTLE_TMP_RETENTION")
+	// Storage env var bindings
+	_ = v.BindEnv("storage.type", "MANTLE_STORAGE_TYPE")
+	_ = v.BindEnv("storage.bucket", "MANTLE_STORAGE_BUCKET")
+	_ = v.BindEnv("storage.prefix", "MANTLE_STORAGE_PREFIX")
+	_ = v.BindEnv("storage.path", "MANTLE_STORAGE_PATH")
+	_ = v.BindEnv("storage.retention", "MANTLE_STORAGE_RETENTION")
 
 	// Engine env var bindings
 	_ = v.BindEnv("engine.node_id", "MANTLE_ENGINE_NODE_ID")
@@ -253,6 +256,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	_ = v.BindEnv("engine.allowed_base_urls", "MANTLE_ENGINE_ALLOWED_BASE_URLS")
 	_ = v.BindEnv("engine.allowed_models", "MANTLE_ENGINE_ALLOWED_MODELS")
 	_ = v.BindEnv("engine.max_tool_rounds_limit", "MANTLE_ENGINE_MAX_TOOL_ROUNDS_LIMIT")
+	_ = v.BindEnv("engine.max_concurrent_executions_per_team", "MANTLE_ENGINE_MAX_CONCURRENT_EXECUTIONS_PER_TEAM")
 
 	// Budget env var bindings
 	_ = v.BindEnv("engine.budget.reset_mode", "MANTLE_ENGINE_BUDGET_RESET_MODE")
@@ -274,6 +278,39 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, err
+	}
+
+	// Validate config version.
+	if !v.IsSet("version") {
+		cfg.Version = 1
+	}
+	if cfg.Version != 1 {
+		return nil, fmt.Errorf("unsupported config version %d; this version of mantle supports config version 1 — upgrade mantle or check your mantle.yaml", cfg.Version)
+	}
+
+	// Deprecated: fall back from "tmp" section to "storage" for backward compatibility.
+	if v.IsSet("tmp") {
+		if sub := v.Sub("tmp"); sub != nil {
+			var legacy StorageConfig
+			if err := sub.Unmarshal(&legacy); err == nil {
+				if cfg.Storage.Type == "" {
+					cfg.Storage.Type = legacy.Type
+				}
+				if cfg.Storage.Bucket == "" {
+					cfg.Storage.Bucket = legacy.Bucket
+				}
+				if cfg.Storage.Prefix == "" {
+					cfg.Storage.Prefix = legacy.Prefix
+				}
+				if cfg.Storage.Path == "" {
+					cfg.Storage.Path = legacy.Path
+				}
+				if cfg.Storage.Retention == "" {
+					cfg.Storage.Retention = legacy.Retention
+				}
+				slog.Warn("config section 'tmp' is deprecated and will be removed in a future release; rename it to 'storage'")
+			}
+		}
 	}
 
 	// Viper lowercases all map keys. Normalize env map keys to uppercase

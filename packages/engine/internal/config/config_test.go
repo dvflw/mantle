@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -248,27 +249,27 @@ func TestLoad_BudgetResetDay_CalendarClampsUpperBound(t *testing.T) {
 	assert.Equal(t, 1, cfg.Engine.Budget.ResetDay)
 }
 
-func TestLoad_TmpConfigFromEnvVars(t *testing.T) {
-	t.Setenv("MANTLE_TMP_TYPE", "s3")
-	t.Setenv("MANTLE_TMP_BUCKET", "my-artifacts")
-	t.Setenv("MANTLE_TMP_PREFIX", "workflows/")
-	t.Setenv("MANTLE_TMP_RETENTION", "24h")
+func TestLoad_StorageConfigFromEnvVars(t *testing.T) {
+	t.Setenv("MANTLE_STORAGE_TYPE", "s3")
+	t.Setenv("MANTLE_STORAGE_BUCKET", "my-artifacts")
+	t.Setenv("MANTLE_STORAGE_PREFIX", "workflows/")
+	t.Setenv("MANTLE_STORAGE_RETENTION", "24h")
 
 	cmd := newTestCommand()
 	cfg, err := Load(cmd)
 	require.NoError(t, err)
 
-	assert.Equal(t, "s3", cfg.Tmp.Type)
-	assert.Equal(t, "my-artifacts", cfg.Tmp.Bucket)
-	assert.Equal(t, "workflows/", cfg.Tmp.Prefix)
-	assert.Equal(t, "24h", cfg.Tmp.Retention)
+	assert.Equal(t, "s3", cfg.Storage.Type)
+	assert.Equal(t, "my-artifacts", cfg.Storage.Bucket)
+	assert.Equal(t, "workflows/", cfg.Storage.Prefix)
+	assert.Equal(t, "24h", cfg.Storage.Retention)
 }
 
-func TestLoad_TmpConfigFromConfigFile(t *testing.T) {
+func TestLoad_StorageConfigFromConfigFile(t *testing.T) {
 	dir := t.TempDir()
 	configFile := filepath.Join(dir, "mantle.yaml")
 	err := os.WriteFile(configFile, []byte(`
-tmp:
+storage:
   type: "filesystem"
   path: "/tmp/mantle-artifacts"
   retention: "48h"
@@ -281,22 +282,79 @@ tmp:
 	cfg, err := Load(cmd)
 	require.NoError(t, err)
 
-	assert.Equal(t, "filesystem", cfg.Tmp.Type)
-	assert.Equal(t, "/tmp/mantle-artifacts", cfg.Tmp.Path)
-	assert.Equal(t, "48h", cfg.Tmp.Retention)
+	assert.Equal(t, "filesystem", cfg.Storage.Type)
+	assert.Equal(t, "/tmp/mantle-artifacts", cfg.Storage.Path)
+	assert.Equal(t, "48h", cfg.Storage.Retention)
 }
 
-func TestLoad_TmpConfigEnvVarOverridesFile(t *testing.T) {
+func TestLoad_VersionValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr string // empty means no error expected
+	}{
+		{
+			name:    "version 1 is valid",
+			yaml:    "version: 1\n",
+			wantErr: "",
+		},
+		{
+			name:    "missing version defaults to 1",
+			yaml:    "log:\n  level: info\n",
+			wantErr: "",
+		},
+		{
+			name:    "version 0 is rejected",
+			yaml:    "version: 0\n",
+			wantErr: "unsupported config version 0; this version of mantle supports config version 1",
+		},
+		{
+			name:    "version 2 is rejected",
+			yaml:    "version: 2\n",
+			wantErr: "unsupported config version 2; this version of mantle supports config version 1",
+		},
+		{
+			name:    "version 99 is rejected",
+			yaml:    "version: 99\n",
+			wantErr: "unsupported config version 99; this version of mantle supports config version 1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			configFile := filepath.Join(dir, "mantle.yaml")
+			err := os.WriteFile(configFile, []byte(tt.yaml), 0644)
+			require.NoError(t, err)
+
+			cmd := newTestCommand()
+			_ = cmd.Flags().Set("config", configFile)
+
+			cfg, err := Load(cmd)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error %q does not contain %q", err.Error(), tt.wantErr)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, 1, cfg.Version)
+			}
+		})
+	}
+}
+
+func TestLoad_StorageConfigEnvVarOverridesFile(t *testing.T) {
 	dir := t.TempDir()
 	configFile := filepath.Join(dir, "mantle.yaml")
 	_ = os.WriteFile(configFile, []byte(`
-tmp:
+storage:
   type: "filesystem"
   path: "/tmp/file-path"
 `), 0644)
 
-	t.Setenv("MANTLE_TMP_TYPE", "s3")
-	t.Setenv("MANTLE_TMP_BUCKET", "env-bucket")
+	t.Setenv("MANTLE_STORAGE_TYPE", "s3")
+	t.Setenv("MANTLE_STORAGE_BUCKET", "env-bucket")
 
 	cmd := newTestCommand()
 	_ = cmd.Flags().Set("config", configFile)
@@ -304,10 +362,70 @@ tmp:
 	cfg, err := Load(cmd)
 	require.NoError(t, err)
 
-	assert.Equal(t, "s3", cfg.Tmp.Type)
-	assert.Equal(t, "env-bucket", cfg.Tmp.Bucket)
+	assert.Equal(t, "s3", cfg.Storage.Type)
+	assert.Equal(t, "env-bucket", cfg.Storage.Bucket)
 	// path from file should still be present since env var didn't override it
-	assert.Equal(t, "/tmp/file-path", cfg.Tmp.Path)
+	assert.Equal(t, "/tmp/file-path", cfg.Storage.Path)
+}
+
+func TestLoad_StorageSectionUsedDirectly(t *testing.T) {
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, "mantle.yaml")
+	_ = os.WriteFile(configFile, []byte(`
+storage:
+  type: "s3"
+  bucket: "my-bucket"
+`), 0644)
+
+	cmd := newTestCommand()
+	_ = cmd.Flags().Set("config", configFile)
+
+	cfg, err := Load(cmd)
+	require.NoError(t, err)
+
+	assert.Equal(t, "s3", cfg.Storage.Type)
+	assert.Equal(t, "my-bucket", cfg.Storage.Bucket)
+}
+
+func TestLoad_TmpFallbackToStorageWithWarning(t *testing.T) {
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, "mantle.yaml")
+	_ = os.WriteFile(configFile, []byte(`
+tmp:
+  type: "filesystem"
+  path: "/tmp/legacy-artifacts"
+`), 0644)
+
+	cmd := newTestCommand()
+	_ = cmd.Flags().Set("config", configFile)
+
+	cfg, err := Load(cmd)
+	require.NoError(t, err)
+
+	assert.Equal(t, "filesystem", cfg.Storage.Type)
+	assert.Equal(t, "/tmp/legacy-artifacts", cfg.Storage.Path)
+}
+
+func TestLoad_StorageTakesPrecedenceOverTmp(t *testing.T) {
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, "mantle.yaml")
+	_ = os.WriteFile(configFile, []byte(`
+storage:
+  type: "s3"
+  bucket: "new-bucket"
+tmp:
+  type: "filesystem"
+  path: "/tmp/old-path"
+`), 0644)
+
+	cmd := newTestCommand()
+	_ = cmd.Flags().Set("config", configFile)
+
+	cfg, err := Load(cmd)
+	require.NoError(t, err)
+
+	assert.Equal(t, "s3", cfg.Storage.Type)
+	assert.Equal(t, "new-bucket", cfg.Storage.Bucket)
 }
 
 func TestLoad_EnvMap(t *testing.T) {

@@ -273,6 +273,117 @@ $ mantle logs --workflow hello-world --status failed --since 24h --limit 10
 
 ---
 
+## mantle retry
+
+Retry a failed workflow execution. By default, resumes from the first failed step, reusing outputs from previously completed steps.
+
+```text
+Usage:
+  mantle retry <execution-id> [flags]
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|---|---|---|
+| `execution-id` | Yes | UUID of the failed execution to retry. |
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--from-step` | -- | Step name to retry from. Overrides the default behavior of resuming from the first failed step. All steps from this point forward are re-executed. |
+| `--force` | `false` | Bypass per-workflow and per-team concurrency limits. |
+
+**Example -- retry from failed step:**
+
+```bash
+$ mantle retry abc123-def456
+Retrying execution abc123-def456 from step "summarize"...
+Execution def456-abc123: completed
+  fetch-data: reused (cached)
+  summarize: completed (4.1s)
+  post-result: completed (0.3s)
+```
+
+**Example -- retry from a specific step:**
+
+```bash
+$ mantle retry abc123-def456 --from-step fetch-data
+Retrying execution abc123-def456 from step "fetch-data"...
+Execution ghi789-jkl012: completed
+  fetch-data: completed (1.1s)
+  summarize: completed (3.8s)
+  post-result: completed (0.2s)
+```
+
+**Errors:**
+
+If the execution is not in a failed state:
+
+```text
+Error: execution abc123-def456 is not in a failed state (status: completed).
+```
+
+If `--from-step` references a step that does not exist:
+
+```text
+Error: step "nonexistent" not found in workflow "fetch-and-summarize"
+```
+
+---
+
+## mantle rollback
+
+Roll back a workflow to a previous version. The previously active version becomes the current version used by `mantle run` and triggers.
+
+```text
+Usage:
+  mantle rollback <workflow> [flags]
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|---|---|---|
+| `workflow` | Yes | Name of the workflow to roll back. |
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--to-version` | -- | Specific version number to roll back to. If omitted, rolls back to the previous version (current - 1). |
+
+**Example -- rollback to previous version:**
+
+```bash
+$ mantle rollback fetch-and-summarize
+Rolled back fetch-and-summarize from version 3 to version 2
+```
+
+**Example -- rollback to a specific version:**
+
+```bash
+$ mantle rollback fetch-and-summarize --to-version 1
+Rolled back fetch-and-summarize from version 3 to version 1
+```
+
+**Errors:**
+
+If the workflow has only one version:
+
+```text
+Error: workflow "fetch-and-summarize" is at version 1 — nothing to roll back to
+```
+
+If the target version does not exist:
+
+```text
+Error: workflow "fetch-and-summarize" version 5 not found
+```
+
+---
+
 ## mantle status
 
 View the current state of a workflow execution with a summary of step statuses.
