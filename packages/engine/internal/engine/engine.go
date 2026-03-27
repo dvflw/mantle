@@ -278,7 +278,10 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 	}
 
 	// Promote next queued execution now that this slot is free (after hooks complete).
-	if err := PromoteQueued(ctx, e.DB, workflowName); err != nil {
+	// Use a fresh context — the original may be expired if the workflow timed out.
+	promoteCtx, promoteCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer promoteCancel()
+	if err := PromoteQueued(promoteCtx, e.DB, workflowName); err != nil {
 		log.Printf("failed to promote queued execution for %s: %v", workflowName, err)
 	}
 
