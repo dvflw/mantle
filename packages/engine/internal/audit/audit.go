@@ -17,6 +17,7 @@ const (
 	ActionStepSkipped           Action = "step.skipped"
 	ActionStepContinuedOnError  Action = "step.continued_on_error"
 	ActionExecutionCancelled    Action = "execution.cancelled"
+	ActionExecutionRetried      Action = "execution.retried"
 	ActionArtifactPersisted  Action = "artifact.persisted"
 
 	// Admin operations.
