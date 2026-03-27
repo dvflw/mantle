@@ -51,6 +51,10 @@ tmp:
   type: filesystem
   path: /var/lib/mantle/artifacts
   retention: "24h"
+
+env:
+  APP_NAME: "my-app"
+  API_BASE_URL: "https://api.example.com"
 ```
 
 ### All Config File Fields
@@ -80,12 +84,72 @@ tmp:
 | `tmp.prefix` | string | -- | S3 key prefix for artifact storage. Optional. |
 | `tmp.path` | string | -- | Local directory path. Required when `tmp.type` is `filesystem`. |
 | `tmp.retention` | duration | -- | How long to keep artifacts after workflow completion. Uses Go duration format (e.g., `24h`). Empty means no auto-cleanup. |
+| `env.*` | map[string]string | -- | Key-value pairs available to CEL workflow expressions via `env.<KEY>`. See [Workflow Expression Variables](#workflow-expression-variables). |
 
 ### Config File Discovery
 
 When you do not pass `--config`, Mantle searches for `mantle.yaml` in the current directory. If no config file is found, Mantle silently falls back to defaults. This is intentional -- most commands work fine with defaults when you use the provided `docker-compose.yml`.
 
 When you pass `--config path/to/config.yaml` explicitly, Mantle requires that file to exist and be valid YAML. A missing or unparseable explicit config file is a hard error.
+
+## Workflow Expression Variables
+
+The `env:` section in `mantle.yaml` defines key-value pairs that are available to CEL expressions in workflows via the `env` namespace. This is useful for environment-specific configuration that workflows need at runtime (API base URLs, feature flags, region names, etc.) without hardcoding values in workflow definitions.
+
+### Syntax
+
+```yaml
+# mantle.yaml
+env:
+  APP_NAME: "my-app"
+  API_BASE_URL: "https://api.example.com"
+  REGION: "us-east-1"
+  DEBUG: "true"
+```
+
+### Usage in Workflows
+
+Values defined in the `env:` section are accessible in any CEL expression via `env.<KEY>`:
+
+```yaml
+# workflow.yaml
+name: deploy
+steps:
+  - name: notify
+    connector: http/request
+    params:
+      url: "{{ env.API_BASE_URL }}/deployments"
+      body: '{"app": "{{ env.APP_NAME }}", "region": "{{ env.REGION }}"}'
+```
+
+### Precedence
+
+The `env:` config values merge with `MANTLE_ENV_*` OS environment variables. When the same key exists in both sources, the OS environment variable wins:
+
+1. **`MANTLE_ENV_*` environment variables** (highest priority) -- stripped of the `MANTLE_ENV_` prefix
+2. **`env:` section in `mantle.yaml`** (lower priority)
+
+When an override occurs, Mantle logs an info message:
+
+```
+INFO env variable overrides config key=MANTLE_ENV_REGION config_key=env.REGION
+```
+
+This allows operators to override config-file defaults without editing YAML, which is useful in CI pipelines and container deployments.
+
+**Example override:**
+
+```yaml
+# mantle.yaml
+env:
+  REGION: "us-east-1"
+```
+
+```bash
+# Override REGION for this deployment
+export MANTLE_ENV_REGION="eu-west-1"
+mantle run deploy  # env.REGION evaluates to "eu-west-1"
+```
 
 ## Environment Variables
 
