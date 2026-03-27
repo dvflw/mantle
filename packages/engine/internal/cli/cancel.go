@@ -69,9 +69,9 @@ func newCancelCommand() *cobra.Command {
 			}
 
 			if len(cancelledIDs) == 0 {
-				// Check if execution exists at all.
+				// Check if execution exists at all (use tx for consistent read).
 				var status string
-				err := database.QueryRowContext(cmd.Context(),
+				err := tx.QueryRowContext(cmd.Context(),
 					`SELECT status FROM workflow_executions WHERE id = $1`, execID,
 				).Scan(&status)
 				if err != nil {

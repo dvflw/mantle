@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/dvflw/mantle/internal/auth"
 )
 
 // TestWorkflowConnector_BasicInvocation creates a parent and child workflow,
@@ -99,7 +101,10 @@ steps:
 	}
 
 	// Verify child execution exists in the database with correct linkage.
-	childExecID := callChild.Output["execution_id"].(string)
+	childExecID, ok := callChild.Output["execution_id"].(string)
+	if !ok {
+		t.Fatalf("expected execution_id string in child output, got %T", callChild.Output["execution_id"])
+	}
 	var parentID, parentStepName string
 	var depth int
 	err = database.QueryRowContext(ctx,
@@ -173,45 +178,27 @@ steps:
 		t.Fatalf("resumeExecution() error: %v", err)
 	}
 
-	// The parent should fail because the child would be at depth 1,
-	// and the parent itself is at depth 0, so child depth = 1 which exceeds max depth 1.
-	// Actually: childDepth = parentDepth(0) + 1 = 1, maxDepth = 1,
-	// and the check is childDepth > maxDepth, so 1 > 1 is false.
-	// We need maxDepth = 0 for it to fail, but 0 means "use default 10".
-	// Let's set it differently.
-	// Re-check: the connector sets maxDepth=10 when MaxWorkflowDepth <= 0.
-	// When MaxWorkflowDepth = 1, childDepth = 1, and 1 > 1 is false.
-	// So this should succeed. Let me set it to trigger failure properly.
-
-	// Actually, we should verify what happens. The depth check in the connector is:
-	//   childDepth := parentDepth + 1
-	//   if childDepth > maxDepth { error }
-	// With MaxWorkflowDepth=1, parentDepth=0, childDepth=1, 1>1=false, so it passes.
-	// To trigger the error, we need to simulate the parent being at depth >= maxDepth.
-	// Let's just verify it works at depth 1, then test the error case with a
-	// parent already at depth 1 and max=1.
-
-	// This test should succeed since parent is at depth 0 and max is 1.
+	// With maxDepth=1 and parentDepth=0, childDepth=1 which does not exceed max, so this succeeds.
 	if result.Status != "completed" {
-		// If it failed for depth reasons, that's fine for the test intent.
-		// But let's be precise.
 		t.Logf("result status=%s, error=%s", result.Status, result.Error)
 	}
 
 	// Now test the actual depth limit: create an execution at depth 1 and max=1.
+	teamID := "00000000-0000-0000-0000-000000000001"
 	var deepExecID string
 	err = database.QueryRowContext(ctx,
 		`INSERT INTO workflow_executions
 		 (workflow_name, workflow_version, status, started_at, team_id, depth)
 		 VALUES ($1, $2, 'pending', NOW(), $3, $4)
 		 RETURNING id`,
-		"deep-parent", parentVersion, "00000000-0000-0000-0000-000000000001", 1,
+		"deep-parent", parentVersion, teamID, 1,
 	).Scan(&deepExecID)
 	if err != nil {
 		t.Fatalf("inserting deep execution: %v", err)
 	}
 
-	ctx2 := WithExecutionID(context.Background(), deepExecID)
+	ctx2 := auth.WithUser(context.Background(), &auth.User{TeamID: teamID})
+	ctx2 = WithExecutionID(ctx2, deepExecID)
 	result2, err := eng.resumeExecution(ctx2, deepExecID, "deep-parent", parentVersion, nil)
 	if err != nil {
 		t.Fatalf("resumeExecution() error: %v", err)
@@ -352,8 +339,8 @@ steps:
 	}
 }
 
-// TestWorkflowConnector_DepthCheck_Unit tests the depth checking logic directly
-// without a full workflow execution.
+// TestWorkflowConnector_DepthCheck_Unit tests the expected depth-limit algorithm
+// (childDepth > maxDepth) in isolation, not the actual connector method.
 func TestWorkflowConnector_DepthCheck_Unit(t *testing.T) {
 	tests := []struct {
 		name        string

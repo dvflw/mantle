@@ -241,7 +241,7 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 	for _, step := range wf.Steps {
 		// Check if execution was cancelled externally (e.g., mantle cancel).
 		var currentStatus string
-		if err := e.DB.QueryRowContext(ctx, "SELECT status FROM workflow_executions WHERE id = $1", execID).Scan(&currentStatus); err == nil {
+		if err := e.DB.QueryRowContext(ctx, "SELECT status FROM workflow_executions WHERE id = $1 AND team_id = $2", execID, sc.TeamID).Scan(&currentStatus); err == nil {
 			if currentStatus == "cancelled" {
 				result.Status = "cancelled"
 				result.Error = "execution cancelled"
@@ -624,7 +624,7 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		// Check if the execution has been cancelled before each retry attempt.
 		var execStatus string
-		if err := e.DB.QueryRowContext(ctx, "SELECT status FROM workflow_executions WHERE id = $1", execID).Scan(&execStatus); err == nil && execStatus == "cancelled" {
+		if err := e.DB.QueryRowContext(ctx, "SELECT status FROM workflow_executions WHERE id = $1 AND team_id = $2", execID, sc.TeamID).Scan(&execStatus); err == nil && execStatus == "cancelled" {
 			return nil, fmt.Errorf("execution cancelled")
 		}
 
@@ -994,28 +994,28 @@ func (e *Engine) createExecutionTx(ctx context.Context, tx *sql.Tx, workflowName
 	return id, nil
 }
 
-// updateExecutionStatus updates the status of a workflow execution.
+// updateExecutionStatus atomically updates the status of a workflow execution.
+// If the execution is already cancelled, the update is a no-op (returns nil).
 func (e *Engine) updateExecutionStatus(ctx context.Context, execID, status, errMsg string) error {
-	// Don't overwrite a cancelled status.
-	var existing string
-	if err := e.DB.QueryRowContext(ctx, "SELECT status FROM workflow_executions WHERE id = $1", execID).Scan(&existing); err == nil {
-		if existing == "cancelled" {
-			return nil // Already cancelled, don't overwrite.
-		}
-	}
-
 	var completedAt any
 	if status == "completed" || status == "failed" || status == "cancelled" || status == "timed_out" {
 		completedAt = time.Now()
 	}
 
 	teamID := auth.TeamIDFromContext(ctx)
-	_, err := e.DB.ExecContext(ctx,
-		`UPDATE workflow_executions SET status = $1, completed_at = $2, updated_at = NOW() WHERE id = $3 AND team_id = $4`,
+	result, err := e.DB.ExecContext(ctx,
+		`UPDATE workflow_executions SET status = $1, completed_at = $2, updated_at = NOW()
+		 WHERE id = $3 AND team_id = $4 AND status != 'cancelled'`,
 		status, completedAt, execID, teamID,
 	)
 	if err != nil {
 		return fmt.Errorf("updating execution %s status to %s: %w", execID, status, err)
+	}
+
+	// If no rows were affected, the execution was already cancelled (or doesn't exist).
+	// This is not an error — the cancellation takes precedence.
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		return nil
 	}
 	return nil
 }
