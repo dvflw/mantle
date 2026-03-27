@@ -29,7 +29,8 @@ const (
 	ActionAPIKeyRevoked     Action = "apikey.revoked"
 	ActionCredentialCreated Action = "credential.created"
 	ActionCredentialDeleted Action = "credential.deleted"
-	ActionCredentialRotated Action = "credential.rotated"
+	ActionCredentialRotated  Action = "credential.rotated"
+	ActionSecretKeyRotated   Action = "secret.key_rotated"
 	ActionAuthFailed        Action = "auth.failed"
 
 	// Email trigger operations.

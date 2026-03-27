@@ -123,6 +123,9 @@ func (s *Store) Delete(ctx context.Context, name string) error {
 
 // ReEncryptAll decrypts all credentials with the current encryptor and
 // re-encrypts them with a new encryptor. Used for key rotation.
+//
+// Deprecated: Use the package-level RotateAll function instead, which accepts
+// a caller-managed transaction and operates globally across all teams.
 func (s *Store) ReEncryptAll(ctx context.Context, newEncryptor *Encryptor) (int, error) {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -182,6 +185,61 @@ func (s *Store) ReEncryptAll(ctx context.Context, newEncryptor *Encryptor) (int,
 
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("committing: %w", err)
+	}
+
+	return len(toUpdate), nil
+}
+
+// RotateAll decrypts all credentials with the old encryptor and re-encrypts
+// them with the new encryptor. Operates globally across all teams.
+// The caller provides an open transaction and is responsible for commit/rollback.
+func RotateAll(ctx context.Context, tx *sql.Tx, oldEncryptor, newEncryptor *Encryptor) (int, error) {
+	rows, err := tx.QueryContext(ctx,
+		`SELECT id, name, encrypted_data, nonce FROM credentials FOR UPDATE`)
+	if err != nil {
+		return 0, fmt.Errorf("querying credentials: %w", err)
+	}
+
+	type row struct {
+		id    string
+		name  string
+		data  []byte
+		nonce []byte
+	}
+	var toUpdate []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.name, &r.data, &r.nonce); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("scanning credential: %w", err)
+		}
+		toUpdate = append(toUpdate, r)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	for _, r := range toUpdate {
+		// Decrypt with old key.
+		plaintext, err := oldEncryptor.Decrypt(r.data, r.nonce)
+		if err != nil {
+			return 0, fmt.Errorf("decrypting credential %q (id: %s): %w", r.name, r.id, err)
+		}
+
+		// Re-encrypt with new key.
+		newData, newNonce, err := newEncryptor.Encrypt(plaintext)
+		if err != nil {
+			return 0, fmt.Errorf("re-encrypting credential %q (id: %s): %w", r.name, r.id, err)
+		}
+
+		_, err = tx.ExecContext(ctx,
+			`UPDATE credentials SET encrypted_data = $1, nonce = $2, updated_at = $3 WHERE id = $4`,
+			newData, newNonce, time.Now(), r.id,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("updating credential %q (id: %s): %w", r.name, r.id, err)
+		}
 	}
 
 	return len(toUpdate), nil
