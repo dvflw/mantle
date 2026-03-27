@@ -24,16 +24,17 @@ import (
 
 // Engine executes workflows by running steps sequentially with checkpoint-and-resume.
 type Engine struct {
-	DB                 *sql.DB
-	Registry           *connector.Registry
-	Auditor            audit.Emitter
-	CEL                *mantleCEL.Evaluator
-	Resolver           *secret.Resolver
-	MaxToolRoundsLimit int                  // admin ceiling for max_rounds; 0 = no limit
-	BudgetChecker      *budget.Checker      // nil = budget enforcement disabled
-	BudgetStore        *budget.Store        // nil = token usage recording disabled
-	ArtifactStore      *artifact.Store      // nil = artifact system disabled
-	Storage            artifact.Storage     // nil = artifact system disabled
+	DB                             *sql.DB
+	Registry                       *connector.Registry
+	Auditor                        audit.Emitter
+	CEL                            *mantleCEL.Evaluator
+	Resolver                       *secret.Resolver
+	MaxToolRoundsLimit             int              // admin ceiling for max_rounds; 0 = no limit
+	MaxConcurrentExecutionsPerTeam int              // 0 = unlimited; per-team concurrency cap
+	BudgetChecker                  *budget.Checker  // nil = budget enforcement disabled
+	BudgetStore                    *budget.Store    // nil = token usage recording disabled
+	ArtifactStore                  *artifact.Store  // nil = artifact system disabled
+	Storage                        artifact.Storage // nil = artifact system disabled
 }
 
 // StepContext carries workflow-level metadata needed by step execution.
@@ -75,12 +76,60 @@ type StepResult struct {
 	Duration time.Duration  `json:"duration"`
 }
 
+// ExecuteOptions controls execution behavior.
+type ExecuteOptions struct {
+	Force bool // bypass concurrency limits
+}
+
 // Execute runs a workflow by name, pinned to the specified version.
 func (e *Engine) Execute(ctx context.Context, workflowName string, version int, inputs map[string]any) (*ExecutionResult, error) {
+	return e.ExecuteWithOptions(ctx, workflowName, version, inputs, ExecuteOptions{})
+}
+
+// ExecuteWithOptions runs a workflow with configurable execution options.
+func (e *Engine) ExecuteWithOptions(ctx context.Context, workflowName string, version int, inputs map[string]any, opts ExecuteOptions) (*ExecutionResult, error) {
+	// Load workflow to check concurrency settings.
+	wf, err := e.loadWorkflow(ctx, workflowName, version)
+	if err != nil {
+		return nil, fmt.Errorf("loading workflow: %w", err)
+	}
+
+	// Check concurrency limits unless force-bypassed.
+	initialStatus := "pending"
+	if !opts.Force && (wf.MaxParallelExecutions > 0 || e.MaxConcurrentExecutionsPerTeam > 0) {
+		tx, txErr := e.DB.BeginTx(ctx, nil)
+		if txErr != nil {
+			return nil, fmt.Errorf("starting concurrency check transaction: %w", txErr)
+		}
+		defer tx.Rollback()
+
+		result := CheckConcurrencyLimits(ctx, tx, workflowName,
+			wf.MaxParallelExecutions, wf.OnLimit, e.MaxConcurrentExecutionsPerTeam)
+
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("committing concurrency check: %w", err)
+		}
+
+		if result.Err != nil {
+			return nil, result.Err // rejected
+		}
+		if result.Queued {
+			initialStatus = "queued"
+		}
+	}
+
 	// Create execution record.
-	execID, err := e.createExecution(ctx, workflowName, version, inputs, "pending")
+	execID, err := e.createExecution(ctx, workflowName, version, inputs, initialStatus)
 	if err != nil {
 		return nil, fmt.Errorf("creating execution: %w", err)
+	}
+
+	// If queued, return immediately with queued status.
+	if initialStatus == "queued" {
+		return &ExecutionResult{
+			ExecutionID: execID,
+			Status:      "queued",
+		}, nil
 	}
 
 	return e.resumeExecution(ctx, execID, workflowName, version, inputs)

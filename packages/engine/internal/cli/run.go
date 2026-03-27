@@ -64,6 +64,7 @@ func newRunCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("creating engine: %w", err)
 			}
+			eng.MaxConcurrentExecutionsPerTeam = cfg.Engine.MaxConcurrentExecutionsPerTeam
 
 			// Configure credential resolver with Postgres-backed store when encryption key is set.
 			if cfg.Encryption.Key != "" {
@@ -78,12 +79,13 @@ func newRunCommand() *cobra.Command {
 
 			outputFormat, _ := cmd.Flags().GetString("output")
 			verbose, _ := cmd.Flags().GetBool("verbose")
+			force, _ := cmd.Flags().GetBool("force")
 
 			if outputFormat != "json" {
 				fmt.Fprintf(cmd.OutOrStdout(), "Running %s (version %d)...\n", workflowName, version)
 			}
 
-			result, err := eng.Execute(cmd.Context(), workflowName, version, inputs)
+			result, err := eng.ExecuteWithOptions(cmd.Context(), workflowName, version, inputs, engine.ExecuteOptions{Force: force})
 			if err != nil {
 				return fmt.Errorf("execution failed: %w", err)
 			}
