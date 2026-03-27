@@ -7,6 +7,8 @@ This document describes the top-level fields and step configuration in a Mantle 
 ```yaml
 name: fetch-and-summarize
 description: Fetch data from an API and summarize it with an LLM
+max_parallel_executions: 3
+on_limit: queue
 
 inputs:
   url:
@@ -22,10 +24,27 @@ triggers:
   - type: webhook
     path: "/hooks/fetch-and-summarize"
 
+hooks:
+  on_success:
+    - name: notify-success
+      action: slack/send
+      credential: slack-token
+      params:
+        channel: "#ops"
+        text: "Workflow {{ execution.workflow_name }} completed successfully"
+  on_failure:
+    - name: alert-failure
+      action: slack/send
+      credential: slack-token
+      params:
+        channel: "#ops-alerts"
+        text: "Workflow {{ execution.workflow_name }} failed: {{ execution.error }}"
+
 steps:
   - name: fetch-data
     action: http/request
     timeout: 30s
+    max_parallel: 5
     retry:
       max_attempts: 3
       backoff: exponential
@@ -59,6 +78,9 @@ steps:
 | `description` | string | No | Human-readable description of what the workflow does. |
 | `inputs` | map | No | Input parameters the workflow accepts at runtime. |
 | `triggers` | list | No | Automatic triggers that start the workflow. See [Triggers](#triggers). |
+| `max_parallel_executions` | integer | No | Maximum number of concurrent executions of this workflow. When the limit is reached, behavior is controlled by `on_limit`. Default: unlimited. |
+| `on_limit` | string | No | What to do when `max_parallel_executions` is reached. One of: `queue` (wait until a slot opens), `reject` (fail immediately). Default: `queue`. |
+| `hooks` | object | No | Lifecycle hooks that run after the workflow completes. See [Hooks](#hooks). |
 | `steps` | list | Yes | Ordered list of steps to execute. At least one step is required. |
 
 ### Name Rules
@@ -136,6 +158,7 @@ steps:
 | `timeout` | string | No | Maximum duration for the step. Uses Go duration format (e.g., `30s`, `5m`, `1h`). |
 | `credential` | string | No | Name of a stored credential to inject into this step. See [Secrets Guide](/docs/secrets-guide). |
 | `depends_on` | list of strings | No | Declares explicit dependencies on other steps for parallel execution. See [Parallel Execution](#parallel-execution). |
+| `max_parallel` | integer | No | Maximum number of concurrent instances of this step (useful when the step is generated dynamically from a fan-out). Default: unlimited. |
 | `continue_on_error` | boolean | No | When `true`, workflow execution continues even if this step fails after exhausting retries. Default is `false`. See [Error Handling](#error-handling). |
 
 ### Step Name Rules
@@ -294,6 +317,71 @@ steps:
       # Use output from whichever API succeeded
       body: "{{ steps['try-primary-api'].error == null ? steps['try-primary-api'].output.body : steps['try-backup-api'].output.body }}"
 ```
+
+## Hooks
+
+Lifecycle hooks run after the main workflow steps complete. Use hooks for notifications, cleanup, or post-processing that should happen regardless of whether the workflow succeeded or failed.
+
+```yaml
+hooks:
+  on_success:
+    - name: notify-success
+      action: slack/send
+      credential: slack-token
+      params:
+        channel: "#ops"
+        text: "{{ execution.workflow_name }} v{{ execution.workflow_version }} completed"
+
+  on_failure:
+    - name: alert-failure
+      action: slack/send
+      credential: slack-token
+      params:
+        channel: "#ops-alerts"
+        text: "{{ execution.workflow_name }} failed: {{ execution.error }}"
+
+  on_finish:
+    - name: record-metrics
+      action: http/request
+      params:
+        method: POST
+        url: https://metrics.internal/workflow-complete
+        body:
+          workflow: "{{ execution.workflow_name }}"
+          status: "{{ execution.status }}"
+          duration_ms: "{{ execution.duration_ms }}"
+```
+
+### Hook Blocks
+
+| Block | When it runs |
+|---|---|
+| `on_success` | Only when all steps completed successfully. |
+| `on_failure` | Only when the workflow failed (one or more steps failed without `continue_on_error`). |
+| `on_finish` | Always runs after the workflow completes, regardless of success or failure. Runs after `on_success` or `on_failure`. |
+
+Each block contains a list of steps with the same structure as regular workflow steps (`name`, `action`, `params`, `credential`, `timeout`, etc.). Hook steps execute sequentially within their block.
+
+### Hook CEL Variables
+
+In addition to the standard CEL variables (`inputs`, `steps`, `env`, `trigger`), hook steps have access to execution metadata:
+
+| Variable | Type | Description |
+|---|---|---|
+| `execution.id` | string | UUID of the current execution. |
+| `execution.workflow_name` | string | Name of the workflow. |
+| `execution.workflow_version` | integer | Version of the workflow definition. |
+| `execution.status` | string | Final execution status: `completed`, `failed`, `cancelled`. |
+| `execution.error` | string | Error message if the workflow failed; empty string otherwise. |
+| `execution.duration_ms` | integer | Total execution duration in milliseconds. |
+| `execution.started_at` | string | ISO 8601 timestamp of when the execution started. |
+| `hooks['hook-name'].output` | map | Output of a previously executed hook step (within the same block). |
+
+### Hook Error Behavior
+
+Hook failures do not change the workflow's final status. If a workflow succeeded but an `on_success` hook fails, the execution status remains `completed`. Hook errors are logged and recorded in the audit trail.
+
+---
 
 ## CEL Expressions
 

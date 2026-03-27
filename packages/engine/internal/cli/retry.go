@@ -3,32 +3,27 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
-	"strings"
-	"time"
 
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
 	"github.com/dvflw/mantle/internal/engine"
 	"github.com/dvflw/mantle/internal/secret"
-	"github.com/dvflw/mantle/internal/workflow"
 	"github.com/spf13/cobra"
 )
 
-func newRunCommand() *cobra.Command {
-	var inputFlags []string
-
+func newRetryCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "run <workflow>",
-		Short: "Run a workflow",
-		Long:  "Triggers execution of a workflow, pinned to the current version.",
-		Example: `  mantle run my-workflow
-  mantle run my-workflow --input url=https://example.com
-  mantle run my-workflow --input url=https://example.com --verbose
-  mantle run my-workflow --output json`,
+		Use:   "retry <execution-id>",
+		Short: "Retry a failed workflow execution",
+		Long: `Creates a new execution that resumes from the failure point of a
+previous execution. Completed upstream steps are copied; the failed step
+and everything downstream re-execute.`,
+		Example: `  mantle retry 01234567-89ab-cdef-0123-456789abcdef
+  mantle retry 01234567-89ab-cdef-0123-456789abcdef --from-step process-data
+  mantle retry 01234567-89ab-cdef-0123-456789abcdef --force`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			workflowName := args[0]
+			execID := args[0]
 
 			cfg := config.FromContext(cmd.Context())
 			if cfg == nil {
@@ -40,25 +35,6 @@ func newRunCommand() *cobra.Command {
 				return fmt.Errorf("failed to connect to database: %w", err)
 			}
 			defer database.Close()
-
-			// Get latest version.
-			version, err := workflow.GetLatestVersion(cmd.Context(), database, workflowName)
-			if err != nil {
-				return fmt.Errorf("looking up workflow: %w", err)
-			}
-			if version == 0 {
-				return fmt.Errorf("workflow %q not found — have you run 'mantle apply'?", workflowName)
-			}
-
-			// Parse --input flags into a map.
-			inputs := make(map[string]any)
-			for _, kv := range inputFlags {
-				key, value, ok := strings.Cut(kv, "=")
-				if !ok {
-					return fmt.Errorf("invalid input format %q — expected key=value", kv)
-				}
-				inputs[key] = value
-			}
 
 			eng, err := engine.New(database)
 			if err != nil {
@@ -77,17 +53,22 @@ func newRunCommand() *cobra.Command {
 				}
 			}
 
+			fromStep, _ := cmd.Flags().GetString("from-step")
+			force, _ := cmd.Flags().GetBool("force")
 			outputFormat, _ := cmd.Flags().GetString("output")
 			verbose, _ := cmd.Flags().GetBool("verbose")
-			force, _ := cmd.Flags().GetBool("force")
 
 			if outputFormat != "json" {
-				fmt.Fprintf(cmd.OutOrStdout(), "Running %s (version %d)...\n", workflowName, version)
+				fmt.Fprintf(cmd.OutOrStdout(), "Retrying execution %s", execID)
+				if fromStep != "" {
+					fmt.Fprintf(cmd.OutOrStdout(), " from step %q", fromStep)
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), "...")
 			}
 
-			result, err := eng.ExecuteWithOptions(cmd.Context(), workflowName, version, inputs, engine.ExecuteOptions{Force: force})
+			result, err := eng.RetryExecution(cmd.Context(), execID, fromStep, force)
 			if err != nil {
-				return fmt.Errorf("execution failed: %w", err)
+				return fmt.Errorf("retry failed: %w", err)
 			}
 
 			// Compute the exit error before writing output so that JSON
@@ -123,7 +104,6 @@ func newRunCommand() *cobra.Command {
 
 			steps := orderedSteps(result)
 			if verbose {
-				// Compute max step name width for alignment.
 				maxLen := 0
 				for _, s := range steps {
 					if len(s.name) > maxLen {
@@ -148,57 +128,8 @@ func newRunCommand() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringArrayVar(&inputFlags, "input", nil, "Input parameter (key=value), can be specified multiple times")
+	cmd.Flags().String("from-step", "", "Step to retry from (default: first failed step)")
+	cmd.Flags().Bool("force", false, "Bypass concurrency limits")
 	cmd.Flags().BoolP("verbose", "v", false, "Show step outputs and durations")
-	cmd.Flags().Bool("force", false, "Bypass per-workflow and per-team concurrency limits — executions will not be queued and may exceed configured limits")
 	return cmd
-}
-
-type stepSummary struct {
-	name     string
-	status   string
-	duration time.Duration
-	output   string
-}
-
-func orderedSteps(result *engine.ExecutionResult) []stepSummary {
-	steps := make([]stepSummary, 0, len(result.Steps))
-	for name, sr := range result.Steps {
-		outputStr := ""
-		if sr.Output != nil {
-			if data, err := json.Marshal(sr.Output); err == nil {
-				outputStr = string(data)
-			}
-		}
-		steps = append(steps, stepSummary{
-			name:     name,
-			status:   sr.Status,
-			duration: sr.Duration,
-			output:   outputStr,
-		})
-	}
-	sort.Slice(steps, func(i, j int) bool {
-		return steps[i].name < steps[j].name
-	})
-	return steps
-}
-
-// formatDuration formats a duration for human-readable display (e.g., "3.2s", "150ms").
-func formatDuration(d time.Duration) string {
-	switch {
-	case d >= time.Minute:
-		return fmt.Sprintf("%.1fm", d.Minutes())
-	case d >= time.Second:
-		return fmt.Sprintf("%.1fs", d.Seconds())
-	default:
-		return fmt.Sprintf("%dms", d.Milliseconds())
-	}
-}
-
-// truncate shortens s to maxLen characters, appending "..." if truncated.
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
 }

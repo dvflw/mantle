@@ -20,6 +20,8 @@ By default, Mantle looks for a file named `mantle.yaml` in the current working d
 ### Full Example
 
 ```yaml
+version: 1
+
 database:
   url: postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable
   max_open_conns: 25
@@ -46,8 +48,9 @@ engine:
   step_output_max_bytes: 1048576
   default_max_tool_rounds: 10
   default_max_tool_calls_per_round: 10
+  max_concurrent_executions_per_team: 10
 
-tmp:
+storage:
   type: filesystem
   path: /var/lib/mantle/artifacts
   retention: "24h"
@@ -57,6 +60,7 @@ tmp:
 
 | Field | Type | Default | Description |
 |---|---|---|---|
+| `version` | integer | -- | Config file version. Must be `1` when present. Required for new config files starting in v0.4.0. |
 | `database.url` | string | `postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable` | Postgres connection URL. |
 | `api.address` | string | `:8080` | Listen address for `mantle serve`. Format: `host:port` or `:port`. Used by the HTTP API, webhook listener, and health endpoints. |
 | `log.level` | string | `info` | Log verbosity. One of: `debug`, `info`, `warn`, `error`. |
@@ -75,11 +79,16 @@ tmp:
 | `engine.step_output_max_bytes` | integer | `1048576` | Maximum size in bytes for a single step's output. Outputs exceeding this limit are truncated. Default is 1 MB. |
 | `engine.default_max_tool_rounds` | integer | `10` | Default maximum number of LLM-tool interaction rounds for AI steps with tools. Can be overridden per step with `max_tool_rounds`. |
 | `engine.default_max_tool_calls_per_round` | integer | `10` | Default maximum number of tool calls the LLM can make per round. Can be overridden per step with `max_tool_calls_per_round`. |
-| `tmp.type` | string | -- | Artifact storage backend. One of: `s3`, `filesystem`. Required if any workflow declares artifacts. |
-| `tmp.bucket` | string | -- | S3 bucket name. Required when `tmp.type` is `s3`. |
-| `tmp.prefix` | string | -- | S3 key prefix for artifact storage. Optional. |
-| `tmp.path` | string | -- | Local directory path. Required when `tmp.type` is `filesystem`. |
-| `tmp.retention` | duration | -- | How long to keep artifacts after workflow completion. Uses Go duration format (e.g., `24h`). Empty means no auto-cleanup. |
+| `engine.max_concurrent_executions_per_team` | integer | `10` | Maximum number of concurrent workflow executions allowed per team. When the limit is reached, new executions are queued. Set to `0` for unlimited. |
+| `storage.type` | string | -- | Artifact storage backend. One of: `s3`, `filesystem`. Required if any workflow declares artifacts. |
+| `storage.bucket` | string | -- | S3 bucket name. Required when `storage.type` is `s3`. |
+| `storage.prefix` | string | -- | S3 key prefix for artifact storage. Optional. |
+| `storage.path` | string | -- | Local directory path. Required when `storage.type` is `filesystem`. |
+| `storage.retention` | duration | -- | How long to keep artifacts after workflow completion. Uses Go duration format (e.g., `24h`). Empty means no auto-cleanup. |
+
+:::caution[Deprecation: `tmp` renamed to `storage`]
+The `tmp` configuration section has been renamed to `storage` in v0.4.0. The old `tmp` key still works but is deprecated and will be removed in a future release. Update your `mantle.yaml` to use `storage` instead.
+:::
 
 ### Config File Discovery
 
@@ -111,11 +120,12 @@ All environment variables use the `MANTLE_` prefix with underscores replacing do
 | `MANTLE_ENGINE_STEP_OUTPUT_MAX_BYTES` | `engine.step_output_max_bytes` | `1048576` |
 | `MANTLE_ENGINE_DEFAULT_MAX_TOOL_ROUNDS` | `engine.default_max_tool_rounds` | `10` |
 | `MANTLE_ENGINE_DEFAULT_MAX_TOOL_CALLS_PER_ROUND` | `engine.default_max_tool_calls_per_round` | `10` |
-| `MANTLE_TMP_TYPE` | `tmp.type` | -- |
-| `MANTLE_TMP_BUCKET` | `tmp.bucket` | -- |
-| `MANTLE_TMP_PREFIX` | `tmp.prefix` | -- |
-| `MANTLE_TMP_PATH` | `tmp.path` | -- |
-| `MANTLE_TMP_RETENTION` | `tmp.retention` | -- |
+| `MANTLE_ENGINE_MAX_CONCURRENT_EXECUTIONS_PER_TEAM` | `engine.max_concurrent_executions_per_team` | `10` |
+| `MANTLE_STORAGE_TYPE` | `storage.type` | -- |
+| `MANTLE_STORAGE_BUCKET` | `storage.bucket` | -- |
+| `MANTLE_STORAGE_PREFIX` | `storage.prefix` | -- |
+| `MANTLE_STORAGE_PATH` | `storage.path` | -- |
+| `MANTLE_STORAGE_RETENTION` | `storage.retention` | -- |
 
 **Example:**
 
@@ -185,6 +195,8 @@ Use a `mantle.yaml` file with production values, or pass everything through envi
 
 ```yaml
 # mantle.yaml
+version: 1
+
 database:
   url: postgres://mantle:${DB_PASSWORD}@db.internal:5432/mantle?sslmode=require
 
@@ -213,6 +225,8 @@ When running `mantle serve`, the `api.address` setting controls which address th
 
 ```yaml
 # mantle.yaml
+version: 1
+
 database:
   url: postgres://mantle:secret@db.internal:5432/mantle?sslmode=require
 

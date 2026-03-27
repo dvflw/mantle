@@ -45,6 +45,14 @@ var (
 	}, []string{"workflow", "step"})
 )
 
+// Hook metrics.
+var (
+	HookStepsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_hook_steps_total",
+		Help: "Total hook step executions",
+	}, []string{"workflow", "hook", "step", "status"})
+)
+
 // Queue and distribution metrics.
 var (
 	QueueDepth = promauto.NewGauge(prometheus.GaugeOpts{
@@ -155,6 +163,30 @@ var (
 		Name: "mantle_email_triggers_skipped_total",
 		Help: "Total email triggers skipped due to connection limit",
 	})
+)
+
+// Concurrency control metrics.
+var (
+	ExecutionsQueued = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "mantle_executions_queued",
+		Help: "Current queue depth per workflow",
+	}, []string{"workflow"})
+
+	ExecutionsRejectedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_executions_rejected_total",
+		Help: "Executions rejected due to concurrency limit",
+	}, []string{"workflow"})
+
+	QueueWaitDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "mantle_queue_wait_duration_seconds",
+		Help:    "Time spent in queue before promotion",
+		Buckets: []float64{0.1, 0.5, 1, 5, 10, 30, 60, 120, 300},
+	}, []string{"workflow"})
+
+	PromotionFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_promotion_failures_total",
+		Help: "Failed queue promotion attempts",
+	}, []string{"workflow", "scope"})
 )
 
 // Budget metrics.

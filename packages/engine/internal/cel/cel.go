@@ -18,6 +18,8 @@ type Context struct {
 	Inputs    map[string]any            // inputs.<name> → workflow inputs
 	Trigger   map[string]any            // trigger.payload → webhook trigger data
 	Artifacts map[string]map[string]any // artifacts.<name> → {name, url, size}
+	Hooks     map[string]map[string]any // hooks.<name>.output → hook step outputs
+	Execution map[string]any            // execution.status, execution.error, etc.
 }
 
 const maxProgramCacheSize = 10000
@@ -38,6 +40,8 @@ func NewEvaluator() (*Evaluator, error) {
 		cel.Variable("env", cel.MapType(cel.StringType, cel.StringType)),
 		cel.Variable("trigger", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("artifacts", cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable("hooks", cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable("execution", cel.MapType(cel.StringType, cel.DynType)),
 	}
 	opts = append(opts, customFunctions()...)
 
@@ -66,12 +70,24 @@ func (e *Evaluator) Eval(expression string, ctx *Context) (any, error) {
 		artifacts = map[string]map[string]any{}
 	}
 
+	hooks := ctx.Hooks
+	if hooks == nil {
+		hooks = map[string]map[string]any{}
+	}
+
+	execution := ctx.Execution
+	if execution == nil {
+		execution = map[string]any{}
+	}
+
 	vars := map[string]any{
 		"steps":     ctx.Steps,
 		"inputs":    ctx.Inputs,
 		"env":       e.envCache,
 		"trigger":   trigger,
 		"artifacts": artifacts,
+		"hooks":     hooks,
+		"execution": execution,
 	}
 
 	out, _, err := prog.Eval(vars)

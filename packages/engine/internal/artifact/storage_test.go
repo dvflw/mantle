@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-func TestFilesystemTmpStorage_PutAndGet(t *testing.T) {
+func TestFilesystemStorage_PutAndGet(t *testing.T) {
 	dir := t.TempDir()
-	fs := &FilesystemTmpStorage{BasePath: dir}
+	fs := &FilesystemStorage{BasePath: dir}
 
 	ctx := context.Background()
 	key := "test-workflow/exec-123/my-artifact/data.tar.gz"
@@ -40,9 +40,9 @@ func TestFilesystemTmpStorage_PutAndGet(t *testing.T) {
 	}
 }
 
-func TestFilesystemTmpStorage_Delete(t *testing.T) {
+func TestFilesystemStorage_Delete(t *testing.T) {
 	dir := t.TempDir()
-	fs := &FilesystemTmpStorage{BasePath: dir}
+	fs := &FilesystemStorage{BasePath: dir}
 	ctx := context.Background()
 
 	// Write a file
@@ -68,9 +68,9 @@ func TestFilesystemTmpStorage_Delete(t *testing.T) {
 	}
 }
 
-func TestFilesystemTmpStorage_DeleteEscapeProtection(t *testing.T) {
+func TestFilesystemStorage_DeleteEscapeProtection(t *testing.T) {
 	dir := t.TempDir()
-	fs := &FilesystemTmpStorage{BasePath: dir}
+	fs := &FilesystemStorage{BasePath: dir}
 	ctx := context.Background()
 
 	err := fs.DeleteByPrefix(ctx, "../../etc")
