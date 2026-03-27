@@ -180,7 +180,7 @@ steps:
 
 	// With maxDepth=1 and parentDepth=0, childDepth=1 which does not exceed max, so this succeeds.
 	if result.Status != "completed" {
-		t.Logf("result status=%s, error=%s", result.Status, result.Error)
+		t.Fatalf("expected completed status for non-exceeding depth, got status=%q error=%q", result.Status, result.Error)
 	}
 
 	// Now test the actual depth limit: create an execution at depth 1 and max=1.
