@@ -82,6 +82,7 @@ func newSecretsRotateKeyCommand() *cobra.Command {
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Re-encrypted %d credential(s).\n", count)
+			fmt.Fprintln(cmd.ErrOrStderr(), "WARNING: The following key is sensitive. Store it securely and clear your terminal.")
 			fmt.Fprintf(cmd.OutOrStdout(), "New key: %s\n", newKey)
 			fmt.Fprintln(cmd.OutOrStdout(), "Update MANTLE_ENCRYPTION_KEY to the new key and restart.")
 
