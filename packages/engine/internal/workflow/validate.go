@@ -85,6 +85,25 @@ func Validate(result *ParseResult) []ValidationError {
 		}
 	}
 
+	// Validate max_parallel_executions.
+	if w.MaxParallelExecutions < 0 {
+		line, col := findFieldPosition(root, "max_parallel_executions")
+		errs = append(errs, ValidationError{
+			Line: line, Column: col, Field: "max_parallel_executions",
+			Message: fmt.Sprintf("max_parallel_executions must be >= 0, got %d", w.MaxParallelExecutions),
+		})
+	}
+
+	// Validate on_limit.
+	validOnLimitValues := map[string]bool{"": true, "queue": true, "reject": true}
+	if !validOnLimitValues[w.OnLimit] {
+		line, col := findFieldPosition(root, "on_limit")
+		errs = append(errs, ValidationError{
+			Line: line, Column: col, Field: "on_limit",
+			Message: fmt.Sprintf("on_limit must be one of: queue, reject (got %q)", w.OnLimit),
+		})
+	}
+
 	// Validate workflow-level timeout.
 	if w.Timeout != "" {
 		d, err := time.ParseDuration(w.Timeout)
@@ -214,6 +233,14 @@ func Validate(result *ParseResult) []ValidationError {
 					Message: "timeout must be a positive duration",
 				})
 			}
+		}
+
+		// Validate max_parallel.
+		if step.MaxParallel < 0 {
+			errs = append(errs, ValidationError{
+				Field:   prefix + ".max_parallel",
+				Message: fmt.Sprintf("max_parallel must be >= 0, got %d", step.MaxParallel),
+			})
 		}
 
 		// Validate params for browser/run steps.
@@ -377,6 +404,11 @@ func Validate(result *ParseResult) []ValidationError {
 		}
 	}
 
+	// Validate hooks.
+	if w.Hooks != nil {
+		errs = append(errs, validateHooks(w.Hooks)...)
+	}
+
 	// Validate CEL expression syntax in step params and if conditions.
 	celEval, celErr := mantleCEL.NewEvaluator()
 	if celErr == nil {
@@ -533,6 +565,75 @@ func extractCELExpressions(s string) []string {
 		remaining = remaining[end+2:]
 	}
 	return exprs
+}
+
+// validateHooks validates the hooks configuration block.
+func validateHooks(hooks *HooksConfig) []ValidationError {
+	var errs []ValidationError
+
+	// Validate hooks timeout.
+	if hooks.Timeout != "" {
+		d, err := time.ParseDuration(hooks.Timeout)
+		if err != nil {
+			errs = append(errs, ValidationError{
+				Field:   "hooks.timeout",
+				Message: fmt.Sprintf("invalid duration: %v", err),
+			})
+		} else if d <= 0 {
+			errs = append(errs, ValidationError{
+				Field:   "hooks.timeout",
+				Message: "timeout must be a positive duration",
+			})
+		}
+	}
+
+	// Validate each hook block. Each block has its own name namespace.
+	errs = append(errs, validateHookSteps(hooks.OnSuccess, "hooks.on_success")...)
+	errs = append(errs, validateHookSteps(hooks.OnFailure, "hooks.on_failure")...)
+	errs = append(errs, validateHookSteps(hooks.OnFinish, "hooks.on_finish")...)
+
+	return errs
+}
+
+// validateHookSteps validates a slice of hook steps within a single block.
+func validateHookSteps(steps []Step, blockPrefix string) []ValidationError {
+	var errs []ValidationError
+	seen := make(map[string]bool)
+
+	for i, step := range steps {
+		prefix := fmt.Sprintf("%s[%d]", blockPrefix, i)
+
+		if step.Name == "" {
+			errs = append(errs, ValidationError{
+				Field:   prefix + ".name",
+				Message: "hook step name is required",
+			})
+		} else {
+			if seen[step.Name] {
+				errs = append(errs, ValidationError{
+					Field:   prefix + ".name",
+					Message: fmt.Sprintf("duplicate hook step name %q", step.Name),
+				})
+			}
+			seen[step.Name] = true
+		}
+
+		if step.Action == "" {
+			errs = append(errs, ValidationError{
+				Field:   prefix + ".action",
+				Message: "hook step action is required",
+			})
+		}
+
+		if len(step.DependsOn) > 0 {
+			errs = append(errs, ValidationError{
+				Field:   prefix + ".depends_on",
+				Message: "hook steps do not support depends_on — use a child workflow for complex error handling",
+			})
+		}
+	}
+
+	return errs
 }
 
 // findFieldPosition searches the root mapping node for a top-level key and
