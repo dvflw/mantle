@@ -318,6 +318,56 @@ func TestEnvVars_PrefixStripping(t *testing.T) {
 	}
 }
 
+func TestEval_HookAndExecutionVariables(t *testing.T) {
+	eval, err := NewEvaluator()
+	if err != nil {
+		t.Fatalf("NewEvaluator() error: %v", err)
+	}
+
+	ctx := &Context{
+		Steps:  map[string]map[string]any{},
+		Inputs: map[string]any{},
+		Hooks: map[string]map[string]any{
+			"notify": {
+				"output": map[string]any{
+					"sent": true,
+				},
+			},
+		},
+		Execution: map[string]any{
+			"status":      "failed",
+			"failed_step": "fetch",
+		},
+	}
+
+	// Test: hooks['notify'].output.sent == true
+	result, err := eval.EvalBool(`hooks['notify'].output.sent == true`, ctx)
+	if err != nil {
+		t.Fatalf("Eval hooks sent: %v", err)
+	}
+	if !result {
+		t.Error("hooks['notify'].output.sent should be true")
+	}
+
+	// Test: execution.status == "failed"
+	result, err = eval.EvalBool(`execution.status == "failed"`, ctx)
+	if err != nil {
+		t.Fatalf("Eval execution.status: %v", err)
+	}
+	if !result {
+		t.Error("execution.status should be 'failed'")
+	}
+
+	// Test: execution.failed_step == "fetch"
+	result, err = eval.EvalBool(`execution.failed_step == "fetch"`, ctx)
+	if err != nil {
+		t.Fatalf("Eval execution.failed_step: %v", err)
+	}
+	if !result {
+		t.Error("execution.failed_step should be 'fetch'")
+	}
+}
+
 func TestEval_ArtifactsAccess(t *testing.T) {
 	eval, err := NewEvaluator()
 	if err != nil {
