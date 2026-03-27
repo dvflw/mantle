@@ -48,7 +48,7 @@ engine:
   step_output_max_bytes: 1048576
   default_max_tool_rounds: 10
   default_max_tool_calls_per_round: 10
-  max_concurrent_executions_per_team: 10
+  max_concurrent_executions_per_team: 0  # 0 = unlimited
 
 storage:
   type: filesystem
@@ -184,7 +184,7 @@ All environment variables use the `MANTLE_` prefix with underscores replacing do
 | `MANTLE_ENGINE_STEP_OUTPUT_MAX_BYTES` | `engine.step_output_max_bytes` | `1048576` |
 | `MANTLE_ENGINE_DEFAULT_MAX_TOOL_ROUNDS` | `engine.default_max_tool_rounds` | `10` |
 | `MANTLE_ENGINE_DEFAULT_MAX_TOOL_CALLS_PER_ROUND` | `engine.default_max_tool_calls_per_round` | `10` |
-| `MANTLE_ENGINE_MAX_CONCURRENT_EXECUTIONS_PER_TEAM` | `engine.max_concurrent_executions_per_team` | `10` |
+| `MANTLE_ENGINE_MAX_CONCURRENT_EXECUTIONS_PER_TEAM` | `engine.max_concurrent_executions_per_team` | `0` |
 | `MANTLE_STORAGE_TYPE` | `storage.type` | -- |
 | `MANTLE_STORAGE_BUCKET` | `storage.bucket` | -- |
 | `MANTLE_STORAGE_PREFIX` | `storage.prefix` | -- |
