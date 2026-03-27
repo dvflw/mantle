@@ -289,10 +289,12 @@ func Load(cmd *cobra.Command) (*Config, error) {
 
 	// Deprecated: fall back from "tmp" section to "storage" for backward compatibility.
 	if cfg.Storage.Type == "" && v.IsSet("tmp") {
-		var legacy StorageConfig
-		if err := v.Sub("tmp").Unmarshal(&legacy); err == nil {
-			cfg.Storage = legacy
-			slog.Warn("config section 'tmp' is deprecated and will be removed in a future release; rename it to 'storage'")
+		if sub := v.Sub("tmp"); sub != nil {
+			var legacy StorageConfig
+			if err := sub.Unmarshal(&legacy); err == nil {
+				cfg.Storage = legacy
+				slog.Warn("config section 'tmp' is deprecated and will be removed in a future release; rename it to 'storage'")
+			}
 		}
 	}
 

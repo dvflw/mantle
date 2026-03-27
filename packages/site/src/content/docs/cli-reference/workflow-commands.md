@@ -277,7 +277,7 @@ $ mantle logs --workflow hello-world --status failed --since 24h --limit 10
 
 Retry a failed workflow execution. By default, resumes from the first failed step, reusing outputs from previously completed steps.
 
-```
+```text
 Usage:
   mantle retry <execution-id> [flags]
 ```
@@ -321,13 +321,13 @@ Execution ghi789-jkl012: completed
 
 If the execution is not in a failed state:
 
-```
+```text
 Error: execution abc123-def456 is not in a failed state (status: completed). Use --force to retry anyway.
 ```
 
 If `--from-step` references a step that does not exist:
 
-```
+```text
 Error: step "nonexistent" not found in workflow "fetch-and-summarize"
 ```
 
@@ -337,7 +337,7 @@ Error: step "nonexistent" not found in workflow "fetch-and-summarize"
 
 Roll back a workflow to a previous version. The previously active version becomes the current version used by `mantle run` and triggers.
 
-```
+```text
 Usage:
   mantle rollback <workflow> [flags]
 ```
@@ -372,13 +372,13 @@ Rolled back fetch-and-summarize from version 3 to version 1
 
 If the workflow has only one version:
 
-```
+```text
 Error: workflow "fetch-and-summarize" is at version 1 — nothing to roll back to
 ```
 
 If the target version does not exist:
 
-```
+```text
 Error: version 5 not found for workflow "fetch-and-summarize"
 ```
 

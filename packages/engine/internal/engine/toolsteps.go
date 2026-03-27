@@ -29,7 +29,7 @@ func (ts *ToolSteps) CreateSubStep(ctx context.Context, executionID, parentStepI
 		// Row already existed — fetch the existing ID.
 		err = ts.DB.QueryRowContext(ctx, `
 			SELECT id FROM step_executions
-			WHERE execution_id = $1 AND step_name = $2 AND attempt = 1
+			WHERE execution_id = $1 AND step_name = $2 AND attempt = 1 AND hook_block IS NULL
 		`, executionID, stepName).Scan(&id)
 		if err != nil {
 			return "", fmt.Errorf("fetching existing sub-step: %w", err)

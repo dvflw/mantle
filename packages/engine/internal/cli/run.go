@@ -125,9 +125,9 @@ func newRunCommand() *cobra.Command {
 			if result.Status == "failed" {
 				// Find the failed step name for a more actionable error message.
 				failedStep := ""
-				for name, sr := range result.Steps {
-					if sr.Status == "failed" {
-						failedStep = name
+				for _, s := range orderedSteps(result) {
+					if s.status == "failed" {
+						failedStep = s.name
 						break
 					}
 				}
@@ -143,7 +143,7 @@ func newRunCommand() *cobra.Command {
 
 	cmd.Flags().StringArrayVar(&inputFlags, "input", nil, "Input parameter (key=value), can be specified multiple times")
 	cmd.Flags().BoolP("verbose", "v", false, "Show step outputs and durations")
-	cmd.Flags().Bool("force", false, "Bypass concurrency limits")
+	cmd.Flags().Bool("force", false, "Bypass per-workflow and per-team concurrency limits — executions will not be queued and may exceed configured limits")
 	return cmd
 }
 

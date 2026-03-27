@@ -31,21 +31,23 @@ type FilesystemStorage struct {
 func (fs *FilesystemStorage) Put(ctx context.Context, key string, localPath string) (string, error) {
 	destPath := filepath.Join(fs.BasePath, key)
 	// Validate destination is within BasePath to prevent path traversal.
-	absBase, err := filepath.Abs(fs.BasePath)
+	// Use EvalSymlinks for canonicalization to prevent symlink-based escapes.
+	resolvedBase, err := filepath.EvalSymlinks(fs.BasePath)
 	if err != nil {
 		return "", fmt.Errorf("resolving base path: %w", err)
 	}
-	absDest, err := filepath.Abs(destPath)
+	// Ensure dest directory exists before resolving symlinks on the full path.
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return "", fmt.Errorf("creating artifact dir: %w", err)
+	}
+	resolvedDest, err := filepath.EvalSymlinks(filepath.Dir(destPath))
 	if err != nil {
 		return "", fmt.Errorf("resolving dest path: %w", err)
 	}
-	rel, err := filepath.Rel(absBase, absDest)
+	resolvedDest = filepath.Join(resolvedDest, filepath.Base(destPath))
+	rel, err := filepath.Rel(resolvedBase, resolvedDest)
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return "", fmt.Errorf("key escapes base path")
-	}
-
-	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-		return "", fmt.Errorf("creating artifact dir: %w", err)
 	}
 
 	// Reject symlinks and non-regular files to prevent exfiltration.
@@ -81,36 +83,61 @@ func (fs *FilesystemStorage) Put(ctx context.Context, key string, localPath stri
 // DeleteByPrefix removes all files stored under the given key prefix.
 func (fs *FilesystemStorage) DeleteByPrefix(ctx context.Context, prefix string) error {
 	target := filepath.Join(fs.BasePath, prefix)
-	absBase, err := filepath.Abs(fs.BasePath)
+	resolvedBase, err := filepath.EvalSymlinks(fs.BasePath)
 	if err != nil {
 		return fmt.Errorf("resolving base path: %w", err)
 	}
-	absTarget, err := filepath.Abs(target)
+	resolvedTarget, err := filepath.EvalSymlinks(target)
 	if err != nil {
+		// Target doesn't exist — fall back to Abs for traversal check.
+		absTarget, absErr := filepath.Abs(target)
+		if absErr != nil {
+			return fmt.Errorf("resolving target path: %w", err)
+		}
+		rel, relErr := filepath.Rel(resolvedBase, absTarget)
+		if relErr != nil || strings.HasPrefix(rel, "..") {
+			return fmt.Errorf("prefix escapes base path")
+		}
+		// Target doesn't exist and is within base — nothing to delete.
+		if os.IsNotExist(err) {
+			return nil
+		}
 		return fmt.Errorf("resolving target path: %w", err)
 	}
-	rel, err := filepath.Rel(absBase, absTarget)
+	rel, err := filepath.Rel(resolvedBase, resolvedTarget)
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return fmt.Errorf("prefix escapes base path")
 	}
-	return os.RemoveAll(target)
+	return os.RemoveAll(resolvedTarget)
 }
 
 // Delete removes a single artifact file by its path (as returned by Put).
 func (fs *FilesystemStorage) Delete(ctx context.Context, url string) error {
-	absBase, err := filepath.Abs(fs.BasePath)
+	resolvedBase, err := filepath.EvalSymlinks(fs.BasePath)
 	if err != nil {
 		return fmt.Errorf("resolving base path: %w", err)
 	}
-	absURL, err := filepath.Abs(url)
+	resolvedURL, err := filepath.EvalSymlinks(url)
 	if err != nil {
+		// File doesn't exist — fall back to Abs for traversal check.
+		absURL, absErr := filepath.Abs(url)
+		if absErr != nil {
+			return fmt.Errorf("resolving artifact path: %w", err)
+		}
+		rel, relErr := filepath.Rel(resolvedBase, absURL)
+		if relErr != nil || strings.HasPrefix(rel, "..") {
+			return fmt.Errorf("artifact path escapes base path")
+		}
+		if os.IsNotExist(err) {
+			return nil // already gone
+		}
 		return fmt.Errorf("resolving artifact path: %w", err)
 	}
-	rel, err := filepath.Rel(absBase, absURL)
+	rel, err := filepath.Rel(resolvedBase, resolvedURL)
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return fmt.Errorf("artifact path escapes base path")
 	}
-	if err := os.Remove(absURL); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(resolvedURL); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	return nil

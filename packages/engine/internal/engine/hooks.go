@@ -13,6 +13,9 @@ import (
 	"github.com/dvflw/mantle/internal/workflow"
 )
 
+// defaultHookTimeout is applied when the configured hooks timeout is unparseable.
+const defaultHookTimeout = 5 * time.Minute
+
 // executeHooks runs lifecycle hooks after main workflow execution completes.
 // Hook failures are best-effort — they never alter the workflow execution status.
 func (e *Engine) executeHooks(
@@ -45,12 +48,12 @@ func (e *Engine) executeHooks(
 	if wf.Hooks.Timeout != "" {
 		dur, err := time.ParseDuration(wf.Hooks.Timeout)
 		if err != nil {
-			log.Printf("hooks: invalid timeout %q: %v", wf.Hooks.Timeout, err)
-		} else {
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, dur)
-			defer cancel()
+			log.Printf("hooks: invalid timeout %q: %v — falling back to %s", wf.Hooks.Timeout, err, defaultHookTimeout)
+			dur = defaultHookTimeout
 		}
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, dur)
+		defer cancel()
 	}
 
 	// Execute conditional block: on_success if completed, on_failure if failed/timed_out.
@@ -121,7 +124,6 @@ func (e *Engine) executeHookBlock(
 
 			// Emit metrics.
 			metrics.HookStepsTotal.WithLabelValues(workflowName, blockName, step.Name, "failed").Inc()
-			metrics.HookStepsFailedTotal.WithLabelValues(workflowName, blockName, step.Name).Inc()
 
 			// Emit audit: hook step failed.
 			e.Auditor.Emit(ctx, audit.Event{

@@ -428,6 +428,13 @@ func Validate(result *ParseResult) []ValidationError {
 			// Check params recursively.
 			errs = append(errs, validateCELInParams(celEval, step.Params, prefix+".params")...)
 		}
+
+		// Validate CEL expressions in hook steps.
+		if w.Hooks != nil {
+			errs = append(errs, validateCELInHookBlock(celEval, w.Hooks.OnSuccess, "hooks.on_success")...)
+			errs = append(errs, validateCELInHookBlock(celEval, w.Hooks.OnFailure, "hooks.on_failure")...)
+			errs = append(errs, validateCELInHookBlock(celEval, w.Hooks.OnFinish, "hooks.on_finish")...)
+		}
 	}
 
 	return errs
@@ -506,6 +513,26 @@ func toInt(v any) (int, bool) {
 		return int(n), true
 	}
 	return 0, false
+}
+
+// validateCELInHookBlock validates CEL expressions in a slice of hook steps.
+func validateCELInHookBlock(eval *mantleCEL.Evaluator, steps []Step, blockPrefix string) []ValidationError {
+	var errs []ValidationError
+	for i, step := range steps {
+		prefix := fmt.Sprintf("%s[%d]", blockPrefix, i)
+
+		if step.If != "" {
+			if err := eval.CompileCheck(step.If); err != nil {
+				errs = append(errs, ValidationError{
+					Field:   prefix + ".if",
+					Message: fmt.Sprintf("invalid CEL expression: %v", err),
+				})
+			}
+		}
+
+		errs = append(errs, validateCELInParams(eval, step.Params, prefix+".params")...)
+	}
+	return errs
 }
 
 // validateCELInParams recursively walks a params map and validates any CEL

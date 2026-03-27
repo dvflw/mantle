@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	mantleCEL "github.com/dvflw/mantle/internal/cel"
@@ -39,9 +40,9 @@ func TestExecuteHooks_NilHooksIsNoop(t *testing.T) {
 func TestExecuteHooks_OnSuccessFiresOnCompletion(t *testing.T) {
 	database := setupTestDB(t)
 
-	called := false
+	var requestCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
+		requestCount.Add(1)
 		w.WriteHeader(200)
 		json.NewEncoder(w).Encode(map[string]any{"notified": true})
 	}))
@@ -79,17 +80,17 @@ hooks:
 	if result.Status != "completed" {
 		t.Errorf("status = %q, want %q (error: %s)", result.Status, "completed", result.Error)
 	}
-	if !called {
-		t.Error("on_success hook should have been called on completion")
+	if got := requestCount.Load(); got != 2 {
+		t.Errorf("request count = %d, want 2 (main step + on_success hook)", got)
 	}
 }
 
 func TestExecuteHooks_OnFailureFiresOnFailure(t *testing.T) {
 	database := setupTestDB(t)
 
-	hookCalled := false
+	var hookCalled atomic.Bool
 	hookServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hookCalled = true
+		hookCalled.Store(true)
 		w.WriteHeader(200)
 		json.NewEncoder(w).Encode(map[string]any{"hook": "fired"})
 	}))
@@ -132,7 +133,7 @@ hooks:
 	if result.Status != "failed" {
 		t.Errorf("status = %q, want %q", result.Status, "failed")
 	}
-	if !hookCalled {
+	if !hookCalled.Load() {
 		t.Error("on_failure hook should have been called on failure")
 	}
 }
@@ -140,9 +141,9 @@ hooks:
 func TestExecuteHooks_OnFinishAlwaysRuns(t *testing.T) {
 	database := setupTestDB(t)
 
-	finishCallCount := 0
+	var finishCallCount atomic.Int32
 	finishServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		finishCallCount++
+		finishCallCount.Add(1)
 		w.WriteHeader(200)
 		json.NewEncoder(w).Encode(map[string]any{"finished": true})
 	}))
@@ -191,12 +192,12 @@ hooks:
 	if result.Status != "completed" {
 		t.Errorf("status = %q, want %q", result.Status, "completed")
 	}
-	if finishCallCount != 1 {
-		t.Errorf("on_finish call count = %d, want 1 (on success)", finishCallCount)
+	if got := finishCallCount.Load(); got != 1 {
+		t.Errorf("on_finish call count = %d, want 1 (on success)", got)
 	}
 
 	// Test 2: on_finish runs on failure too.
-	finishCallCount = 0
+	finishCallCount.Store(0)
 	wfYAML2 := []byte(`name: test-hooks-finish-fail
 description: Test on_finish runs on failure
 steps:
@@ -222,7 +223,7 @@ hooks:
 	if result2.Status != "failed" {
 		t.Errorf("status = %q, want %q", result2.Status, "failed")
 	}
-	if finishCallCount != 1 {
-		t.Errorf("on_finish call count = %d, want 1 (on failure)", finishCallCount)
+	if got := finishCallCount.Load(); got != 1 {
+		t.Errorf("on_finish call count = %d, want 1 (on failure)", got)
 	}
 }

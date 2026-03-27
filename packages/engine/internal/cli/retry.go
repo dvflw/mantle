@@ -103,9 +103,9 @@ and everything downstream re-execute.`,
 
 			if result.Status == "failed" {
 				failedStep := ""
-				for name, sr := range result.Steps {
-					if sr.Status == "failed" {
-						failedStep = name
+				for _, s := range orderedSteps(result) {
+					if s.status == "failed" {
+						failedStep = s.name
 						break
 					}
 				}

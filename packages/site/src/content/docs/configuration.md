@@ -195,6 +195,8 @@ Use a `mantle.yaml` file with production values, or pass everything through envi
 
 ```yaml
 # mantle.yaml
+version: 1
+
 database:
   url: postgres://mantle:${DB_PASSWORD}@db.internal:5432/mantle?sslmode=require
 
@@ -223,6 +225,8 @@ When running `mantle serve`, the `api.address` setting controls which address th
 
 ```yaml
 # mantle.yaml
+version: 1
+
 database:
   url: postgres://mantle:secret@db.internal:5432/mantle?sslmode=require
 
