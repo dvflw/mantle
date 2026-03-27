@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -267,7 +268,7 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 			e.loadArtifactsIntoCELContext(ctx, execID, celCtx)
 		} else if stepResult.Status == "skipped" {
 			celCtx.Steps[step.Name] = map[string]any{"output": map[string]any{}, "error": nil}
-		} else if stepResult.Status == "failed" {
+		} else if stepResult.Status == "failed" || stepResult.Status == "timed_out" {
 			if step.ContinueOnError {
 				// Step failed but workflow continues — expose error and partial output to downstream steps.
 				celCtx.Steps[step.Name] = map[string]any{
@@ -285,13 +286,13 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 			} else {
 				// Halt main execution — record failure or timeout.
 				failedStepName = step.Name
-				terminalStatus := "failed"
-				if ctx.Err() == context.DeadlineExceeded {
+				terminalStatus := stepResult.Status
+				if terminalStatus == "failed" && ctx.Err() == context.DeadlineExceeded {
 					terminalStatus = "timed_out"
 				}
 				result.Status = terminalStatus
 				if terminalStatus == "timed_out" {
-					result.Error = "workflow timeout exceeded"
+					result.Error = fmt.Sprintf("step %q timed out: %s", step.Name, stepResult.Error)
 				} else {
 					result.Error = fmt.Sprintf("step %q failed: %s", step.Name, stepResult.Error)
 				}
@@ -427,8 +428,12 @@ func (e *Engine) executeStep(ctx context.Context, execID string, workflowName st
 
 	if lastErr != nil {
 		errMsg := lastErr.Error()
-		if cpErr := e.updateStep(ctx, execID, step.Name, "failed", output, errMsg, step.ContinueOnError); cpErr != nil {
-			return StepResult{Status: "failed", Output: output, Error: fmt.Sprintf("checkpoint failure: %v (original: %s)", cpErr, errMsg)}
+		stepStatus := "failed"
+		if errors.Is(lastErr, context.DeadlineExceeded) {
+			stepStatus = "timed_out"
+		}
+		if cpErr := e.updateStep(ctx, execID, step.Name, stepStatus, output, errMsg, step.ContinueOnError); cpErr != nil {
+			return StepResult{Status: stepStatus, Output: output, Error: fmt.Sprintf("checkpoint failure: %v (original: %s)", cpErr, errMsg)}
 		}
 		e.Auditor.Emit(ctx, audit.Event{
 			Timestamp: time.Now(),
@@ -436,8 +441,8 @@ func (e *Engine) executeStep(ctx context.Context, execID string, workflowName st
 			Action:    audit.ActionStepFailed,
 			Resource:  audit.Resource{Type: "step_execution", ID: step.Name},
 		})
-		metrics.StepsTotal.WithLabelValues(workflowName, step.Name, "failed").Inc()
-		return StepResult{Status: "failed", Output: output, Error: errMsg}
+		metrics.StepsTotal.WithLabelValues(workflowName, step.Name, stepStatus).Inc()
+		return StepResult{Status: stepStatus, Output: output, Error: errMsg}
 	}
 
 	// Validate output size before persisting.

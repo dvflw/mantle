@@ -90,9 +90,29 @@ func newRunCommand() *cobra.Command {
 				return fmt.Errorf("execution failed: %w", err)
 			}
 
+			// Compute the exit error before writing output so that JSON
+			// mode exits non-zero on failure/timeout/cancellation.
+			var exitErr error
+			switch result.Status {
+			case "failed", "timed_out", "cancelled":
+				failedStep := ""
+				for _, s := range orderedSteps(result) {
+					if s.status == "failed" {
+						failedStep = s.name
+						break
+					}
+				}
+				if failedStep != "" {
+					exitErr = fmt.Errorf("workflow %s at step %q: %s", result.Status, failedStep, result.Error)
+				} else {
+					exitErr = fmt.Errorf("workflow %s: %s", result.Status, result.Error)
+				}
+			}
+
 			// JSON output mode.
 			if outputFormat == "json" {
-				return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
+				_ = json.NewEncoder(cmd.OutOrStdout()).Encode(result)
+				return exitErr
 			}
 
 			// Text output mode.
@@ -122,22 +142,7 @@ func newRunCommand() *cobra.Command {
 				}
 			}
 
-			if result.Status == "failed" {
-				// Find the failed step name for a more actionable error message.
-				failedStep := ""
-				for _, s := range orderedSteps(result) {
-					if s.status == "failed" {
-						failedStep = s.name
-						break
-					}
-				}
-				if failedStep != "" {
-					return fmt.Errorf("workflow failed at step %q: %s", failedStep, result.Error)
-				}
-				return fmt.Errorf("workflow failed: %s", result.Error)
-			}
-
-			return nil
+			return exitErr
 		},
 	}
 

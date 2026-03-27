@@ -38,8 +38,20 @@ func (s *Store) Create(ctx context.Context, name, typeName string, data map[stri
 
 	teamID := auth.TeamIDFromContext(ctx)
 
+	// Use a transaction with the same advisory lock as RotateAll to serialize
+	// credential writes with key rotation.
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("starting transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", int64(0x4D414E544C45)); err != nil {
+		return nil, fmt.Errorf("acquiring advisory lock: %w", err)
+	}
+
 	var cred Credential
-	err = s.DB.QueryRowContext(ctx,
+	err = tx.QueryRowContext(ctx,
 		`INSERT INTO credentials (name, type, encrypted_data, nonce, team_id)
 		 VALUES ($1, $2, $3, $4, $5)
 		 RETURNING id, name, type, created_at, updated_at`,
@@ -47,6 +59,10 @@ func (s *Store) Create(ctx context.Context, name, typeName string, data map[stri
 	).Scan(&cred.ID, &cred.Name, &cred.Type, &cred.CreatedAt, &cred.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("storing credential: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("committing credential: %w", err)
 	}
 
 	return &cred, nil

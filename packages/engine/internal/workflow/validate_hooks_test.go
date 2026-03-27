@@ -230,7 +230,8 @@ steps:
 }
 
 func TestValidate_HookStepNameUniqueAcrossBlocks(t *testing.T) {
-	// Same name in different hook blocks is OK (each block has its own namespace)
+	// Same name in different hook blocks is NOT OK — they share the CEL
+	// namespace (hooks.<step_name>), so duplicates would overwrite each other.
 	result := mustParse(t, `
 name: my-workflow
 steps:
@@ -251,5 +252,8 @@ hooks:
         text: "failure"
 `)
 	errs := Validate(result)
-	assertNoErrors(t, errs)
+	if len(errs) != 1 {
+		t.Fatalf("expected 1 error, got %d: %v", len(errs), errs)
+	}
+	assertErrorContains(t, errs, "duplicate hook step name")
 }

@@ -304,9 +304,9 @@ func TestLoad_VersionValidation(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name:    "version 0 defaults to 1",
+			name:    "version 0 is rejected",
 			yaml:    "version: 0\n",
-			wantErr: "",
+			wantErr: "unsupported config version 0; this version of mantle supports config version 1",
 		},
 		{
 			name:    "version 2 is rejected",

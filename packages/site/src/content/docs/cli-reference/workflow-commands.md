@@ -293,7 +293,7 @@ Usage:
 | Flag | Default | Description |
 |---|---|---|
 | `--from-step` | -- | Step name to retry from. Overrides the default behavior of resuming from the first failed step. All steps from this point forward are re-executed. |
-| `--force` | `false` | Allow retrying an execution that is not in a failed state (e.g., completed or cancelled). |
+| `--force` | `false` | Bypass per-workflow and per-team concurrency limits. |
 
 **Example -- retry from failed step:**
 

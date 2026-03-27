@@ -34,11 +34,17 @@ func (e *Engine) executeHooks(
 	}
 
 	// Populate execution context for CEL expressions in hook steps.
+	// failed_in starts as "steps" when a main step failed; hook failures
+	// update it to the hook block name. Empty string when no failure.
+	failedIn := ""
+	if failedStep != "" {
+		failedIn = "steps"
+	}
 	celCtx.Execution = map[string]any{
 		"status":      mainStatus,
 		"error":       mainError,
 		"failed_step": failedStep,
-		"failed_in":   "steps",
+		"failed_in":   failedIn,
 	}
 
 	// Initialize hooks namespace for inter-hook step references.

@@ -279,8 +279,9 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	}
 
 	// Validate config version.
-	// Missing or 0 is treated as version 1 (backward compat).
-	if cfg.Version == 0 {
+	// If the user did not set "version" at all, default to 1.
+	// If they explicitly set it (including to 0), it must be 1.
+	if !v.IsSet("version") {
 		cfg.Version = 1
 	}
 	if cfg.Version != 1 {
@@ -288,11 +289,26 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	}
 
 	// Deprecated: fall back from "tmp" section to "storage" for backward compatibility.
-	if cfg.Storage.Type == "" && v.IsSet("tmp") {
+	// Field-by-field merge so that env vars / flags on "storage.*" are not clobbered.
+	if v.IsSet("tmp") {
 		if sub := v.Sub("tmp"); sub != nil {
 			var legacy StorageConfig
 			if err := sub.Unmarshal(&legacy); err == nil {
-				cfg.Storage = legacy
+				if cfg.Storage.Type == "" {
+					cfg.Storage.Type = legacy.Type
+				}
+				if cfg.Storage.Bucket == "" {
+					cfg.Storage.Bucket = legacy.Bucket
+				}
+				if cfg.Storage.Prefix == "" {
+					cfg.Storage.Prefix = legacy.Prefix
+				}
+				if cfg.Storage.Path == "" {
+					cfg.Storage.Path = legacy.Path
+				}
+				if cfg.Storage.Retention == "" {
+					cfg.Storage.Retention = legacy.Retention
+				}
 				slog.Warn("config section 'tmp' is deprecated and will be removed in a future release; rename it to 'storage'")
 			}
 		}

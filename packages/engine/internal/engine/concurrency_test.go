@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/dvflw/mantle/internal/audit"
@@ -224,6 +225,76 @@ func TestPromoteQueuedByTeam_PromotesOldest(t *testing.T) {
 	}
 	if oldestStatus != "pending" {
 		t.Errorf("oldest execution status = %q, want %q", oldestStatus, "pending")
+	}
+}
+
+func TestCheckConcurrencyLimits_TeamLevelLimit(t *testing.T) {
+	database := setupTestDB(t)
+	ctx := context.Background()
+	teamID := auth.DefaultTeamID
+
+	// Insert 3 running executions for the team across different workflows.
+	for i := 0; i < 3; i++ {
+		_, err := database.ExecContext(ctx,
+			`INSERT INTO workflow_executions (workflow_name, workflow_version, status, team_id)
+			 VALUES ($1, 1, 'running', $2)`,
+			fmt.Sprintf("wf-team-%d", i), teamID)
+		if err != nil {
+			t.Fatalf("inserting running execution: %v", err)
+		}
+	}
+
+	// context.Background() yields DefaultTeamID via TeamIDFromContext.
+	tx, err := database.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Team limit of 3 with 3 running — should queue.
+	result := CheckConcurrencyLimits(ctx, tx, "wf-new", 0, "queue", 3)
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	if result.Allowed {
+		t.Error("expected Allowed=false when team is at limit, got true")
+	}
+	if !result.Queued {
+		t.Errorf("expected Queued=true, got false (Err=%v)", result.Err)
+	}
+	if result.Err != nil {
+		t.Errorf("expected nil error, got: %v", result.Err)
+	}
+}
+
+func TestCheckConcurrencyLimits_TeamLevelAllowed(t *testing.T) {
+	database := setupTestDB(t)
+	ctx := context.Background()
+	teamID := auth.DefaultTeamID
+
+	// Insert 1 running execution for the team.
+	_, err := database.ExecContext(ctx,
+		`INSERT INTO workflow_executions (workflow_name, workflow_version, status, team_id)
+		 VALUES ('wf-team-ok', 1, 'running', $1)`, teamID)
+	if err != nil {
+		t.Fatalf("inserting running execution: %v", err)
+	}
+
+	tx, err := database.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Team limit of 5 with 1 running — should be allowed.
+	result := CheckConcurrencyLimits(ctx, tx, "wf-new", 0, "queue", 5)
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	if !result.Allowed {
+		t.Errorf("expected Allowed=true when under team limit, got false (Queued=%v, Err=%v)", result.Queued, result.Err)
 	}
 }
 

@@ -122,8 +122,15 @@ func (e *Engine) RetryExecution(ctx context.Context, originalExecID string, from
 		}
 	}
 
-	// 7. Link new execution to original.
-	_, err = e.DB.ExecContext(ctx,
+	// 7. Link new execution to original, copy upstream steps, and emit audit —
+	// all in a single transaction so the audit record is atomic with the mutation.
+	linkTx, err := e.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("starting link transaction: %w", err)
+	}
+	defer linkTx.Rollback()
+
+	_, err = linkTx.ExecContext(ctx,
 		`UPDATE workflow_executions SET retried_from_execution_id = $1 WHERE id = $2 AND team_id = $3`,
 		originalExecID, newExecID, teamID,
 	)
@@ -137,7 +144,7 @@ func (e *Engine) RetryExecution(ctx context.Context, originalExecID string, from
 		upstreamSet[name] = true
 	}
 
-	rows, err := e.DB.QueryContext(ctx,
+	rows, err := linkTx.QueryContext(ctx,
 		`SELECT DISTINCT ON (step_name) step_name, status, output, error
 		 FROM step_executions
 		 WHERE execution_id = $1 AND hook_block IS NULL
@@ -168,7 +175,7 @@ func (e *Engine) RetryExecution(ctx context.Context, originalExecID string, from
 		if errVal != "" {
 			errPtr = &errVal
 		}
-		_, err := e.DB.ExecContext(ctx,
+		_, err := linkTx.ExecContext(ctx,
 			`INSERT INTO step_executions (execution_id, step_name, attempt, status, output, error, started_at)
 			 VALUES ($1, $2, 1, $3, $4, $5, NOW())
 			 ON CONFLICT (execution_id, step_name, attempt) WHERE hook_block IS NULL DO NOTHING`,
@@ -182,8 +189,8 @@ func (e *Engine) RetryExecution(ctx context.Context, originalExecID string, from
 		return nil, fmt.Errorf("iterating original steps: %w", err)
 	}
 
-	// 9. Emit audit event.
-	e.Auditor.Emit(ctx, audit.Event{
+	// 9. Emit audit event inside the same transaction.
+	if err := audit.EmitTx(ctx, linkTx, audit.Event{
 		Timestamp: time.Now(),
 		Actor:     "engine",
 		Action:    audit.ActionExecutionRetried,
@@ -194,7 +201,13 @@ func (e *Engine) RetryExecution(ctx context.Context, originalExecID string, from
 			"workflow":              workflowName,
 			"version":               fmt.Sprintf("%d", version),
 		},
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("emitting retry audit event: %w", err)
+	}
+
+	if err := linkTx.Commit(); err != nil {
+		return nil, fmt.Errorf("committing retry link: %w", err)
+	}
 
 	// 10. If queued, return immediately with queued status.
 	if initialStatus == "queued" {

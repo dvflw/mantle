@@ -29,6 +29,11 @@ type FilesystemStorage struct {
 
 // Put copies the file at localPath to the storage location identified by key and returns its path.
 func (fs *FilesystemStorage) Put(ctx context.Context, key string, localPath string) (string, error) {
+	// Reject obviously malicious keys before any filesystem operations.
+	if filepath.IsAbs(key) || key == ".." || strings.HasPrefix(key, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid artifact key: must be a relative path within the storage directory")
+	}
+
 	destPath := filepath.Join(fs.BasePath, key)
 	// Validate destination is within BasePath to prevent path traversal.
 	// Use EvalSymlinks for canonicalization to prevent symlink-based escapes.
@@ -89,12 +94,9 @@ func (fs *FilesystemStorage) DeleteByPrefix(ctx context.Context, prefix string) 
 	}
 	resolvedTarget, err := filepath.EvalSymlinks(target)
 	if err != nil {
-		// Target doesn't exist — fall back to Abs for traversal check.
-		absTarget, absErr := filepath.Abs(target)
-		if absErr != nil {
-			return fmt.Errorf("resolving target path: %w", err)
-		}
-		rel, relErr := filepath.Rel(resolvedBase, absTarget)
+		// Target doesn't exist — compute candidate relative to resolvedBase for traversal check.
+		candidate := filepath.Join(resolvedBase, prefix)
+		rel, relErr := filepath.Rel(resolvedBase, candidate)
 		if relErr != nil || strings.HasPrefix(rel, "..") {
 			return fmt.Errorf("prefix escapes base path")
 		}
@@ -119,12 +121,9 @@ func (fs *FilesystemStorage) Delete(ctx context.Context, url string) error {
 	}
 	resolvedURL, err := filepath.EvalSymlinks(url)
 	if err != nil {
-		// File doesn't exist — fall back to Abs for traversal check.
-		absURL, absErr := filepath.Abs(url)
-		if absErr != nil {
-			return fmt.Errorf("resolving artifact path: %w", err)
-		}
-		rel, relErr := filepath.Rel(resolvedBase, absURL)
+		// File doesn't exist — compute path relative to resolvedBase for traversal check.
+		// url is an absolute path returned by Put, so use it directly.
+		rel, relErr := filepath.Rel(resolvedBase, url)
 		if relErr != nil || strings.HasPrefix(rel, "..") {
 			return fmt.Errorf("artifact path escapes base path")
 		}

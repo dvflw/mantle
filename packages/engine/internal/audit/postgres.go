@@ -43,7 +43,11 @@ type execer interface {
 
 // EmitTx emits an audit event using an existing transaction.
 // This ensures the audit record is committed atomically with the operation it describes.
-func EmitTx(ctx context.Context, tx *sql.Tx, event Event) error {
+// If emitter is non-nil, the event is enriched with auth context before inserting.
+func EmitTx(ctx context.Context, tx *sql.Tx, event Event, emitter ...*PostgresEmitter) error {
+	if len(emitter) > 0 && emitter[0] != nil {
+		event = emitter[0].enrichFromContext(ctx, event)
+	}
 	return emitEvent(ctx, tx, event)
 }
 

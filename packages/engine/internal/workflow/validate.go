@@ -614,18 +614,20 @@ func validateHooks(hooks *HooksConfig) []ValidationError {
 		}
 	}
 
-	// Validate each hook block. Each block has its own name namespace.
-	errs = append(errs, validateHookSteps(hooks.OnSuccess, "hooks.on_success")...)
-	errs = append(errs, validateHookSteps(hooks.OnFailure, "hooks.on_failure")...)
-	errs = append(errs, validateHookSteps(hooks.OnFinish, "hooks.on_finish")...)
+	// Validate each hook block. Step names must be unique across all hook blocks
+	// because they share the same CEL namespace (hooks.<step_name>).
+	crossBlockSeen := make(map[string]string) // step name -> block that first declared it
+	errs = append(errs, validateHookSteps(hooks.OnSuccess, "hooks.on_success", crossBlockSeen)...)
+	errs = append(errs, validateHookSteps(hooks.OnFailure, "hooks.on_failure", crossBlockSeen)...)
+	errs = append(errs, validateHookSteps(hooks.OnFinish, "hooks.on_finish", crossBlockSeen)...)
 
 	return errs
 }
 
 // validateHookSteps validates a slice of hook steps within a single block.
-func validateHookSteps(steps []Step, blockPrefix string) []ValidationError {
+// crossBlockSeen tracks step names across all hook blocks for cross-block uniqueness.
+func validateHookSteps(steps []Step, blockPrefix string, crossBlockSeen map[string]string) []ValidationError {
 	var errs []ValidationError
-	seen := make(map[string]bool)
 
 	for i, step := range steps {
 		prefix := fmt.Sprintf("%s[%d]", blockPrefix, i)
@@ -642,13 +644,13 @@ func validateHookSteps(steps []Step, blockPrefix string) []ValidationError {
 					Message: "hook step name must match ^[a-z][a-z0-9-]*$",
 				})
 			}
-			if seen[step.Name] {
+			if prevBlock, exists := crossBlockSeen[step.Name]; exists {
 				errs = append(errs, ValidationError{
 					Field:   prefix + ".name",
-					Message: fmt.Sprintf("duplicate hook step name %q", step.Name),
+					Message: fmt.Sprintf("duplicate hook step name %q (also declared in %s)", step.Name, prevBlock),
 				})
 			}
-			seen[step.Name] = true
+			crossBlockSeen[step.Name] = blockPrefix
 		}
 
 		if step.Action == "" {
