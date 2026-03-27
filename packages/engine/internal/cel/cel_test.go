@@ -296,25 +296,165 @@ func TestEval_EnvVarBlocksSensitive(t *testing.T) {
 }
 
 func TestEnvVars_PrefixStripping(t *testing.T) {
-	// Directly test the envVars function.
+	// Directly test the mergeEnvVars function.
 	os.Setenv("MANTLE_ENV_TEST_KEY", "test-value")
 	defer os.Unsetenv("MANTLE_ENV_TEST_KEY")
 
 	os.Setenv("MANTLE_DATABASE_URL", "should-not-appear")
 	defer os.Unsetenv("MANTLE_DATABASE_URL")
 
-	result := envVars()
+	result := mergeEnvVars(nil)
 
 	if v, ok := result["TEST_KEY"]; !ok || v != "test-value" {
-		t.Errorf("envVars()[TEST_KEY] = %q, %v; want %q, true", v, ok, "test-value")
+		t.Errorf("mergeEnvVars()[TEST_KEY] = %q, %v; want %q, true", v, ok, "test-value")
 	}
 
 	if _, ok := result["MANTLE_DATABASE_URL"]; ok {
-		t.Error("envVars() should not contain MANTLE_DATABASE_URL")
+		t.Error("mergeEnvVars() should not contain MANTLE_DATABASE_URL")
 	}
 
 	if _, ok := result["DATABASE_URL"]; ok {
-		t.Error("envVars() should not contain DATABASE_URL (MANTLE_ prefix without ENV_)")
+		t.Error("mergeEnvVars() should not contain DATABASE_URL (MANTLE_ prefix without ENV_)")
+	}
+}
+
+func TestEnvVars_ConfigEnvMerge(t *testing.T) {
+	configEnv := map[string]string{
+		"APP_NAME": "my-workflow-app",
+		"REGION":   "us-east-1",
+	}
+
+	eval, err := NewEvaluator()
+	if err != nil {
+		t.Fatalf("NewEvaluator() error: %v", err)
+	}
+	eval.SetConfigEnv(configEnv)
+
+	ctx := newTestContext()
+
+	result, err := eval.Eval(`env.APP_NAME`, ctx)
+	if err != nil {
+		t.Fatalf("Eval(env.APP_NAME) error: %v", err)
+	}
+	if result != "my-workflow-app" {
+		t.Errorf("env.APP_NAME = %v, want %q", result, "my-workflow-app")
+	}
+
+	result, err = eval.Eval(`env.REGION`, ctx)
+	if err != nil {
+		t.Fatalf("Eval(env.REGION) error: %v", err)
+	}
+	if result != "us-east-1" {
+		t.Errorf("env.REGION = %v, want %q", result, "us-east-1")
+	}
+}
+
+func TestEnvVars_OsEnvOverridesConfig(t *testing.T) {
+	t.Setenv("MANTLE_ENV_REGION", "eu-west-1")
+
+	configEnv := map[string]string{
+		"REGION":   "us-east-1",
+		"APP_NAME": "my-app",
+	}
+
+	eval, err := NewEvaluator()
+	if err != nil {
+		t.Fatalf("NewEvaluator() error: %v", err)
+	}
+	eval.SetConfigEnv(configEnv)
+
+	ctx := newTestContext()
+
+	// MANTLE_ENV_REGION should override the config value.
+	result, err := eval.Eval(`env.REGION`, ctx)
+	if err != nil {
+		t.Fatalf("Eval(env.REGION) error: %v", err)
+	}
+	if result != "eu-west-1" {
+		t.Errorf("env.REGION = %v, want %q (OS env override)", result, "eu-west-1")
+	}
+
+	// APP_NAME should still come from config (no OS env override).
+	result, err = eval.Eval(`env.APP_NAME`, ctx)
+	if err != nil {
+		t.Fatalf("Eval(env.APP_NAME) error: %v", err)
+	}
+	if result != "my-app" {
+		t.Errorf("env.APP_NAME = %v, want %q", result, "my-app")
+	}
+}
+
+func TestEnvVars_NilConfigEnv(t *testing.T) {
+	eval, err := NewEvaluator()
+	if err != nil {
+		t.Fatalf("NewEvaluator() error: %v", err)
+	}
+
+	// SetConfigEnv(nil) should not panic.
+	eval.SetConfigEnv(nil)
+
+	ctx := newTestContext()
+
+	// env map should still work (just no config values).
+	t.Setenv("MANTLE_ENV_SAFE_KEY", "safe-value")
+	eval.SetConfigEnv(nil)
+
+	result, err := eval.Eval(`env.SAFE_KEY`, ctx)
+	if err != nil {
+		t.Fatalf("Eval(env.SAFE_KEY) error: %v", err)
+	}
+	if result != "safe-value" {
+		t.Errorf("env.SAFE_KEY = %v, want %q", result, "safe-value")
+	}
+}
+
+func TestEval_HookAndExecutionVariables(t *testing.T) {
+	eval, err := NewEvaluator()
+	if err != nil {
+		t.Fatalf("NewEvaluator() error: %v", err)
+	}
+
+	ctx := &Context{
+		Steps:  map[string]map[string]any{},
+		Inputs: map[string]any{},
+		Hooks: map[string]map[string]any{
+			"notify": {
+				"output": map[string]any{
+					"sent": true,
+				},
+			},
+		},
+		Execution: map[string]any{
+			"status":      "failed",
+			"failed_step": "fetch",
+		},
+	}
+
+	// Test: hooks['notify'].output.sent == true
+	result, err := eval.EvalBool(`hooks['notify'].output.sent == true`, ctx)
+	if err != nil {
+		t.Fatalf("Eval hooks sent: %v", err)
+	}
+	if !result {
+		t.Error("hooks['notify'].output.sent should be true")
+	}
+
+	// Test: execution.status == "failed"
+	result, err = eval.EvalBool(`execution.status == "failed"`, ctx)
+	if err != nil {
+		t.Fatalf("Eval execution.status: %v", err)
+	}
+	if !result {
+		t.Error("execution.status should be 'failed'")
+	}
+
+	// Test: execution.failed_step == "fetch"
+	result, err = eval.EvalBool(`execution.failed_step == "fetch"`, ctx)
+	if err != nil {
+		t.Fatalf("Eval execution.failed_step: %v", err)
+	}
+	if !result {
+		t.Error("execution.failed_step should be 'fetch'")
 	}
 }
 

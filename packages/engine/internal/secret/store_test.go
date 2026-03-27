@@ -256,5 +256,187 @@ func containsBytes(haystack, needle []byte) bool {
 	return false
 }
 
+func TestRotateAll_ReEncryptsAllCredentials(t *testing.T) {
+	store := setupTestStore(t)
+	ctx := context.Background()
+
+	store.Create(ctx, "cred-1", "generic", map[string]string{"key": "secret-1"})
+	store.Create(ctx, "cred-2", "bearer", map[string]string{"token": "secret-2"})
+
+	oldEncryptor := store.Encryptor
+
+	newEnc, err := NewEncryptor(testKey(t))
+	if err != nil {
+		t.Fatalf("NewEncryptor() error: %v", err)
+	}
+
+	tx, err := store.DB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("BeginTx() error: %v", err)
+	}
+	defer tx.Rollback()
+
+	count, err := RotateAll(ctx, tx, oldEncryptor, newEnc)
+	if err != nil {
+		t.Fatalf("RotateAll() error: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("RotateAll() count = %d, want 2", count)
+	}
+
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit() error: %v", err)
+	}
+
+	// Old encryptor should no longer work.
+	_, err = store.Get(ctx, "cred-1")
+	if err == nil {
+		t.Error("Get() with old encryptor should fail after rotation")
+	}
+
+	// Switch to new encryptor and verify both credentials.
+	store.Encryptor = newEnc
+	data, err := store.Get(ctx, "cred-1")
+	if err != nil {
+		t.Fatalf("Get() with new encryptor error: %v", err)
+	}
+	if data["key"] != "secret-1" {
+		t.Errorf("key = %q, want %q", data["key"], "secret-1")
+	}
+
+	data2, err := store.Get(ctx, "cred-2")
+	if err != nil {
+		t.Fatalf("Get() cred-2 error: %v", err)
+	}
+	if data2["token"] != "secret-2" {
+		t.Errorf("token = %q, want %q", data2["token"], "secret-2")
+	}
+}
+
+func TestRotateAll_RollbackOnDecryptFailure(t *testing.T) {
+	store := setupTestStore(t)
+	ctx := context.Background()
+
+	store.Create(ctx, "cred-1", "generic", map[string]string{"key": "val-1"})
+
+	// Use a wrong encryptor as the "old" key — decryption should fail.
+	wrongEnc, err := NewEncryptor(testKey(t))
+	if err != nil {
+		t.Fatalf("NewEncryptor() error: %v", err)
+	}
+	newEnc, err := NewEncryptor(testKey(t))
+	if err != nil {
+		t.Fatalf("NewEncryptor() error: %v", err)
+	}
+
+	tx, err := store.DB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("BeginTx() error: %v", err)
+	}
+	defer tx.Rollback()
+
+	_, err = RotateAll(ctx, tx, wrongEnc, newEnc)
+	if err == nil {
+		t.Fatal("RotateAll() with wrong old key should fail")
+	}
+
+	// Original credentials should still be intact with the original encryptor.
+	data, err := store.Get(ctx, "cred-1")
+	if err != nil {
+		t.Fatalf("Get() after rollback error: %v", err)
+	}
+	if data["key"] != "val-1" {
+		t.Errorf("key = %q, want %q after rollback", data["key"], "val-1")
+	}
+}
+
+func TestRotateAll_GlobalScope(t *testing.T) {
+	store := setupTestStore(t)
+	ctx := context.Background()
+
+	// Insert credentials with different team_ids directly via SQL
+	// to verify RotateAll operates across all teams.
+	plaintext1 := []byte(`{"key":"team-a-secret"}`)
+	ct1, nonce1, err := store.Encryptor.Encrypt(plaintext1)
+	if err != nil {
+		t.Fatalf("Encrypt() error: %v", err)
+	}
+	plaintext2 := []byte(`{"key":"team-b-secret"}`)
+	ct2, nonce2, err := store.Encryptor.Encrypt(plaintext2)
+	if err != nil {
+		t.Fatalf("Encrypt() error: %v", err)
+	}
+
+	// Use the default team (created by migration) for team A.
+	teamA := "00000000-0000-0000-0000-000000000001"
+	// Create a second team for team B.
+	teamB := "00000000-0000-0000-0000-000000000002"
+	_, err = store.DB.ExecContext(ctx,
+		`INSERT INTO teams (id, name) VALUES ($1, $2)`, teamB, "team-b")
+	if err != nil {
+		t.Fatalf("insert team-b: %v", err)
+	}
+
+	_, err = store.DB.ExecContext(ctx,
+		`INSERT INTO credentials (name, type, encrypted_data, nonce, team_id) VALUES ($1, $2, $3, $4, $5)`,
+		"cred-team-a", "generic", ct1, nonce1, teamA)
+	if err != nil {
+		t.Fatalf("insert team-a credential: %v", err)
+	}
+	_, err = store.DB.ExecContext(ctx,
+		`INSERT INTO credentials (name, type, encrypted_data, nonce, team_id) VALUES ($1, $2, $3, $4, $5)`,
+		"cred-team-b", "generic", ct2, nonce2, teamB)
+	if err != nil {
+		t.Fatalf("insert team-b credential: %v", err)
+	}
+
+	oldEncryptor := store.Encryptor
+	newEnc, err := NewEncryptor(testKey(t))
+	if err != nil {
+		t.Fatalf("NewEncryptor() error: %v", err)
+	}
+
+	tx, err := store.DB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("BeginTx() error: %v", err)
+	}
+	defer tx.Rollback()
+
+	count, err := RotateAll(ctx, tx, oldEncryptor, newEnc)
+	if err != nil {
+		t.Fatalf("RotateAll() error: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("RotateAll() count = %d, want 2 (both teams)", count)
+	}
+
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit() error: %v", err)
+	}
+
+	// Verify both team credentials are re-encrypted with new key.
+	for _, name := range []string{"cred-team-a", "cred-team-b"} {
+		var encData, nonce []byte
+		err := store.DB.QueryRowContext(ctx,
+			`SELECT encrypted_data, nonce FROM credentials WHERE name = $1`, name,
+		).Scan(&encData, &nonce)
+		if err != nil {
+			t.Fatalf("query %s: %v", name, err)
+		}
+
+		// Should decrypt with new encryptor.
+		_, err = newEnc.Decrypt(encData, nonce)
+		if err != nil {
+			t.Errorf("Decrypt(%s) with new key failed: %v", name, err)
+		}
+
+		// Should NOT decrypt with old encryptor.
+		_, err = oldEncryptor.Decrypt(encData, nonce)
+		if err == nil {
+			t.Errorf("Decrypt(%s) with old key should fail after rotation", name)
+		}
+	}
+}
+
 // Ensure the store variable satisfies the need for *sql.DB (compile check).
 var _ *sql.DB

@@ -10,7 +10,7 @@ import (
 
 func TestReaper_CleansExpiredArtifacts(t *testing.T) {
 	dir := t.TempDir()
-	fs := &FilesystemTmpStorage{BasePath: dir}
+	fs := &FilesystemStorage{BasePath: dir}
 	db := setupTestDB(t)
 	store := &Store{DB: db}
 	ctx := context.Background()
@@ -48,7 +48,7 @@ func TestReaper_CleansExpiredArtifacts(t *testing.T) {
 
 	reaper := &Reaper{
 		Store:      store,
-		TmpStorage: fs,
+		Storage: fs,
 		Retention:  24 * time.Hour,
 	}
 
@@ -72,11 +72,11 @@ func TestReaper_CleansExpiredArtifacts(t *testing.T) {
 
 func TestReaper_SkipsWhenRetentionZero(t *testing.T) {
 	dir := t.TempDir()
-	fs := &FilesystemTmpStorage{BasePath: dir}
+	fs := &FilesystemStorage{BasePath: dir}
 
 	reaper := &Reaper{
 		Store:      &Store{}, // safe: Sweep returns early when Retention <= 0, before accessing Store.DB
-		TmpStorage: fs,
+		Storage: fs,
 		Retention:  0,
 	}
 

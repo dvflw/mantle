@@ -51,7 +51,7 @@ steps:
 	// can find the parent execution ID when called during resumeExecution.
 	// First, create the execution record manually (same as Engine.Execute does).
 	ctx := context.Background()
-	parentExecID, err := eng.createExecution(ctx, "parent-wf", parentVersion, nil)
+	parentExecID, err := eng.createExecution(ctx, "parent-wf", parentVersion, nil, "pending")
 	if err != nil {
 		t.Fatalf("createExecution error: %v", err)
 	}
@@ -161,7 +161,7 @@ steps:
 
 	// Create parent execution at depth 0.
 	ctx := context.Background()
-	parentExecID, err := eng.createExecution(ctx, "deep-parent", parentVersion, nil)
+	parentExecID, err := eng.createExecution(ctx, "deep-parent", parentVersion, nil, "pending")
 	if err != nil {
 		t.Fatalf("createExecution error: %v", err)
 	}
@@ -276,7 +276,7 @@ steps:
 	ctx := context.Background()
 
 	// Create the parent execution.
-	parentExecID, err := eng.createExecution(ctx, "recoverable-parent", parentVersion, nil)
+	parentExecID, err := eng.createExecution(ctx, "recoverable-parent", parentVersion, nil, "pending")
 	if err != nil {
 		t.Fatalf("createExecution error: %v", err)
 	}

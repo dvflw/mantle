@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -24,17 +25,18 @@ import (
 
 // Engine executes workflows by running steps sequentially with checkpoint-and-resume.
 type Engine struct {
-	DB                 *sql.DB
-	Registry           *connector.Registry
-	Auditor            audit.Emitter
-	CEL                *mantleCEL.Evaluator
-	Resolver           *secret.Resolver
-	MaxToolRoundsLimit int                  // admin ceiling for max_rounds; 0 = no limit
-	MaxWorkflowDepth   int                  // max nesting depth for workflow/run; 0 = use default (10)
-	BudgetChecker      *budget.Checker      // nil = budget enforcement disabled
-	BudgetStore        *budget.Store        // nil = token usage recording disabled
-	ArtifactStore      *artifact.Store      // nil = artifact system disabled
-	TmpStorage         artifact.TmpStorage  // nil = artifact system disabled
+	DB                             *sql.DB
+	Registry                       *connector.Registry
+	Auditor                        audit.Emitter
+	CEL                            *mantleCEL.Evaluator
+	Resolver                       *secret.Resolver
+	MaxToolRoundsLimit             int              // admin ceiling for max_rounds; 0 = no limit
+	MaxWorkflowDepth               int              // max nesting depth for workflow/run; 0 = use default (10)
+	MaxConcurrentExecutionsPerTeam int              // 0 = unlimited; per-team concurrency cap
+	BudgetChecker                  *budget.Checker  // nil = budget enforcement disabled
+	BudgetStore                    *budget.Store    // nil = token usage recording disabled
+	ArtifactStore                  *artifact.Store  // nil = artifact system disabled
+	Storage                        artifact.Storage // nil = artifact system disabled
 }
 
 // StepContext carries workflow-level metadata needed by step execution.
@@ -76,12 +78,70 @@ type StepResult struct {
 	Duration time.Duration  `json:"duration"`
 }
 
+// ExecuteOptions controls execution behavior.
+type ExecuteOptions struct {
+	Force bool // bypass concurrency limits
+}
+
 // Execute runs a workflow by name, pinned to the specified version.
 func (e *Engine) Execute(ctx context.Context, workflowName string, version int, inputs map[string]any) (*ExecutionResult, error) {
-	// Create execution record.
-	execID, err := e.createExecution(ctx, workflowName, version, inputs)
+	return e.ExecuteWithOptions(ctx, workflowName, version, inputs, ExecuteOptions{})
+}
+
+// ExecuteWithOptions runs a workflow with configurable execution options.
+func (e *Engine) ExecuteWithOptions(ctx context.Context, workflowName string, version int, inputs map[string]any, opts ExecuteOptions) (*ExecutionResult, error) {
+	// Load workflow to check concurrency settings.
+	wf, err := e.loadWorkflow(ctx, workflowName, version)
 	if err != nil {
-		return nil, fmt.Errorf("creating execution: %w", err)
+		return nil, fmt.Errorf("loading workflow: %w", err)
+	}
+
+	// Check concurrency limits unless force-bypassed.
+	// When concurrency limits apply, the check and execution insert happen
+	// in the same transaction so the advisory lock is held until the row
+	// exists — closing the TOCTOU window.
+	var execID string
+	initialStatus := "pending"
+	if !opts.Force && (wf.MaxParallelExecutions > 0 || e.MaxConcurrentExecutionsPerTeam > 0) {
+		tx, txErr := e.DB.BeginTx(ctx, nil)
+		if txErr != nil {
+			return nil, fmt.Errorf("starting concurrency check transaction: %w", txErr)
+		}
+		defer tx.Rollback()
+
+		result := CheckConcurrencyLimits(ctx, tx, workflowName,
+			wf.MaxParallelExecutions, wf.OnLimit, e.MaxConcurrentExecutionsPerTeam)
+
+		if result.Err != nil {
+			return nil, result.Err // rejected
+		}
+		if result.Queued {
+			initialStatus = "queued"
+		}
+
+		// Insert execution row inside the same transaction.
+		execID, err = e.createExecutionTx(ctx, tx, workflowName, version, inputs, initialStatus)
+		if err != nil {
+			return nil, fmt.Errorf("creating execution: %w", err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("committing concurrency check: %w", err)
+		}
+	} else {
+		// No concurrency limits — use implicit transaction.
+		execID, err = e.createExecution(ctx, workflowName, version, inputs, initialStatus)
+		if err != nil {
+			return nil, fmt.Errorf("creating execution: %w", err)
+		}
+	}
+
+	// If queued, return immediately with queued status.
+	if initialStatus == "queued" {
+		return &ExecutionResult{
+			ExecutionID: execID,
+			Status:      "queued",
+		}, nil
 	}
 
 	return e.resumeExecution(ctx, execID, workflowName, version, inputs)
@@ -176,7 +236,8 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 		TeamID:              auth.TeamIDFromContext(ctx),
 	}
 
-	// Execute steps sequentially.
+	// Execute steps sequentially, tracking failure state for hooks.
+	var failedStepName string
 	for _, step := range wf.Steps {
 		// Check if execution was cancelled externally (e.g., mantle cancel).
 		var currentStatus string
@@ -218,7 +279,7 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 			e.loadArtifactsIntoCELContext(ctx, execID, celCtx)
 		} else if stepResult.Status == "skipped" {
 			celCtx.Steps[step.Name] = map[string]any{"output": map[string]any{}, "error": nil}
-		} else if stepResult.Status == "failed" {
+		} else if stepResult.Status == "failed" || stepResult.Status == "timed_out" {
 			if step.ContinueOnError {
 				// Step failed but workflow continues — expose error and partial output to downstream steps.
 				celCtx.Steps[step.Name] = map[string]any{
@@ -234,26 +295,90 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 				})
 				metrics.StepsContinuedOnErrorTotal.WithLabelValues(workflowName, step.Name).Inc()
 			} else {
-				// Original behavior — halt execution.
-				result.Status = "failed"
-				result.Error = fmt.Sprintf("step %q failed: %s", step.Name, stepResult.Error)
+				// Halt main execution — record failure or timeout.
+				failedStepName = step.Name
+				terminalStatus := stepResult.Status
+				if terminalStatus == "failed" && ctx.Err() == context.DeadlineExceeded {
+					terminalStatus = "timed_out"
+				}
+				result.Status = terminalStatus
+				if terminalStatus == "timed_out" {
+					result.Error = fmt.Sprintf("step %q timed out: %s", step.Name, stepResult.Error)
+				} else {
+					result.Error = fmt.Sprintf("step %q failed: %s", step.Name, stepResult.Error)
+				}
 				result.Duration = time.Since(execStart)
-				if err := e.updateExecutionStatus(ctx, execID, "failed", result.Error); err != nil {
+				// Use a background context for the DB update in case the original is expired.
+				updateCtx := ctx
+				if ctx.Err() != nil {
+					updateCtx = context.Background()
+					if user := auth.UserFromContext(ctx); user != nil {
+						updateCtx = auth.WithUser(updateCtx, user)
+					}
+				}
+				if err := e.updateExecutionStatus(updateCtx, execID, terminalStatus, result.Error); err != nil {
 					return nil, fmt.Errorf("checkpoint: %w", err)
 				}
-				metrics.ExecutionsTotal.WithLabelValues(workflowName, "failed").Inc()
+				metrics.ExecutionsTotal.WithLabelValues(workflowName, terminalStatus).Inc()
 				metrics.ExecutionDuration.WithLabelValues(workflowName).Observe(time.Since(execStart).Seconds())
-				return result, nil
+				break
 			}
 		}
 	}
 
-	if err := e.updateExecutionStatus(ctx, execID, "completed", ""); err != nil {
-		return nil, fmt.Errorf("checkpoint: %w", err)
+	// If no step failed, mark execution as completed.
+	if failedStepName == "" {
+		if err := e.updateExecutionStatus(ctx, execID, "completed", ""); err != nil {
+			return nil, fmt.Errorf("checkpoint: %w", err)
+		}
+		result.Duration = time.Since(execStart)
+		metrics.ExecutionsTotal.WithLabelValues(workflowName, "completed").Inc()
+		metrics.ExecutionDuration.WithLabelValues(workflowName).Observe(time.Since(execStart).Seconds())
 	}
-	result.Duration = time.Since(execStart)
-	metrics.ExecutionsTotal.WithLabelValues(workflowName, "completed").Inc()
-	metrics.ExecutionDuration.WithLabelValues(workflowName).Observe(time.Since(execStart).Seconds())
+
+	// Run lifecycle hooks if configured.
+	// Hooks are best-effort — they never alter the workflow execution status.
+	if wf.Hooks != nil {
+		mainStatus := result.Status
+		// Detect timeout: context expired and not a user cancellation.
+		if ctx.Err() != nil && result.Status != "cancelled" {
+			mainStatus = "timed_out"
+		}
+
+		// Determine the hook execution context.
+		// If the main workflow timed out, hooks need a fresh context so they
+		// get their own timeout budget. For user cancellations, skip hooks entirely.
+		hookCtx := ctx
+		if ctx.Err() != nil {
+			if result.Status == "cancelled" {
+				// User cancellation — skip hooks.
+				return result, nil
+			}
+			// Timeout — create fresh context and propagate team identity.
+			hookCtx = context.Background()
+			if user := auth.UserFromContext(ctx); user != nil {
+				hookCtx = auth.WithUser(hookCtx, user)
+			}
+		}
+
+		e.executeHooks(hookCtx, execID, workflowName, wf, mainStatus, result.Error, failedStepName, celCtx, sc)
+	}
+
+	// Promote next queued execution now that this slot is free (after hooks complete).
+	// Use a fresh context — the original may be expired if the workflow timed out.
+	promoteCtx, promoteCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer promoteCancel()
+	if err := PromoteQueued(promoteCtx, e.DB, workflowName, e.Auditor); err != nil {
+		log.Printf("failed to promote queued execution for %s: %v", workflowName, err)
+		metrics.PromotionFailuresTotal.WithLabelValues(workflowName, "workflow").Inc()
+	}
+
+	// Also promote by team in case the execution was queued due to a team-level limit.
+	if err := PromoteQueuedByTeam(promoteCtx, e.DB, sc.TeamID, e.Auditor); err != nil {
+		log.Printf("failed to promote queued execution for team %s: %v", sc.TeamID, err)
+		metrics.PromotionFailuresTotal.WithLabelValues(workflowName, "team").Inc()
+	}
+
 	return result, nil
 }
 
@@ -314,8 +439,12 @@ func (e *Engine) executeStep(ctx context.Context, execID string, workflowName st
 
 	if lastErr != nil {
 		errMsg := lastErr.Error()
-		if cpErr := e.updateStep(ctx, execID, step.Name, "failed", output, errMsg, step.ContinueOnError); cpErr != nil {
-			return StepResult{Status: "failed", Output: output, Error: fmt.Sprintf("checkpoint failure: %v (original: %s)", cpErr, errMsg)}
+		stepStatus := "failed"
+		if errors.Is(lastErr, context.DeadlineExceeded) {
+			stepStatus = "timed_out"
+		}
+		if cpErr := e.updateStep(ctx, execID, step.Name, stepStatus, output, errMsg, step.ContinueOnError); cpErr != nil {
+			return StepResult{Status: stepStatus, Output: output, Error: fmt.Sprintf("checkpoint failure: %v (original: %s)", cpErr, errMsg)}
 		}
 		e.Auditor.Emit(ctx, audit.Event{
 			Timestamp: time.Now(),
@@ -323,8 +452,8 @@ func (e *Engine) executeStep(ctx context.Context, execID string, workflowName st
 			Action:    audit.ActionStepFailed,
 			Resource:  audit.Resource{Type: "step_execution", ID: step.Name},
 		})
-		metrics.StepsTotal.WithLabelValues(workflowName, step.Name, "failed").Inc()
-		return StepResult{Status: "failed", Output: output, Error: errMsg}
+		metrics.StepsTotal.WithLabelValues(workflowName, step.Name, stepStatus).Inc()
+		return StepResult{Status: stepStatus, Output: output, Error: errMsg}
 	}
 
 	// Validate output size before persisting.
@@ -460,8 +589,8 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 	// Validate artifact subsystem is configured if step declares artifacts.
 	var artifactsDir string
 	if len(step.Artifacts) > 0 {
-		if e.TmpStorage == nil || e.ArtifactStore == nil {
-			return nil, fmt.Errorf("step %q declares artifacts but artifact subsystem is not configured (set tmp storage in mantle.yaml)", step.Name)
+		if e.Storage == nil || e.ArtifactStore == nil {
+			return nil, fmt.Errorf("step %q declares artifacts but artifact subsystem is not configured (set storage in mantle.yaml)", step.Name)
 		}
 	}
 
@@ -494,7 +623,7 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		// Create a fresh artifacts scratch dir per attempt.
-		if len(step.Artifacts) > 0 && e.TmpStorage != nil {
+		if len(step.Artifacts) > 0 && e.Storage != nil {
 			if artifactsDir != "" {
 				os.RemoveAll(artifactsDir) // clean previous attempt's scratch
 			}
@@ -562,7 +691,7 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 	}
 
 	// Persist declared artifacts to tmp storage.
-	if lastErr == nil && len(step.Artifacts) > 0 && e.TmpStorage != nil && e.ArtifactStore != nil && artifactsDir != "" {
+	if lastErr == nil && len(step.Artifacts) > 0 && e.Storage != nil && e.ArtifactStore != nil && artifactsDir != "" {
 		type persistedArtifact struct {
 			id  string
 			url string
@@ -574,7 +703,7 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 				if delErr := e.ArtifactStore.DeleteByID(ctx, p.id); delErr != nil {
 					log.Printf("warning: rollback: failed to delete artifact metadata %q: %v", p.id, delErr)
 				}
-				if delErr := e.TmpStorage.Delete(ctx, p.url); delErr != nil {
+				if delErr := e.Storage.Delete(ctx, p.url); delErr != nil {
 					log.Printf("warning: rollback: failed to delete artifact blob %q: %v", p.url, delErr)
 				}
 			}
@@ -590,7 +719,7 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 			}
 
 			key := fmt.Sprintf("%s/%s/%s/%s", workflowName, execID, artDecl.Name, relPath)
-			url, putErr := e.TmpStorage.Put(ctx, key, localPath)
+			url, putErr := e.Storage.Put(ctx, key, localPath)
 			if putErr != nil {
 				rollback()
 				return nil, fmt.Errorf("persisting artifact %q: %v", artDecl.Name, putErr)
@@ -604,7 +733,7 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 				Size:        info.Size(),
 			}
 			if createErr := e.ArtifactStore.Create(ctx, art); createErr != nil {
-				if delErr := e.TmpStorage.Delete(ctx, url); delErr != nil {
+				if delErr := e.Storage.Delete(ctx, url); delErr != nil {
 					log.Printf("warning: failed to clean up orphaned artifact blob %q: %v", url, delErr)
 				}
 				rollback()
@@ -812,7 +941,9 @@ func (e *Engine) loadWorkflow(ctx context.Context, name string, version int) (*w
 }
 
 // createExecution inserts a new workflow_executions row and returns the ID.
-func (e *Engine) createExecution(ctx context.Context, workflowName string, version int, inputs map[string]any) (string, error) {
+// status should be "pending" for immediate execution or "queued" when
+// concurrency limits require the execution to wait.
+func (e *Engine) createExecution(ctx context.Context, workflowName string, version int, inputs map[string]any, status string) (string, error) {
 	inputsJSON, err := json.Marshal(inputs)
 	if err != nil {
 		return "", fmt.Errorf("marshaling inputs: %w", err)
@@ -823,9 +954,33 @@ func (e *Engine) createExecution(ctx context.Context, workflowName string, versi
 	var id string
 	err = e.DB.QueryRowContext(ctx,
 		`INSERT INTO workflow_executions (workflow_name, workflow_version, status, inputs, started_at, team_id)
-		 VALUES ($1, $2, 'pending', $3, NOW(), $4)
+		 VALUES ($1, $2, $3, $4, NOW(), $5)
 		 RETURNING id`,
-		workflowName, version, inputsJSON, teamID,
+		workflowName, version, status, inputsJSON, teamID,
+	).Scan(&id)
+	if err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// createExecutionTx inserts a new workflow_executions row within an existing
+// transaction and returns the ID. This allows the insert to be atomic with
+// other operations (e.g., concurrency checks) in the same transaction.
+func (e *Engine) createExecutionTx(ctx context.Context, tx *sql.Tx, workflowName string, version int, inputs map[string]any, status string) (string, error) {
+	inputsJSON, err := json.Marshal(inputs)
+	if err != nil {
+		return "", fmt.Errorf("marshaling inputs: %w", err)
+	}
+
+	teamID := auth.TeamIDFromContext(ctx)
+
+	var id string
+	err = tx.QueryRowContext(ctx,
+		`INSERT INTO workflow_executions (workflow_name, workflow_version, status, inputs, started_at, team_id)
+		 VALUES ($1, $2, $3, $4, NOW(), $5)
+		 RETURNING id`,
+		workflowName, version, status, inputsJSON, teamID,
 	).Scan(&id)
 	if err != nil {
 		return "", err
@@ -844,7 +999,7 @@ func (e *Engine) updateExecutionStatus(ctx context.Context, execID, status, errM
 	}
 
 	var completedAt any
-	if status == "completed" || status == "failed" || status == "cancelled" {
+	if status == "completed" || status == "failed" || status == "cancelled" || status == "timed_out" {
 		completedAt = time.Now()
 	}
 
@@ -874,7 +1029,7 @@ func (e *Engine) recordStep(ctx context.Context, execID, stepName, status string
 	_, err = e.DB.ExecContext(ctx,
 		`INSERT INTO step_executions (execution_id, step_name, status, output, error, continue_on_error, started_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, NOW())
-		 ON CONFLICT (execution_id, step_name, attempt) DO NOTHING`,
+		 ON CONFLICT (execution_id, step_name, attempt) WHERE hook_block IS NULL DO NOTHING`,
 		execID, stepName, status, outputJSON, errorVal, continueOnError,
 	)
 	if err != nil {

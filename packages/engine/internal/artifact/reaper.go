@@ -9,10 +9,10 @@ import (
 	"time"
 )
 
-// Reaper cleans up expired artifacts from both tmp storage and the database.
+// Reaper cleans up expired artifacts from both storage and the database.
 type Reaper struct {
 	Store      *Store
-	TmpStorage TmpStorage
+	Storage    Storage
 	Retention  time.Duration
 	Logger     *slog.Logger
 }
@@ -40,8 +40,8 @@ func (r *Reaper) Sweep(ctx context.Context) (int, error) {
 
 	cleaned := 0
 	for _, a := range expired {
-		// Delete file from tmp storage.
-		if delErr := r.TmpStorage.Delete(ctx, a.URL); delErr != nil {
+		// Delete file from storage.
+		if delErr := r.Storage.Delete(ctx, a.URL); delErr != nil {
 			// If the blob is already gone, still clean up the metadata.
 			if !errors.Is(delErr, os.ErrNotExist) {
 				logger.Error("failed to delete artifact file",

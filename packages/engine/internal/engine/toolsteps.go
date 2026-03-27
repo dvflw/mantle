@@ -21,7 +21,7 @@ func (ts *ToolSteps) CreateSubStep(ctx context.Context, executionID, parentStepI
 	err := ts.DB.QueryRowContext(ctx, `
 		INSERT INTO step_executions (execution_id, step_name, attempt, status, parent_step_id)
 		VALUES ($1, $2, 1, 'pending', $3)
-		ON CONFLICT (execution_id, step_name, attempt) DO NOTHING
+		ON CONFLICT (execution_id, step_name, attempt) WHERE hook_block IS NULL DO NOTHING
 		RETURNING id
 	`, executionID, stepName, parentStepID).Scan(&id)
 
@@ -29,7 +29,7 @@ func (ts *ToolSteps) CreateSubStep(ctx context.Context, executionID, parentStepI
 		// Row already existed — fetch the existing ID.
 		err = ts.DB.QueryRowContext(ctx, `
 			SELECT id FROM step_executions
-			WHERE execution_id = $1 AND step_name = $2 AND attempt = 1
+			WHERE execution_id = $1 AND step_name = $2 AND attempt = 1 AND hook_block IS NULL
 		`, executionID, stepName).Scan(&id)
 		if err != nil {
 			return "", fmt.Errorf("fetching existing sub-step: %w", err)

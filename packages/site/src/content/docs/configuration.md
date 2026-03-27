@@ -20,6 +20,8 @@ By default, Mantle looks for a file named `mantle.yaml` in the current working d
 ### Full Example
 
 ```yaml
+version: 1
+
 database:
   url: postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable
   max_open_conns: 25
@@ -46,17 +48,23 @@ engine:
   step_output_max_bytes: 1048576
   default_max_tool_rounds: 10
   default_max_tool_calls_per_round: 10
+  max_concurrent_executions_per_team: 0  # 0 = unlimited
 
-tmp:
+storage:
   type: filesystem
   path: /var/lib/mantle/artifacts
   retention: "24h"
+
+env:
+  APP_NAME: "my-app"
+  API_BASE_URL: "https://api.example.com"
 ```
 
 ### All Config File Fields
 
 | Field | Type | Default | Description |
 |---|---|---|---|
+| `version` | integer | -- | Config file version. Must be `1` when present. Required for new config files starting in v0.4.0. |
 | `database.url` | string | `postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable` | Postgres connection URL. |
 | `api.address` | string | `:8080` | Listen address for `mantle serve`. Format: `host:port` or `:port`. Used by the HTTP API, webhook listener, and health endpoints. |
 | `log.level` | string | `info` | Log verbosity. One of: `debug`, `info`, `warn`, `error`. |
@@ -75,17 +83,84 @@ tmp:
 | `engine.step_output_max_bytes` | integer | `1048576` | Maximum size in bytes for a single step's output. Outputs exceeding this limit are truncated. Default is 1 MB. |
 | `engine.default_max_tool_rounds` | integer | `10` | Default maximum number of LLM-tool interaction rounds for AI steps with tools. Can be overridden per step with `max_tool_rounds`. |
 | `engine.default_max_tool_calls_per_round` | integer | `10` | Default maximum number of tool calls the LLM can make per round. Can be overridden per step with `max_tool_calls_per_round`. |
-| `tmp.type` | string | -- | Artifact storage backend. One of: `s3`, `filesystem`. Required if any workflow declares artifacts. |
-| `tmp.bucket` | string | -- | S3 bucket name. Required when `tmp.type` is `s3`. |
-| `tmp.prefix` | string | -- | S3 key prefix for artifact storage. Optional. |
-| `tmp.path` | string | -- | Local directory path. Required when `tmp.type` is `filesystem`. |
-| `tmp.retention` | duration | -- | How long to keep artifacts after workflow completion. Uses Go duration format (e.g., `24h`). Empty means no auto-cleanup. |
+| `engine.max_concurrent_executions_per_team` | integer | `0` | Maximum number of concurrent workflow executions allowed per team. When the limit is reached, new executions are queued. Set to `0` for unlimited. |
+| `storage.type` | string | -- | Artifact storage backend. One of: `s3`, `filesystem`. Required if any workflow declares artifacts. |
+| `storage.bucket` | string | -- | S3 bucket name. Required when `storage.type` is `s3`. |
+| `storage.prefix` | string | -- | S3 key prefix for artifact storage. Optional. |
+| `storage.path` | string | -- | Local directory path. Required when `storage.type` is `filesystem`. |
+| `storage.retention` | duration | -- | How long to keep artifacts after workflow completion. Uses Go duration format (e.g., `24h`). Empty means no auto-cleanup. |
+| `env.*` | map[string]string | -- | Key-value pairs available to CEL workflow expressions via `env.<KEY>`. See [Workflow Expression Variables](#workflow-expression-variables). |
+
+:::caution[Deprecation: `tmp` renamed to `storage`]
+The `tmp` configuration section has been renamed to `storage` in v0.4.0. The old `tmp` key still works but is deprecated and will be removed in a future release. Update your `mantle.yaml` to use `storage` instead.
+:::
 
 ### Config File Discovery
 
 When you do not pass `--config`, Mantle searches for `mantle.yaml` in the current directory. If no config file is found, Mantle silently falls back to defaults. This is intentional -- most commands work fine with defaults when you use the provided `docker-compose.yml`.
 
 When you pass `--config path/to/config.yaml` explicitly, Mantle requires that file to exist and be valid YAML. A missing or unparseable explicit config file is a hard error.
+
+## Workflow Expression Variables
+
+The `env:` section in `mantle.yaml` defines key-value pairs that are available to CEL expressions in workflows via the `env` namespace. This is useful for environment-specific configuration that workflows need at runtime (API base URLs, feature flags, region names, etc.) without hardcoding values in workflow definitions.
+
+### Syntax
+
+```yaml
+# mantle.yaml
+env:
+  APP_NAME: "my-app"
+  API_BASE_URL: "https://api.example.com"
+  REGION: "us-east-1"
+  DEBUG: "true"
+```
+
+### Usage in Workflows
+
+Values defined in the `env:` section are accessible in any CEL expression via `env.<KEY>`:
+
+```yaml
+# workflow.yaml
+name: deploy
+steps:
+  - name: notify
+    connector: http/request
+    params:
+      url: "{{ env.API_BASE_URL }}/deployments"
+      body: '{"app": "{{ env.APP_NAME }}", "region": "{{ env.REGION }}"}'
+```
+
+### Precedence
+
+The `env:` config values merge with `MANTLE_ENV_*` OS environment variables. When the same key exists in both sources, the OS environment variable wins:
+
+1. **`MANTLE_ENV_*` environment variables** (highest priority) -- stripped of the `MANTLE_ENV_` prefix
+2. **`env:` section in `mantle.yaml`** (lower priority)
+
+When an override occurs, Mantle logs an info message:
+
+```text
+INFO env variable overrides config key=MANTLE_ENV_REGION config_key=env.REGION
+```
+
+This allows operators to override config-file defaults without editing YAML, which is useful in CI pipelines and container deployments.
+
+**Case sensitivity:** All `env:` keys from `mantle.yaml` are normalized to uppercase internally (e.g., `region` becomes `REGION`). The `MANTLE_ENV_*` prefix is stripped and the remaining key must be uppercase to match (e.g., `MANTLE_ENV_REGION` overrides `env.REGION`). Always use uppercase keys in both `mantle.yaml` and environment variables to avoid mismatches.
+
+**Example override:**
+
+```yaml
+# mantle.yaml
+env:
+  REGION: "us-east-1"
+```
+
+```bash
+# Override REGION for this deployment
+export MANTLE_ENV_REGION="eu-west-1"
+mantle run deploy  # env.REGION evaluates to "eu-west-1"
+```
 
 ## Environment Variables
 
@@ -111,11 +186,12 @@ All environment variables use the `MANTLE_` prefix with underscores replacing do
 | `MANTLE_ENGINE_STEP_OUTPUT_MAX_BYTES` | `engine.step_output_max_bytes` | `1048576` |
 | `MANTLE_ENGINE_DEFAULT_MAX_TOOL_ROUNDS` | `engine.default_max_tool_rounds` | `10` |
 | `MANTLE_ENGINE_DEFAULT_MAX_TOOL_CALLS_PER_ROUND` | `engine.default_max_tool_calls_per_round` | `10` |
-| `MANTLE_TMP_TYPE` | `tmp.type` | -- |
-| `MANTLE_TMP_BUCKET` | `tmp.bucket` | -- |
-| `MANTLE_TMP_PREFIX` | `tmp.prefix` | -- |
-| `MANTLE_TMP_PATH` | `tmp.path` | -- |
-| `MANTLE_TMP_RETENTION` | `tmp.retention` | -- |
+| `MANTLE_ENGINE_MAX_CONCURRENT_EXECUTIONS_PER_TEAM` | `engine.max_concurrent_executions_per_team` | `0` |
+| `MANTLE_STORAGE_TYPE` | `storage.type` | -- |
+| `MANTLE_STORAGE_BUCKET` | `storage.bucket` | -- |
+| `MANTLE_STORAGE_PREFIX` | `storage.prefix` | -- |
+| `MANTLE_STORAGE_PATH` | `storage.path` | -- |
+| `MANTLE_STORAGE_RETENTION` | `storage.retention` | -- |
 
 **Example:**
 
@@ -185,6 +261,8 @@ Use a `mantle.yaml` file with production values, or pass everything through envi
 
 ```yaml
 # mantle.yaml
+version: 1
+
 database:
   url: postgres://mantle:${DB_PASSWORD}@db.internal:5432/mantle?sslmode=require
 
@@ -213,6 +291,8 @@ When running `mantle serve`, the `api.address` setting controls which address th
 
 ```yaml
 # mantle.yaml
+version: 1
+
 database:
   url: postgres://mantle:secret@db.internal:5432/mantle?sslmode=require
 

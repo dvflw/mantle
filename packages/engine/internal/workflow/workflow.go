@@ -4,13 +4,24 @@ import "fmt"
 
 // Workflow represents a complete workflow definition parsed from YAML.
 type Workflow struct {
-	Name        string           `yaml:"name"`
-	Description string           `yaml:"description"`
-	Inputs      map[string]Input `yaml:"inputs"`
-	Triggers    []Trigger        `yaml:"triggers"`
-	Steps       []Step           `yaml:"steps"`
-	Timeout     string           `yaml:"timeout"` // Go duration string, e.g., "30m"
-	TokenBudget int64            `yaml:"token_budget"` // 0 = unlimited
+	Name                  string           `yaml:"name"`
+	Description           string           `yaml:"description"`
+	Inputs                map[string]Input `yaml:"inputs"`
+	Triggers              []Trigger        `yaml:"triggers"`
+	Steps                 []Step           `yaml:"steps"`
+	Timeout               string           `yaml:"timeout"` // Go duration string, e.g., "30m"
+	TokenBudget           int64            `yaml:"token_budget"` // 0 = unlimited
+	MaxParallelExecutions int              `yaml:"max_parallel_executions"`
+	OnLimit               string           `yaml:"on_limit"`
+	Hooks                 *HooksConfig     `yaml:"hooks"`
+}
+
+// HooksConfig defines lifecycle hooks that run after main workflow steps complete.
+type HooksConfig struct {
+	Timeout   string `yaml:"timeout"`
+	OnSuccess []Step `yaml:"on_success"`
+	OnFailure []Step `yaml:"on_failure"`
+	OnFinish  []Step `yaml:"on_finish"`
 }
 
 // Trigger defines an automatic execution trigger for a workflow.
@@ -42,6 +53,7 @@ type Step struct {
 	Timeout            string         `yaml:"timeout"`
 	Credential         string         `yaml:"credential"`
 	DependsOn          []string       `yaml:"depends_on"`
+	MaxParallel        int            `yaml:"max_parallel"`
 	RegistryCredential string         `yaml:"registry_credential"`
 	Artifacts          []ArtifactDecl `yaml:"artifacts"`
 	ContinueOnError    bool           `yaml:"continue_on_error"`

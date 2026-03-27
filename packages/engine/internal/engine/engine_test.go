@@ -411,11 +411,11 @@ steps:
 		t.Fatalf("Execute() error: %v", err)
 	}
 
-	if result.Status != "failed" {
-		t.Errorf("status = %q, want %q", result.Status, "failed")
+	if result.Status != "timed_out" {
+		t.Errorf("status = %q, want %q", result.Status, "timed_out")
 	}
-	if result.Steps["slow-step"].Status != "failed" {
-		t.Errorf("slow-step status = %q, want %q", result.Steps["slow-step"].Status, "failed")
+	if result.Steps["slow-step"].Status != "timed_out" {
+		t.Errorf("slow-step status = %q, want %q", result.Steps["slow-step"].Status, "timed_out")
 	}
 }
 
