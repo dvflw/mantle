@@ -379,7 +379,7 @@ Error: workflow "fetch-and-summarize" is at version 1 — nothing to roll back t
 If the target version does not exist:
 
 ```text
-Error: version 5 not found for workflow "fetch-and-summarize"
+Error: workflow "fetch-and-summarize" version 5 not found
 ```
 
 ---
