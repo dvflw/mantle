@@ -131,6 +131,7 @@ type EngineConfig struct {
 	AllowedBaseURLs             []string      `mapstructure:"allowed_base_urls"`
 	AllowedModels               []string      `mapstructure:"allowed_models"`       // empty = all allowed
 	MaxToolRoundsLimit          int           `mapstructure:"max_tool_rounds_limit"` // 0 = no limit
+	MaxWorkflowDepth            int           `mapstructure:"max_workflow_depth"`
 	Budget                      BudgetConfig  `mapstructure:"budget"`
 }
 
@@ -171,6 +172,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	v.SetDefault("engine.step_output_max_bytes", 1048576)
 	v.SetDefault("engine.default_max_tool_rounds", 10)
 	v.SetDefault("engine.default_max_tool_calls_per_round", 10)
+	v.SetDefault("engine.max_workflow_depth", 10)
 
 	// Budget defaults
 	v.SetDefault("engine.budget.reset_mode", budget.ResetModeCalendar)
@@ -251,6 +253,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	_ = v.BindEnv("engine.allowed_base_urls", "MANTLE_ENGINE_ALLOWED_BASE_URLS")
 	_ = v.BindEnv("engine.allowed_models", "MANTLE_ENGINE_ALLOWED_MODELS")
 	_ = v.BindEnv("engine.max_tool_rounds_limit", "MANTLE_ENGINE_MAX_TOOL_ROUNDS_LIMIT")
+	_ = v.BindEnv("engine.max_workflow_depth", "MANTLE_ENGINE_MAX_WORKFLOW_DEPTH")
 
 	// Budget env var bindings
 	_ = v.BindEnv("engine.budget.reset_mode", "MANTLE_ENGINE_BUDGET_RESET_MODE")
