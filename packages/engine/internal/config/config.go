@@ -19,6 +19,7 @@ import (
 
 // Config holds all engine configuration.
 type Config struct {
+	Version    int              `mapstructure:"version"`
 	Database   DatabaseConfig   `mapstructure:"database"`
 	API        APIConfig        `mapstructure:"api"`
 	Log        LogConfig        `mapstructure:"log"`
@@ -272,6 +273,15 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, err
+	}
+
+	// Validate config version.
+	// Missing or 0 is treated as version 1 (backward compat).
+	if cfg.Version == 0 {
+		cfg.Version = 1
+	}
+	if cfg.Version != 1 {
+		return nil, fmt.Errorf("unsupported config version %d; this version of mantle supports config version 1 — upgrade mantle or check your mantle.yaml", cfg.Version)
 	}
 
 	// Validate budget reset_day range.

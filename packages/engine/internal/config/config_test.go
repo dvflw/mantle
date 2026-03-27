@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -284,6 +285,63 @@ tmp:
 	assert.Equal(t, "filesystem", cfg.Tmp.Type)
 	assert.Equal(t, "/tmp/mantle-artifacts", cfg.Tmp.Path)
 	assert.Equal(t, "48h", cfg.Tmp.Retention)
+}
+
+func TestLoad_VersionValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr string // empty means no error expected
+	}{
+		{
+			name:    "version 1 is valid",
+			yaml:    "version: 1\n",
+			wantErr: "",
+		},
+		{
+			name:    "missing version defaults to 1",
+			yaml:    "log:\n  level: info\n",
+			wantErr: "",
+		},
+		{
+			name:    "version 0 defaults to 1",
+			yaml:    "version: 0\n",
+			wantErr: "",
+		},
+		{
+			name:    "version 2 is rejected",
+			yaml:    "version: 2\n",
+			wantErr: "unsupported config version 2; this version of mantle supports config version 1",
+		},
+		{
+			name:    "version 99 is rejected",
+			yaml:    "version: 99\n",
+			wantErr: "unsupported config version 99; this version of mantle supports config version 1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			configFile := filepath.Join(dir, "mantle.yaml")
+			err := os.WriteFile(configFile, []byte(tt.yaml), 0644)
+			require.NoError(t, err)
+
+			cmd := newTestCommand()
+			_ = cmd.Flags().Set("config", configFile)
+
+			cfg, err := Load(cmd)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error %q does not contain %q", err.Error(), tt.wantErr)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, 1, cfg.Version)
+			}
+		})
+	}
 }
 
 func TestLoad_TmpConfigEnvVarOverridesFile(t *testing.T) {
