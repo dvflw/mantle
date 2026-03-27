@@ -39,7 +39,7 @@ func CheckConcurrencyLimits(ctx context.Context, tx *sql.Tx, workflowName string
 	if teamMaxConcurrent > 0 && teamID != "" {
 		// Acquire transaction-scoped advisory lock keyed on team.
 		lockKey := hashString("team:" + teamID)
-		if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", int64(lockKey)); err != nil {
+		if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", lockKey); err != nil {
 			return ConcurrencyResult{Err: fmt.Errorf("acquiring team advisory lock: %w", err)}
 		}
 
@@ -65,7 +65,7 @@ func CheckConcurrencyLimits(ctx context.Context, tx *sql.Tx, workflowName string
 	// --- Per-workflow check ---
 	if maxParallelExecutions > 0 {
 		lockKey := hashString("workflow:" + workflowName)
-		if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", int64(lockKey)); err != nil {
+		if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", lockKey); err != nil {
 			return ConcurrencyResult{Err: fmt.Errorf("acquiring workflow advisory lock: %w", err)}
 		}
 
@@ -117,9 +117,29 @@ func PromoteQueued(ctx context.Context, db *sql.DB, workflowName string) error {
 	return nil
 }
 
-// hashString returns a deterministic uint32 hash for use as an advisory lock key.
-func hashString(s string) uint32 {
-	h := fnv.New32a()
+// PromoteQueuedByTeam promotes the oldest queued execution across all workflows for a team.
+func PromoteQueuedByTeam(ctx context.Context, db *sql.DB, teamID string) error {
+	if teamID == "" {
+		return nil
+	}
+	_, err := db.ExecContext(ctx,
+		`UPDATE workflow_executions
+		 SET status = 'pending', updated_at = NOW()
+		 WHERE id = (
+		    SELECT id FROM workflow_executions
+		    WHERE team_id = $1 AND status = 'queued'
+		    ORDER BY started_at ASC
+		    LIMIT 1
+		    FOR UPDATE SKIP LOCKED
+		 )`,
+		teamID,
+	)
+	return err
+}
+
+// hashString returns a deterministic int64 hash for use as a Postgres advisory lock key.
+func hashString(s string) int64 {
+	h := fnv.New64a()
 	h.Write([]byte(s))
-	return h.Sum32()
+	return int64(h.Sum64())
 }

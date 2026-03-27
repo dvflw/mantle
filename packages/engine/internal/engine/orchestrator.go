@@ -104,7 +104,7 @@ func (o *Orchestrator) CreatePendingSteps(ctx context.Context, executionID strin
 	stmt, err := tx.PrepareContext(ctx,
 		`INSERT INTO step_executions (execution_id, step_name, attempt, status, max_attempts)
 		 VALUES ($1, $2, 1, 'pending', $3)
-		 ON CONFLICT (execution_id, step_name, attempt) DO NOTHING`,
+		 ON CONFLICT (execution_id, step_name, attempt) WHERE hook_block IS NULL DO NOTHING`,
 	)
 	if err != nil {
 		return fmt.Errorf("preparing statement: %w", err)
@@ -132,7 +132,7 @@ func (o *Orchestrator) CreateRetryStep(ctx context.Context, executionID, stepNam
 	_, err := o.DB.ExecContext(ctx,
 		`INSERT INTO step_executions (execution_id, step_name, attempt, status, max_attempts)
 		 VALUES ($1, $2, $3, 'pending', $4)
-		 ON CONFLICT (execution_id, step_name, attempt) DO NOTHING`,
+		 ON CONFLICT (execution_id, step_name, attempt) WHERE hook_block IS NULL DO NOTHING`,
 		executionID, stepName, nextAttempt, maxAttempts,
 	)
 	if err != nil {

@@ -21,7 +21,7 @@ func (ts *ToolSteps) CreateSubStep(ctx context.Context, executionID, parentStepI
 	err := ts.DB.QueryRowContext(ctx, `
 		INSERT INTO step_executions (execution_id, step_name, attempt, status, parent_step_id)
 		VALUES ($1, $2, 1, 'pending', $3)
-		ON CONFLICT (execution_id, step_name, attempt) DO NOTHING
+		ON CONFLICT (execution_id, step_name, attempt) WHERE hook_block IS NULL DO NOTHING
 		RETURNING id
 	`, executionID, stepName, parentStepID).Scan(&id)
 

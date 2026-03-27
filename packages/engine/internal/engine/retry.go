@@ -15,7 +15,8 @@ import (
 // RetryExecution creates a new execution that resumes from the failure point of
 // a previous execution. If fromStep is provided, execution resumes from that
 // step; otherwise, the first failed step (in topological order) is used.
-// The force flag is accepted for future concurrency-bypass support.
+// If force is false, concurrency limits are checked before creating the execution;
+// if limits are hit the execution is queued instead of started immediately.
 func (e *Engine) RetryExecution(ctx context.Context, originalExecID string, fromStep string, force bool) (*ExecutionResult, error) {
 	teamID := auth.TeamIDFromContext(ctx)
 
@@ -82,13 +83,37 @@ func (e *Engine) RetryExecution(ctx context.Context, originalExecID string, from
 	// 4. Find all upstream steps (ancestors of the retry point).
 	upstream := findUpstream(wf.Steps, retryStep)
 
-	// 5. Create new execution.
-	newExecID, err := e.createExecution(ctx, workflowName, version, inputs, "pending")
+	// 5. Check concurrency limits (unless force-bypassed).
+	initialStatus := "pending"
+	if !force && (wf.MaxParallelExecutions > 0 || e.MaxConcurrentExecutionsPerTeam > 0) {
+		tx, txErr := e.DB.BeginTx(ctx, nil)
+		if txErr != nil {
+			return nil, fmt.Errorf("starting concurrency check transaction: %w", txErr)
+		}
+		defer tx.Rollback()
+
+		cr := CheckConcurrencyLimits(ctx, tx, workflowName,
+			wf.MaxParallelExecutions, wf.OnLimit, e.MaxConcurrentExecutionsPerTeam)
+
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("committing concurrency check: %w", err)
+		}
+
+		if cr.Err != nil {
+			return nil, cr.Err
+		}
+		if cr.Queued {
+			initialStatus = "queued"
+		}
+	}
+
+	// 6. Create new execution.
+	newExecID, err := e.createExecution(ctx, workflowName, version, inputs, initialStatus)
 	if err != nil {
 		return nil, fmt.Errorf("creating retry execution: %w", err)
 	}
 
-	// 6. Link new execution to original.
+	// 7. Link new execution to original.
 	_, err = e.DB.ExecContext(ctx,
 		`UPDATE workflow_executions SET retried_from_execution_id = $1 WHERE id = $2 AND team_id = $3`,
 		originalExecID, newExecID, teamID,
@@ -97,7 +122,7 @@ func (e *Engine) RetryExecution(ctx context.Context, originalExecID string, from
 		return nil, fmt.Errorf("linking retry execution: %w", err)
 	}
 
-	// 7. Copy completed upstream step outputs from original (exclude hook steps).
+	// 8. Copy completed upstream step outputs from original (exclude hook steps).
 	upstreamSet := make(map[string]bool, len(upstream))
 	for _, name := range upstream {
 		upstreamSet[name] = true
@@ -137,7 +162,7 @@ func (e *Engine) RetryExecution(ctx context.Context, originalExecID string, from
 		_, err := e.DB.ExecContext(ctx,
 			`INSERT INTO step_executions (execution_id, step_name, attempt, status, output, error, started_at)
 			 VALUES ($1, $2, 1, $3, $4, $5, NOW())
-			 ON CONFLICT (execution_id, step_name, attempt) DO NOTHING`,
+			 ON CONFLICT (execution_id, step_name, attempt) WHERE hook_block IS NULL DO NOTHING`,
 			newExecID, stepName, status, outputJSON, errPtr,
 		)
 		if err != nil {
@@ -148,7 +173,7 @@ func (e *Engine) RetryExecution(ctx context.Context, originalExecID string, from
 		return nil, fmt.Errorf("iterating original steps: %w", err)
 	}
 
-	// 8. Emit audit event.
+	// 9. Emit audit event.
 	e.Auditor.Emit(ctx, audit.Event{
 		Timestamp: time.Now(),
 		Actor:     "engine",
@@ -162,7 +187,15 @@ func (e *Engine) RetryExecution(ctx context.Context, originalExecID string, from
 		},
 	})
 
-	// 9. Run the new execution (resumeExecution will skip already-completed steps).
+	// 10. If queued, return immediately with queued status.
+	if initialStatus == "queued" {
+		return &ExecutionResult{
+			ExecutionID: newExecID,
+			Status:      "queued",
+		}, nil
+	}
+
+	// 11. Run the new execution (resumeExecution will skip already-completed steps).
 	return e.resumeExecution(ctx, newExecID, workflowName, version, inputs)
 }
 

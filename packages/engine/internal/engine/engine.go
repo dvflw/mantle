@@ -334,6 +334,11 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 		log.Printf("failed to promote queued execution for %s: %v", workflowName, err)
 	}
 
+	// Also promote by team in case the execution was queued due to a team-level limit.
+	if err := PromoteQueuedByTeam(promoteCtx, e.DB, sc.TeamID); err != nil {
+		log.Printf("failed to promote queued execution for team %s: %v", sc.TeamID, err)
+	}
+
 	return result, nil
 }
 
@@ -948,7 +953,7 @@ func (e *Engine) recordStep(ctx context.Context, execID, stepName, status string
 	_, err = e.DB.ExecContext(ctx,
 		`INSERT INTO step_executions (execution_id, step_name, status, output, error, continue_on_error, started_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, NOW())
-		 ON CONFLICT (execution_id, step_name, attempt) DO NOTHING`,
+		 ON CONFLICT (execution_id, step_name, attempt) WHERE hook_block IS NULL DO NOTHING`,
 		execID, stepName, status, outputJSON, errorVal, continueOnError,
 	)
 	if err != nil {

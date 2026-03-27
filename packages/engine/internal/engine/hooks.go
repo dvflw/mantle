@@ -83,14 +83,12 @@ func (e *Engine) executeHookBlock(
 			return
 		}
 
-		dbStepName := blockName + ":" + step.Name
-
 		// Emit audit: hook step started.
 		e.Auditor.Emit(ctx, audit.Event{
 			Timestamp: time.Now(),
 			Actor:     "engine",
 			Action:    audit.ActionHookStepStarted,
-			Resource:  audit.Resource{Type: "hook_step_execution", ID: dbStepName},
+			Resource:  audit.Resource{Type: "hook_step_execution", ID: step.Name},
 			Metadata: map[string]string{
 				"execution_id": execID,
 				"hook_block":   blockName,
@@ -99,8 +97,8 @@ func (e *Engine) executeHookBlock(
 		})
 
 		// Record hook step as running.
-		if err := e.recordHookStep(ctx, execID, dbStepName, blockName, "running", nil, ""); err != nil {
-			log.Printf("hooks: failed to record running state for %s: %v", dbStepName, err)
+		if err := e.recordHookStep(ctx, execID, step.Name, blockName, "running", nil, ""); err != nil {
+			log.Printf("hooks: failed to record running state for %s/%s: %v", blockName, step.Name, err)
 		}
 
 		// Execute the step using the shared step logic.
@@ -111,8 +109,8 @@ func (e *Engine) executeHookBlock(
 			errMsg := execErr.Error()
 
 			// Record failure in DB.
-			if err := e.recordHookStep(ctx, execID, dbStepName, blockName, "failed", output, errMsg); err != nil {
-				log.Printf("hooks: failed to record failure for %s: %v", dbStepName, err)
+			if err := e.recordHookStep(ctx, execID, step.Name, blockName, "failed", output, errMsg); err != nil {
+				log.Printf("hooks: failed to record failure for %s/%s: %v", blockName, step.Name, err)
 			}
 
 			// Update CEL context with error info.
@@ -130,7 +128,7 @@ func (e *Engine) executeHookBlock(
 				Timestamp: time.Now(),
 				Actor:     "engine",
 				Action:    audit.ActionHookStepFailed,
-				Resource:  audit.Resource{Type: "hook_step_execution", ID: dbStepName},
+				Resource:  audit.Resource{Type: "hook_step_execution", ID: step.Name},
 				Metadata: map[string]string{
 					"execution_id": execID,
 					"hook_block":   blockName,
@@ -151,8 +149,8 @@ func (e *Engine) executeHookBlock(
 		}
 
 		// Success path.
-		if err := e.recordHookStep(ctx, execID, dbStepName, blockName, "completed", output, ""); err != nil {
-			log.Printf("hooks: failed to record completion for %s: %v", dbStepName, err)
+		if err := e.recordHookStep(ctx, execID, step.Name, blockName, "completed", output, ""); err != nil {
+			log.Printf("hooks: failed to record completion for %s/%s: %v", blockName, step.Name, err)
 		}
 
 		// Update CEL context with output.
@@ -169,7 +167,7 @@ func (e *Engine) executeHookBlock(
 			Timestamp: time.Now(),
 			Actor:     "engine",
 			Action:    audit.ActionHookStepCompleted,
-			Resource:  audit.Resource{Type: "hook_step_execution", ID: dbStepName},
+			Resource:  audit.Resource{Type: "hook_step_execution", ID: step.Name},
 			Metadata: map[string]string{
 				"execution_id": execID,
 				"hook_block":   blockName,
@@ -180,7 +178,8 @@ func (e *Engine) executeHookBlock(
 }
 
 // recordHookStep inserts or updates a hook step execution record in the database.
-// Hook step names are prefixed with the block name to avoid collisions with main steps.
+// The hook_block column disambiguates hook steps from main steps (and from each other),
+// so step names are stored unprefixed.
 func (e *Engine) recordHookStep(ctx context.Context, execID, stepName, hookBlock, status string, output map[string]any, errMsg string) error {
 	outputJSON, err := json.Marshal(output)
 	if err != nil {
@@ -195,7 +194,7 @@ func (e *Engine) recordHookStep(ctx context.Context, execID, stepName, hookBlock
 	_, err = e.DB.ExecContext(ctx,
 		`INSERT INTO step_executions (execution_id, step_name, attempt, status, output, error, hook_block, started_at)
 		 VALUES ($1, $2, 1, $3, $4, $5, $6, NOW())
-		 ON CONFLICT (execution_id, step_name, attempt) DO UPDATE
+		 ON CONFLICT (execution_id, step_name, attempt, hook_block) WHERE hook_block IS NOT NULL DO UPDATE
 		 SET status = EXCLUDED.status, output = EXCLUDED.output, error = EXCLUDED.error, updated_at = NOW()`,
 		execID, stepName, status, outputJSON, errorVal, hookBlock,
 	)
