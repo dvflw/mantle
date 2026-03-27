@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/dvflw/mantle/internal/budget"
@@ -30,6 +31,7 @@ type Config struct {
 	GCP        GCPConfig        `mapstructure:"gcp"`
 	Azure      AzureConfig      `mapstructure:"azure"`
 	Tmp        TmpConfig        `mapstructure:"tmp"`
+	Env        map[string]string `mapstructure:"env"`
 }
 
 // RetentionConfig holds data retention settings.
@@ -272,6 +274,16 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, err
+	}
+
+	// Viper lowercases all map keys. Normalize env map keys to uppercase
+	// so they match MANTLE_ENV_* convention and CEL expressions like env.APP_NAME.
+	if len(cfg.Env) > 0 {
+		normalized := make(map[string]string, len(cfg.Env))
+		for k, v := range cfg.Env {
+			normalized[strings.ToUpper(k)] = v
+		}
+		cfg.Env = normalized
 	}
 
 	// Validate budget reset_day range.
