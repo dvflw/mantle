@@ -175,7 +175,8 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 		TeamID:              auth.TeamIDFromContext(ctx),
 	}
 
-	// Execute steps sequentially.
+	// Execute steps sequentially, tracking failure state for hooks.
+	var failedStepName string
 	for _, step := range wf.Steps {
 		// Skip already-completed steps (checkpoint recovery).
 		if _, done := completedSteps[step.Name]; done {
@@ -223,7 +224,8 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 				})
 				metrics.StepsContinuedOnErrorTotal.WithLabelValues(workflowName, step.Name).Inc()
 			} else {
-				// Original behavior — halt execution.
+				// Halt main execution — record failure.
+				failedStepName = step.Name
 				result.Status = "failed"
 				result.Error = fmt.Sprintf("step %q failed: %s", step.Name, stepResult.Error)
 				result.Duration = time.Since(execStart)
@@ -232,17 +234,49 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 				}
 				metrics.ExecutionsTotal.WithLabelValues(workflowName, "failed").Inc()
 				metrics.ExecutionDuration.WithLabelValues(workflowName).Observe(time.Since(execStart).Seconds())
-				return result, nil
+				break
 			}
 		}
 	}
 
-	if err := e.updateExecutionStatus(ctx, execID, "completed", ""); err != nil {
-		return nil, fmt.Errorf("checkpoint: %w", err)
+	// If no step failed, mark execution as completed.
+	if failedStepName == "" {
+		if err := e.updateExecutionStatus(ctx, execID, "completed", ""); err != nil {
+			return nil, fmt.Errorf("checkpoint: %w", err)
+		}
+		result.Duration = time.Since(execStart)
+		metrics.ExecutionsTotal.WithLabelValues(workflowName, "completed").Inc()
+		metrics.ExecutionDuration.WithLabelValues(workflowName).Observe(time.Since(execStart).Seconds())
 	}
-	result.Duration = time.Since(execStart)
-	metrics.ExecutionsTotal.WithLabelValues(workflowName, "completed").Inc()
-	metrics.ExecutionDuration.WithLabelValues(workflowName).Observe(time.Since(execStart).Seconds())
+
+	// Run lifecycle hooks if configured.
+	// Hooks are best-effort — they never alter the workflow execution status.
+	if wf.Hooks != nil {
+		mainStatus := result.Status
+		// Detect timeout: context expired and not a user cancellation.
+		if ctx.Err() != nil && result.Status != "cancelled" {
+			mainStatus = "timed_out"
+		}
+
+		// Determine the hook execution context.
+		// If the main workflow timed out, hooks need a fresh context so they
+		// get their own timeout budget. For user cancellations, skip hooks entirely.
+		hookCtx := ctx
+		if ctx.Err() != nil {
+			if result.Status == "cancelled" {
+				// User cancellation — skip hooks.
+				return result, nil
+			}
+			// Timeout — create fresh context and propagate team identity.
+			hookCtx = context.Background()
+			if user := auth.UserFromContext(ctx); user != nil {
+				hookCtx = auth.WithUser(hookCtx, user)
+			}
+		}
+
+		e.executeHooks(hookCtx, execID, workflowName, wf, mainStatus, result.Error, failedStepName, celCtx, sc)
+	}
+
 	return result, nil
 }
 

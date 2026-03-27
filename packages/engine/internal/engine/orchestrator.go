@@ -147,7 +147,7 @@ func (o *Orchestrator) GetStepStatuses(ctx context.Context, executionID string) 
 	rows, err := o.DB.QueryContext(ctx,
 		`SELECT DISTINCT ON (step_name) step_name, status, attempt, max_attempts, output, error
 		 FROM step_executions
-		 WHERE execution_id = $1 AND parent_step_id IS NULL
+		 WHERE execution_id = $1 AND parent_step_id IS NULL AND hook_block IS NULL
 		 ORDER BY step_name, attempt DESC`,
 		executionID,
 	)

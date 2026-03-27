@@ -38,6 +38,11 @@ const (
 	ActionEmailConnectionEstablished Action = "email.connection.established"
 	ActionEmailConnectionFailed      Action = "email.connection.failed"
 
+	// Hook operations.
+	ActionHookStepStarted   Action = "hook.step.started"
+	ActionHookStepCompleted Action = "hook.step.completed"
+	ActionHookStepFailed    Action = "hook.step.failed"
+
 	// Budget operations.
 	ActionBudgetExceeded Action = "budget.exceeded"
 	ActionBudgetWarning  Action = "budget.warning"

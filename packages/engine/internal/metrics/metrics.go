@@ -45,6 +45,19 @@ var (
 	}, []string{"workflow", "step"})
 )
 
+// Hook metrics.
+var (
+	HookStepsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_hook_steps_total",
+		Help: "Total hook step executions",
+	}, []string{"workflow", "hook", "step", "status"})
+
+	HookStepsFailedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_hook_steps_failed_total",
+		Help: "Total hook step failures",
+	}, []string{"workflow", "hook", "step"})
+)
+
 // Queue and distribution metrics.
 var (
 	QueueDepth = promauto.NewGauge(prometheus.GaugeOpts{
