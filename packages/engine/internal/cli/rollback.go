@@ -3,6 +3,7 @@ package cli
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"strconv"
 
 	"github.com/dvflw/mantle/internal/audit"
@@ -38,10 +39,17 @@ history via the rollback_of column.`,
 
 			teamID := auth.TeamIDFromContext(cmd.Context())
 
+			// Wrap the entire read+insert in a transaction to prevent race conditions.
+			tx, err := database.BeginTx(cmd.Context(), nil)
+			if err != nil {
+				return fmt.Errorf("starting transaction: %w", err)
+			}
+			defer tx.Rollback()
+
 			// 1. Get current (latest) version and its content hash.
 			var currentVersion int
 			var currentHash string
-			err = database.QueryRowContext(cmd.Context(),
+			err = tx.QueryRowContext(cmd.Context(),
 				`SELECT version, content_hash FROM workflow_definitions WHERE name = $1 AND team_id = $2 ORDER BY version DESC LIMIT 1`,
 				workflowName, teamID,
 			).Scan(&currentVersion, &currentHash)
@@ -62,7 +70,7 @@ history via the rollback_of column.`,
 				}
 			} else {
 				// Get the second most recent version.
-				err = database.QueryRowContext(cmd.Context(),
+				err = tx.QueryRowContext(cmd.Context(),
 					`SELECT version FROM workflow_definitions WHERE name = $1 AND team_id = $2 AND version < $3 ORDER BY version DESC LIMIT 1`,
 					workflowName, teamID, currentVersion,
 				).Scan(&targetVersion)
@@ -82,7 +90,7 @@ history via the rollback_of column.`,
 			// 4. Load target version content and hash.
 			var targetContent []byte
 			var targetHash string
-			err = database.QueryRowContext(cmd.Context(),
+			err = tx.QueryRowContext(cmd.Context(),
 				`SELECT content, content_hash FROM workflow_definitions WHERE name = $1 AND version = $2 AND team_id = $3`,
 				workflowName, targetVersion, teamID,
 			).Scan(&targetContent, &targetHash)
@@ -101,7 +109,7 @@ history via the rollback_of column.`,
 
 			// 6. Insert new version with rollback_of.
 			newVersion := currentVersion + 1
-			_, err = database.ExecContext(cmd.Context(),
+			_, err = tx.ExecContext(cmd.Context(),
 				`INSERT INTO workflow_definitions (name, version, content, content_hash, rollback_of, team_id) VALUES ($1, $2, $3, $4, $5, $6)`,
 				workflowName, newVersion, targetContent, targetHash, targetVersion, teamID,
 			)
@@ -109,9 +117,13 @@ history via the rollback_of column.`,
 				return fmt.Errorf("inserting rolled-back version: %w", err)
 			}
 
+			if err := tx.Commit(); err != nil {
+				return fmt.Errorf("committing rollback: %w", err)
+			}
+
 			// 7. Emit audit event.
 			emitter := &audit.PostgresEmitter{DB: database}
-			_ = emitter.Emit(cmd.Context(), audit.Event{
+			if err := emitter.Emit(cmd.Context(), audit.Event{
 				Actor:  "cli",
 				Action: audit.ActionWorkflowRolledBack,
 				Resource: audit.Resource{
@@ -124,7 +136,9 @@ history via the rollback_of column.`,
 					"new_version":    strconv.Itoa(newVersion),
 					"rollback_of":    strconv.Itoa(targetVersion),
 				},
-			})
+			}); err != nil {
+				log.Printf("warning: failed to emit audit event: %v", err)
+			}
 
 			// 8. Print result.
 			fmt.Fprintf(cmd.OutOrStdout(), "Rolled back %s from version %d to content of version %d (now version %d)\n",

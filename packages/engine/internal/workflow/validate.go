@@ -609,6 +609,12 @@ func validateHookSteps(steps []Step, blockPrefix string) []ValidationError {
 				Message: "hook step name is required",
 			})
 		} else {
+			if !namePattern.MatchString(step.Name) {
+				errs = append(errs, ValidationError{
+					Field:   prefix + ".name",
+					Message: "hook step name must match ^[a-z][a-z0-9-]*$",
+				})
+			}
 			if seen[step.Name] {
 				errs = append(errs, ValidationError{
 					Field:   prefix + ".name",
@@ -623,6 +629,38 @@ func validateHookSteps(steps []Step, blockPrefix string) []ValidationError {
 				Field:   prefix + ".action",
 				Message: "hook step action is required",
 			})
+		}
+
+		// Validate timeout.
+		if step.Timeout != "" {
+			d, err := time.ParseDuration(step.Timeout)
+			if err != nil {
+				errs = append(errs, ValidationError{
+					Field:   prefix + ".timeout",
+					Message: fmt.Sprintf("invalid duration: %v", err),
+				})
+			} else if d <= 0 {
+				errs = append(errs, ValidationError{
+					Field:   prefix + ".timeout",
+					Message: "timeout must be a positive duration",
+				})
+			}
+		}
+
+		// Validate retry policy.
+		if step.Retry != nil {
+			if step.Retry.MaxAttempts <= 0 {
+				errs = append(errs, ValidationError{
+					Field:   prefix + ".retry.max_attempts",
+					Message: "max_attempts must be greater than 0",
+				})
+			}
+			if step.Retry.Backoff != "" && !validBackoffTypes[step.Retry.Backoff] {
+				errs = append(errs, ValidationError{
+					Field:   prefix + ".retry.backoff",
+					Message: fmt.Sprintf("backoff must be one of: fixed, exponential (got %q)", step.Retry.Backoff),
+				})
+			}
 		}
 
 		if len(step.DependsOn) > 0 {

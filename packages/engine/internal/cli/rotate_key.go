@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/dvflw/mantle/internal/audit"
@@ -70,13 +71,15 @@ func newSecretsRotateKeyCommand() *cobra.Command {
 
 			// Emit audit event after successful rotation.
 			auditor := &audit.PostgresEmitter{DB: database}
-			_ = auditor.Emit(cmd.Context(), audit.Event{
+			if err := auditor.Emit(cmd.Context(), audit.Event{
 				Timestamp: time.Now(),
 				Actor:     "cli",
 				Action:    audit.ActionSecretKeyRotated,
 				Resource:  audit.Resource{Type: "credentials", ID: "all"},
 				Metadata:  map[string]string{"count": fmt.Sprintf("%d", count)},
-			})
+			}); err != nil {
+				log.Printf("warning: failed to emit audit event: %v", err)
+			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Re-encrypted %d credential(s).\n", count)
 			fmt.Fprintf(cmd.OutOrStdout(), "New key: %s\n", newKey)
