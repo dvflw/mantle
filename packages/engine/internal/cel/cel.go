@@ -2,6 +2,7 @@ package cel
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"reflect"
 	"strings"
@@ -27,7 +28,8 @@ const maxProgramCacheSize = 10000
 // Evaluator evaluates CEL expressions against a runtime context.
 type Evaluator struct {
 	env          *cel.Env
-	envCache     map[string]string // cached, filtered environment variables
+	configEnv    map[string]string      // config-sourced env values from mantle.yaml
+	envCache     map[string]string      // cached, filtered environment variables
 	programMu    sync.Mutex
 	programCache map[string]cel.Program // expression string -> compiled cel.Program
 }
@@ -49,7 +51,7 @@ func NewEvaluator() (*Evaluator, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating CEL environment: %w", err)
 	}
-	return &Evaluator{env: env, envCache: envVars(), programCache: make(map[string]cel.Program)}, nil
+	return &Evaluator{env: env, envCache: mergeEnvVars(nil), programCache: make(map[string]cel.Program)}, nil
 }
 
 // Eval evaluates a CEL expression and returns the result as a Go value.
@@ -222,17 +224,37 @@ func (e *Evaluator) resolveValue(v any, ctx *Context) (any, error) {
 	}
 }
 
-// envVars returns only environment variables with the MANTLE_ENV_ prefix,
-// stripping the prefix for cleaner access (e.g., MANTLE_ENV_FOO -> env.FOO).
+// SetConfigEnv sets the config-sourced env values and rebuilds the env cache.
+// This merges config values with MANTLE_ENV_* environment variables, where
+// OS env vars take precedence over config values.
+func (e *Evaluator) SetConfigEnv(configEnv map[string]string) {
+	e.configEnv = configEnv
+	e.envCache = mergeEnvVars(configEnv)
+}
+
+// mergeEnvVars builds the env map available to CEL expressions.
+// It starts with config-sourced values (from the env: section in mantle.yaml),
+// then overlays MANTLE_ENV_* environment variables (stripping the prefix).
+// When a key exists in both, the OS env var wins and an info log is emitted.
 // This prevents CEL expressions from reading sensitive variables like
 // MANTLE_ENCRYPTION_KEY, MANTLE_DATABASE_URL, or AWS_SECRET_ACCESS_KEY.
-func envVars() map[string]string {
+func mergeEnvVars(configEnv map[string]string) map[string]string {
 	env := make(map[string]string)
+
+	// Start with config values.
+	for k, v := range configEnv {
+		env[k] = v
+	}
+
+	// Overlay MANTLE_ENV_* from OS environment (env var wins).
 	const prefix = "MANTLE_ENV_"
 	for _, e := range os.Environ() {
 		parts := strings.SplitN(e, "=", 2)
 		if len(parts) == 2 && strings.HasPrefix(parts[0], prefix) {
 			key := strings.TrimPrefix(parts[0], prefix)
+			if _, exists := env[key]; exists {
+				slog.Info("env variable overrides config", "key", prefix+key, "config_key", "env."+key)
+			}
 			env[key] = parts[1]
 		}
 	}

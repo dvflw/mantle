@@ -427,3 +427,43 @@ tmp:
 	assert.Equal(t, "s3", cfg.Storage.Type)
 	assert.Equal(t, "new-bucket", cfg.Storage.Bucket)
 }
+
+func TestLoad_EnvMap(t *testing.T) {
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, "mantle.yaml")
+	err := os.WriteFile(configFile, []byte(`
+env:
+  APP_NAME: "my-app"
+  REGION: "us-east-1"
+  DEBUG: "true"
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := newTestCommand()
+	_ = cmd.Flags().Set("config", configFile)
+
+	cfg, err := Load(cmd)
+	require.NoError(t, err)
+
+	assert.Equal(t, "my-app", cfg.Env["APP_NAME"])
+	assert.Equal(t, "us-east-1", cfg.Env["REGION"])
+	assert.Equal(t, "true", cfg.Env["DEBUG"])
+}
+
+func TestLoad_EnvMapEmpty(t *testing.T) {
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, "mantle.yaml")
+	err := os.WriteFile(configFile, []byte(`
+log:
+  level: "debug"
+`), 0644)
+	require.NoError(t, err)
+
+	cmd := newTestCommand()
+	_ = cmd.Flags().Set("config", configFile)
+
+	cfg, err := Load(cmd)
+	require.NoError(t, err)
+
+	assert.Empty(t, cfg.Env)
+}

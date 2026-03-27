@@ -49,6 +49,7 @@ func newServeCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("creating engine: %w", err)
 			}
+			eng.CEL.SetConfigEnv(cfg.Env)
 			eng.MaxToolRoundsLimit = cfg.Engine.MaxToolRoundsLimit
 			eng.MaxConcurrentExecutionsPerTeam = cfg.Engine.MaxConcurrentExecutionsPerTeam
 

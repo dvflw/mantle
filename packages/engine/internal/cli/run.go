@@ -65,6 +65,7 @@ func newRunCommand() *cobra.Command {
 				return fmt.Errorf("creating engine: %w", err)
 			}
 			eng.MaxConcurrentExecutionsPerTeam = cfg.Engine.MaxConcurrentExecutionsPerTeam
+			eng.CEL.SetConfigEnv(cfg.Env)
 
 			// Configure credential resolver with Postgres-backed store when encryption key is set.
 			if cfg.Encryption.Key != "" {

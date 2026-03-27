@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/dvflw/mantle/internal/budget"
@@ -32,6 +33,7 @@ type Config struct {
 	GCP        GCPConfig        `mapstructure:"gcp"`
 	Azure      AzureConfig      `mapstructure:"azure"`
 	Storage    StorageConfig    `mapstructure:"storage"`
+	Env        map[string]string `mapstructure:"env"`
 }
 
 // RetentionConfig holds data retention settings.
@@ -279,8 +281,6 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	}
 
 	// Validate config version.
-	// If the user did not set "version" at all, default to 1.
-	// If they explicitly set it (including to 0), it must be 1.
 	if !v.IsSet("version") {
 		cfg.Version = 1
 	}
@@ -289,7 +289,6 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	}
 
 	// Deprecated: fall back from "tmp" section to "storage" for backward compatibility.
-	// Field-by-field merge so that env vars / flags on "storage.*" are not clobbered.
 	if v.IsSet("tmp") {
 		if sub := v.Sub("tmp"); sub != nil {
 			var legacy StorageConfig
@@ -312,6 +311,16 @@ func Load(cmd *cobra.Command) (*Config, error) {
 				slog.Warn("config section 'tmp' is deprecated and will be removed in a future release; rename it to 'storage'")
 			}
 		}
+	}
+
+	// Viper lowercases all map keys. Normalize env map keys to uppercase
+	// so they match MANTLE_ENV_* convention and CEL expressions like env.APP_NAME.
+	if len(cfg.Env) > 0 {
+		normalized := make(map[string]string, len(cfg.Env))
+		for k, v := range cfg.Env {
+			normalized[strings.ToUpper(k)] = v
+		}
+		cfg.Env = normalized
 	}
 
 	// Validate budget reset_day range.
