@@ -64,6 +64,7 @@ func newRunCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("creating engine: %w", err)
 			}
+			eng.CEL.SetConfigEnv(cfg.Env)
 
 			// Configure credential resolver with Postgres-backed store when encryption key is set.
 			if cfg.Encryption.Key != "" {
