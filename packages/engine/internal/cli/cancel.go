@@ -97,19 +97,20 @@ func newCancelCommand() *cobra.Command {
 				return fmt.Errorf("cancelling step executions: %w", err)
 			}
 
-			if err := tx.Commit(); err != nil {
-				return fmt.Errorf("committing cancellation: %w", err)
-			}
-
-			// Emit audit events for each cancelled execution.
-			auditor := &audit.PostgresEmitter{DB: database}
+			// Emit audit events inside the transaction so they commit atomically.
 			for _, id := range cancelledIDs {
-				_ = auditor.Emit(cmd.Context(), audit.Event{
+				if err := audit.EmitTx(cmd.Context(), tx, audit.Event{
 					Timestamp: time.Now(),
 					Actor:     "cli",
 					Action:    audit.ActionExecutionCancelled,
 					Resource:  audit.Resource{Type: "workflow_execution", ID: id},
-				})
+				}); err != nil {
+					return fmt.Errorf("emitting audit event for %s: %w", id, err)
+				}
+			}
+
+			if err := tx.Commit(); err != nil {
+				return fmt.Errorf("committing cancellation: %w", err)
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Cancelled execution %s (%d executions affected)\n", execID, len(cancelledIDs))

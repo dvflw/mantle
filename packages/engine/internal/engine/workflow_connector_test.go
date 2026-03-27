@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -226,6 +227,9 @@ steps:
 	}
 	if callDeep.Error == "" {
 		t.Error("call-deep error should be non-empty")
+	}
+	if !strings.Contains(callDeep.Error, "depth") {
+		t.Errorf("expected depth limit error, got: %s", callDeep.Error)
 	}
 	t.Logf("depth limit error: %s", callDeep.Error)
 }

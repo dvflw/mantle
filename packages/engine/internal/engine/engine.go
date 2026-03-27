@@ -622,6 +622,12 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 	var lastErr error
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		// Check if the execution has been cancelled before each retry attempt.
+		var execStatus string
+		if err := e.DB.QueryRowContext(ctx, "SELECT status FROM workflow_executions WHERE id = $1", execID).Scan(&execStatus); err == nil && execStatus == "cancelled" {
+			return nil, fmt.Errorf("execution cancelled")
+		}
+
 		// Create a fresh artifacts scratch dir per attempt.
 		if len(step.Artifacts) > 0 && e.Storage != nil {
 			if artifactsDir != "" {
@@ -1055,9 +1061,10 @@ func (e *Engine) updateStep(ctx context.Context, execID, stepName, status string
 		completedAt = time.Now()
 	}
 
+	// Don't overwrite a cancelled step.
 	_, err = e.DB.ExecContext(ctx,
 		`UPDATE step_executions SET status = $1, output = $2, error = $3, completed_at = $4, continue_on_error = $5, updated_at = NOW()
-		 WHERE execution_id = $6 AND step_name = $7 AND attempt = 1`,
+		 WHERE execution_id = $6 AND step_name = $7 AND attempt = 1 AND status != 'cancelled'`,
 		status, outputJSON, errorVal, completedAt, continueOnError, execID, stepName,
 	)
 	if err != nil {
