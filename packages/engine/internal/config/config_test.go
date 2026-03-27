@@ -249,27 +249,27 @@ func TestLoad_BudgetResetDay_CalendarClampsUpperBound(t *testing.T) {
 	assert.Equal(t, 1, cfg.Engine.Budget.ResetDay)
 }
 
-func TestLoad_TmpConfigFromEnvVars(t *testing.T) {
-	t.Setenv("MANTLE_TMP_TYPE", "s3")
-	t.Setenv("MANTLE_TMP_BUCKET", "my-artifacts")
-	t.Setenv("MANTLE_TMP_PREFIX", "workflows/")
-	t.Setenv("MANTLE_TMP_RETENTION", "24h")
+func TestLoad_StorageConfigFromEnvVars(t *testing.T) {
+	t.Setenv("MANTLE_STORAGE_TYPE", "s3")
+	t.Setenv("MANTLE_STORAGE_BUCKET", "my-artifacts")
+	t.Setenv("MANTLE_STORAGE_PREFIX", "workflows/")
+	t.Setenv("MANTLE_STORAGE_RETENTION", "24h")
 
 	cmd := newTestCommand()
 	cfg, err := Load(cmd)
 	require.NoError(t, err)
 
-	assert.Equal(t, "s3", cfg.Tmp.Type)
-	assert.Equal(t, "my-artifacts", cfg.Tmp.Bucket)
-	assert.Equal(t, "workflows/", cfg.Tmp.Prefix)
-	assert.Equal(t, "24h", cfg.Tmp.Retention)
+	assert.Equal(t, "s3", cfg.Storage.Type)
+	assert.Equal(t, "my-artifacts", cfg.Storage.Bucket)
+	assert.Equal(t, "workflows/", cfg.Storage.Prefix)
+	assert.Equal(t, "24h", cfg.Storage.Retention)
 }
 
-func TestLoad_TmpConfigFromConfigFile(t *testing.T) {
+func TestLoad_StorageConfigFromConfigFile(t *testing.T) {
 	dir := t.TempDir()
 	configFile := filepath.Join(dir, "mantle.yaml")
 	err := os.WriteFile(configFile, []byte(`
-tmp:
+storage:
   type: "filesystem"
   path: "/tmp/mantle-artifacts"
   retention: "48h"
@@ -282,9 +282,9 @@ tmp:
 	cfg, err := Load(cmd)
 	require.NoError(t, err)
 
-	assert.Equal(t, "filesystem", cfg.Tmp.Type)
-	assert.Equal(t, "/tmp/mantle-artifacts", cfg.Tmp.Path)
-	assert.Equal(t, "48h", cfg.Tmp.Retention)
+	assert.Equal(t, "filesystem", cfg.Storage.Type)
+	assert.Equal(t, "/tmp/mantle-artifacts", cfg.Storage.Path)
+	assert.Equal(t, "48h", cfg.Storage.Retention)
 }
 
 func TestLoad_VersionValidation(t *testing.T) {
@@ -344,17 +344,17 @@ func TestLoad_VersionValidation(t *testing.T) {
 	}
 }
 
-func TestLoad_TmpConfigEnvVarOverridesFile(t *testing.T) {
+func TestLoad_StorageConfigEnvVarOverridesFile(t *testing.T) {
 	dir := t.TempDir()
 	configFile := filepath.Join(dir, "mantle.yaml")
 	_ = os.WriteFile(configFile, []byte(`
-tmp:
+storage:
   type: "filesystem"
   path: "/tmp/file-path"
 `), 0644)
 
-	t.Setenv("MANTLE_TMP_TYPE", "s3")
-	t.Setenv("MANTLE_TMP_BUCKET", "env-bucket")
+	t.Setenv("MANTLE_STORAGE_TYPE", "s3")
+	t.Setenv("MANTLE_STORAGE_BUCKET", "env-bucket")
 
 	cmd := newTestCommand()
 	_ = cmd.Flags().Set("config", configFile)
@@ -362,8 +362,68 @@ tmp:
 	cfg, err := Load(cmd)
 	require.NoError(t, err)
 
-	assert.Equal(t, "s3", cfg.Tmp.Type)
-	assert.Equal(t, "env-bucket", cfg.Tmp.Bucket)
+	assert.Equal(t, "s3", cfg.Storage.Type)
+	assert.Equal(t, "env-bucket", cfg.Storage.Bucket)
 	// path from file should still be present since env var didn't override it
-	assert.Equal(t, "/tmp/file-path", cfg.Tmp.Path)
+	assert.Equal(t, "/tmp/file-path", cfg.Storage.Path)
+}
+
+func TestLoad_StorageSectionUsedDirectly(t *testing.T) {
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, "mantle.yaml")
+	_ = os.WriteFile(configFile, []byte(`
+storage:
+  type: "s3"
+  bucket: "my-bucket"
+`), 0644)
+
+	cmd := newTestCommand()
+	_ = cmd.Flags().Set("config", configFile)
+
+	cfg, err := Load(cmd)
+	require.NoError(t, err)
+
+	assert.Equal(t, "s3", cfg.Storage.Type)
+	assert.Equal(t, "my-bucket", cfg.Storage.Bucket)
+}
+
+func TestLoad_TmpFallbackToStorageWithWarning(t *testing.T) {
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, "mantle.yaml")
+	_ = os.WriteFile(configFile, []byte(`
+tmp:
+  type: "filesystem"
+  path: "/tmp/legacy-artifacts"
+`), 0644)
+
+	cmd := newTestCommand()
+	_ = cmd.Flags().Set("config", configFile)
+
+	cfg, err := Load(cmd)
+	require.NoError(t, err)
+
+	assert.Equal(t, "filesystem", cfg.Storage.Type)
+	assert.Equal(t, "/tmp/legacy-artifacts", cfg.Storage.Path)
+}
+
+func TestLoad_StorageTakesPrecedenceOverTmp(t *testing.T) {
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, "mantle.yaml")
+	_ = os.WriteFile(configFile, []byte(`
+storage:
+  type: "s3"
+  bucket: "new-bucket"
+tmp:
+  type: "filesystem"
+  path: "/tmp/old-path"
+`), 0644)
+
+	cmd := newTestCommand()
+	_ = cmd.Flags().Set("config", configFile)
+
+	cfg, err := Load(cmd)
+	require.NoError(t, err)
+
+	assert.Equal(t, "s3", cfg.Storage.Type)
+	assert.Equal(t, "new-bucket", cfg.Storage.Bucket)
 }

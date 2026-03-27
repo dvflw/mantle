@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/url"
 	"os"
 	"time"
@@ -30,7 +31,7 @@ type Config struct {
 	AWS        AWSConfig        `mapstructure:"aws"`
 	GCP        GCPConfig        `mapstructure:"gcp"`
 	Azure      AzureConfig      `mapstructure:"azure"`
-	Tmp        TmpConfig        `mapstructure:"tmp"`
+	Storage    StorageConfig    `mapstructure:"storage"`
 }
 
 // RetentionConfig holds data retention settings.
@@ -55,8 +56,8 @@ type AzureConfig struct {
 	Region string `mapstructure:"region"`
 }
 
-// TmpConfig configures ephemeral storage for workflow artifacts.
-type TmpConfig struct {
+// StorageConfig configures ephemeral storage for workflow artifacts.
+type StorageConfig struct {
 	Type      string `mapstructure:"type"`      // "s3" or "filesystem"
 	Bucket    string `mapstructure:"bucket"`    // S3 bucket name (for type: s3)
 	Prefix    string `mapstructure:"prefix"`    // Key prefix (for type: s3)
@@ -230,12 +231,12 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	_ = v.BindEnv("retention.execution_days", "MANTLE_RETENTION_EXECUTION_DAYS")
 	_ = v.BindEnv("retention.audit_days", "MANTLE_RETENTION_AUDIT_DAYS")
 
-	// Tmp env var bindings
-	_ = v.BindEnv("tmp.type", "MANTLE_TMP_TYPE")
-	_ = v.BindEnv("tmp.bucket", "MANTLE_TMP_BUCKET")
-	_ = v.BindEnv("tmp.prefix", "MANTLE_TMP_PREFIX")
-	_ = v.BindEnv("tmp.path", "MANTLE_TMP_PATH")
-	_ = v.BindEnv("tmp.retention", "MANTLE_TMP_RETENTION")
+	// Storage env var bindings
+	_ = v.BindEnv("storage.type", "MANTLE_STORAGE_TYPE")
+	_ = v.BindEnv("storage.bucket", "MANTLE_STORAGE_BUCKET")
+	_ = v.BindEnv("storage.prefix", "MANTLE_STORAGE_PREFIX")
+	_ = v.BindEnv("storage.path", "MANTLE_STORAGE_PATH")
+	_ = v.BindEnv("storage.retention", "MANTLE_STORAGE_RETENTION")
 
 	// Engine env var bindings
 	_ = v.BindEnv("engine.node_id", "MANTLE_ENGINE_NODE_ID")
@@ -282,6 +283,15 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	}
 	if cfg.Version != 1 {
 		return nil, fmt.Errorf("unsupported config version %d; this version of mantle supports config version 1 — upgrade mantle or check your mantle.yaml", cfg.Version)
+	}
+
+	// Deprecated: fall back from "tmp" section to "storage" for backward compatibility.
+	if cfg.Storage.Type == "" && v.IsSet("tmp") {
+		var legacy StorageConfig
+		if err := v.Sub("tmp").Unmarshal(&legacy); err == nil {
+			cfg.Storage = legacy
+			slog.Warn("config section 'tmp' is deprecated and will be removed in a future release; rename it to 'storage'")
+		}
 	}
 
 	// Validate budget reset_day range.

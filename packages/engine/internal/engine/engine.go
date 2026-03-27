@@ -33,7 +33,7 @@ type Engine struct {
 	BudgetChecker      *budget.Checker      // nil = budget enforcement disabled
 	BudgetStore        *budget.Store        // nil = token usage recording disabled
 	ArtifactStore      *artifact.Store      // nil = artifact system disabled
-	TmpStorage         artifact.TmpStorage  // nil = artifact system disabled
+	Storage            artifact.Storage     // nil = artifact system disabled
 }
 
 // StepContext carries workflow-level metadata needed by step execution.
@@ -449,8 +449,8 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 	// Validate artifact subsystem is configured if step declares artifacts.
 	var artifactsDir string
 	if len(step.Artifacts) > 0 {
-		if e.TmpStorage == nil || e.ArtifactStore == nil {
-			return nil, fmt.Errorf("step %q declares artifacts but artifact subsystem is not configured (set tmp storage in mantle.yaml)", step.Name)
+		if e.Storage == nil || e.ArtifactStore == nil {
+			return nil, fmt.Errorf("step %q declares artifacts but artifact subsystem is not configured (set storage in mantle.yaml)", step.Name)
 		}
 	}
 
@@ -483,7 +483,7 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		// Create a fresh artifacts scratch dir per attempt.
-		if len(step.Artifacts) > 0 && e.TmpStorage != nil {
+		if len(step.Artifacts) > 0 && e.Storage != nil {
 			if artifactsDir != "" {
 				os.RemoveAll(artifactsDir) // clean previous attempt's scratch
 			}
@@ -551,7 +551,7 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 	}
 
 	// Persist declared artifacts to tmp storage.
-	if lastErr == nil && len(step.Artifacts) > 0 && e.TmpStorage != nil && e.ArtifactStore != nil && artifactsDir != "" {
+	if lastErr == nil && len(step.Artifacts) > 0 && e.Storage != nil && e.ArtifactStore != nil && artifactsDir != "" {
 		type persistedArtifact struct {
 			id  string
 			url string
@@ -563,7 +563,7 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 				if delErr := e.ArtifactStore.DeleteByID(ctx, p.id); delErr != nil {
 					log.Printf("warning: rollback: failed to delete artifact metadata %q: %v", p.id, delErr)
 				}
-				if delErr := e.TmpStorage.Delete(ctx, p.url); delErr != nil {
+				if delErr := e.Storage.Delete(ctx, p.url); delErr != nil {
 					log.Printf("warning: rollback: failed to delete artifact blob %q: %v", p.url, delErr)
 				}
 			}
@@ -579,7 +579,7 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 			}
 
 			key := fmt.Sprintf("%s/%s/%s/%s", workflowName, execID, artDecl.Name, relPath)
-			url, putErr := e.TmpStorage.Put(ctx, key, localPath)
+			url, putErr := e.Storage.Put(ctx, key, localPath)
 			if putErr != nil {
 				rollback()
 				return nil, fmt.Errorf("persisting artifact %q: %v", artDecl.Name, putErr)
@@ -593,7 +593,7 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 				Size:        info.Size(),
 			}
 			if createErr := e.ArtifactStore.Create(ctx, art); createErr != nil {
-				if delErr := e.TmpStorage.Delete(ctx, url); delErr != nil {
+				if delErr := e.Storage.Delete(ctx, url); delErr != nil {
 					log.Printf("warning: failed to clean up orphaned artifact blob %q: %v", url, delErr)
 				}
 				rollback()

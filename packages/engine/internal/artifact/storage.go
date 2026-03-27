@@ -9,9 +9,9 @@ import (
 	"strings"
 )
 
-// TmpStorage persists and retrieves artifact files.
-type TmpStorage interface {
-	// Put copies a local file to tmp storage at the given key.
+// Storage persists and retrieves artifact files.
+type Storage interface {
+	// Put copies a local file to storage at the given key.
 	// Returns the URL or path where the file can be accessed.
 	Put(ctx context.Context, key string, localPath string) (string, error)
 
@@ -22,13 +22,13 @@ type TmpStorage interface {
 	DeleteByPrefix(ctx context.Context, prefix string) error
 }
 
-// FilesystemTmpStorage stores artifacts on the local filesystem.
-type FilesystemTmpStorage struct {
+// FilesystemStorage stores artifacts on the local filesystem.
+type FilesystemStorage struct {
 	BasePath string
 }
 
 // Put copies the file at localPath to the storage location identified by key and returns its path.
-func (fs *FilesystemTmpStorage) Put(ctx context.Context, key string, localPath string) (string, error) {
+func (fs *FilesystemStorage) Put(ctx context.Context, key string, localPath string) (string, error) {
 	destPath := filepath.Join(fs.BasePath, key)
 	// Validate destination is within BasePath to prevent path traversal.
 	absBase, err := filepath.Abs(fs.BasePath)
@@ -79,7 +79,7 @@ func (fs *FilesystemTmpStorage) Put(ctx context.Context, key string, localPath s
 }
 
 // DeleteByPrefix removes all files stored under the given key prefix.
-func (fs *FilesystemTmpStorage) DeleteByPrefix(ctx context.Context, prefix string) error {
+func (fs *FilesystemStorage) DeleteByPrefix(ctx context.Context, prefix string) error {
 	target := filepath.Join(fs.BasePath, prefix)
 	absBase, err := filepath.Abs(fs.BasePath)
 	if err != nil {
@@ -97,7 +97,7 @@ func (fs *FilesystemTmpStorage) DeleteByPrefix(ctx context.Context, prefix strin
 }
 
 // Delete removes a single artifact file by its path (as returned by Put).
-func (fs *FilesystemTmpStorage) Delete(ctx context.Context, url string) error {
+func (fs *FilesystemStorage) Delete(ctx context.Context, url string) error {
 	absBase, err := filepath.Abs(fs.BasePath)
 	if err != nil {
 		return fmt.Errorf("resolving base path: %w", err)

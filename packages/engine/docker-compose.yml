@@ -57,9 +57,9 @@ services:
       MANTLE_DATABASE_URL: postgres://mantle:mantle@postgres:5432/mantle?sslmode=disable
       MANTLE_API_ADDRESS: ":8080"
       MANTLE_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-      MANTLE_TMP_TYPE: s3
-      MANTLE_TMP_BUCKET: mantle-artifacts
-      MANTLE_TMP_PREFIX: artifacts/
+      MANTLE_STORAGE_TYPE: s3
+      MANTLE_STORAGE_BUCKET: mantle-artifacts
+      MANTLE_STORAGE_PREFIX: artifacts/
       # Point S3 client at MinIO
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_ACCESS_KEY: minioadmin
