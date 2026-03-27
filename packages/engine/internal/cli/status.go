@@ -99,6 +99,41 @@ func newStatusCommand() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "  %s: %d\n", stepStatus, count)
 			}
 
+			// Query for child executions.
+			childRows, err := database.QueryContext(cmd.Context(),
+				`SELECT id, workflow_name, workflow_version, status
+				 FROM workflow_executions
+				 WHERE parent_execution_id = $1
+				 ORDER BY started_at`, execID,
+			)
+			if err == nil {
+				defer childRows.Close()
+
+				type childExec struct {
+					ID       string
+					Workflow string
+					Version  int
+					Status   string
+				}
+				var children []childExec
+				for childRows.Next() {
+					var c childExec
+					if err := childRows.Scan(&c.ID, &c.Workflow, &c.Version, &c.Status); err == nil {
+						children = append(children, c)
+					}
+				}
+
+				if len(children) > 0 {
+					fmt.Fprintln(cmd.OutOrStdout())
+					fmt.Fprintln(cmd.OutOrStdout(), "Children:")
+					for _, c := range children {
+						icon := statusIcon(c.Status)
+						fmt.Fprintf(cmd.OutOrStdout(), "  %s %-20s v%-4d %s  %s\n",
+							icon, c.Workflow, c.Version, c.Status, c.ID)
+					}
+				}
+			}
+
 			return nil
 		},
 	}
