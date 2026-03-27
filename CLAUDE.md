@@ -68,10 +68,13 @@ mantle validate workflow.yaml # Offline schema validation
 mantle plan workflow.yaml     # Diff against applied version
 mantle apply workflow.yaml    # Apply versioned definition
 mantle run <workflow>         # Manual trigger
-mantle cancel <execution-id>  # Cancel running workflow
+mantle cancel <execution-id>   # Cancel running workflow
+mantle retry <execution-id>    # Retry from failed step
+mantle rollback <workflow>     # Rollback to previous version
 mantle logs <execution-id>    # View execution logs
 mantle status <execution-id>  # View execution state
 mantle secrets create         # Create typed credential
+mantle secrets rotate-key     # Re-encrypt credentials with new key
 mantle serve                  # Start persistent server
 ```
 
