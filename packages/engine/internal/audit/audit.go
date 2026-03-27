@@ -48,6 +48,9 @@ const (
 	ActionBudgetExceeded Action = "budget.exceeded"
 	ActionBudgetWarning  Action = "budget.warning"
 	ActionBudgetUpdated  Action = "budget.updated"
+
+	// Rollback operations.
+	ActionWorkflowRolledBack Action = "workflow.rolled_back"
 )
 
 // Resource identifies the target of an audit event.
