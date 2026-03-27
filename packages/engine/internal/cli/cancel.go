@@ -2,7 +2,9 @@ package cli
 
 import (
 	"fmt"
+	"time"
 
+	"github.com/dvflw/mantle/internal/audit"
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
 	"github.com/spf13/cobra"
@@ -28,8 +30,15 @@ func newCancelCommand() *cobra.Command {
 			}
 			defer database.Close()
 
+			tx, err := database.BeginTx(cmd.Context(), nil)
+			if err != nil {
+				return fmt.Errorf("starting transaction: %w", err)
+			}
+			defer tx.Rollback() //nolint:errcheck
+
 			// Cancel the execution and all child executions recursively.
-			result, err := database.ExecContext(cmd.Context(),
+			// Use RETURNING id to capture which executions were cancelled.
+			rows, err := tx.QueryContext(cmd.Context(),
 				`WITH RECURSIVE children AS (
 					SELECT id FROM workflow_executions WHERE id = $1
 					UNION ALL
@@ -37,19 +46,29 @@ func newCancelCommand() *cobra.Command {
 					JOIN children c ON e.parent_execution_id = c.id
 				)
 				UPDATE workflow_executions SET status = 'cancelled', completed_at = NOW(), updated_at = NOW()
-				WHERE id IN (SELECT id FROM children) AND status IN ('pending', 'running', 'queued')`,
+				WHERE id IN (SELECT id FROM children) AND status IN ('pending', 'running', 'queued')
+				RETURNING id`,
 				execID,
 			)
 			if err != nil {
 				return fmt.Errorf("cancelling execution: %w", err)
 			}
 
-			rows, err := result.RowsAffected()
-			if err != nil {
-				return fmt.Errorf("checking result: %w", err)
+			var cancelledIDs []string
+			for rows.Next() {
+				var id string
+				if err := rows.Scan(&id); err != nil {
+					rows.Close()
+					return fmt.Errorf("scanning cancelled id: %w", err)
+				}
+				cancelledIDs = append(cancelledIDs, id)
+			}
+			rows.Close()
+			if err := rows.Err(); err != nil {
+				return fmt.Errorf("iterating cancelled ids: %w", err)
 			}
 
-			if rows == 0 {
+			if len(cancelledIDs) == 0 {
 				// Check if execution exists at all.
 				var status string
 				err := database.QueryRowContext(cmd.Context(),
@@ -63,7 +82,7 @@ func newCancelCommand() *cobra.Command {
 			}
 
 			// Also mark any running/pending steps in the tree as cancelled.
-			database.ExecContext(cmd.Context(),
+			_, err = tx.ExecContext(cmd.Context(),
 				`WITH RECURSIVE children AS (
 					SELECT id FROM workflow_executions WHERE id = $1
 					UNION ALL
@@ -74,8 +93,26 @@ func newCancelCommand() *cobra.Command {
 				WHERE execution_id IN (SELECT id FROM children) AND status IN ('pending', 'running')`,
 				execID,
 			)
+			if err != nil {
+				return fmt.Errorf("cancelling step executions: %w", err)
+			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Cancelled execution %s\n", execID)
+			if err := tx.Commit(); err != nil {
+				return fmt.Errorf("committing cancellation: %w", err)
+			}
+
+			// Emit audit events for each cancelled execution.
+			auditor := &audit.PostgresEmitter{DB: database}
+			for _, id := range cancelledIDs {
+				_ = auditor.Emit(cmd.Context(), audit.Event{
+					Timestamp: time.Now(),
+					Actor:     "cli",
+					Action:    audit.ActionExecutionCancelled,
+					Resource:  audit.Resource{Type: "workflow_execution", ID: id},
+				})
+			}
+
+			fmt.Fprintf(cmd.OutOrStdout(), "Cancelled execution %s (%d executions affected)\n", execID, len(cancelledIDs))
 			return nil
 		},
 	}

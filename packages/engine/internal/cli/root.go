@@ -33,6 +33,7 @@ Full documentation: https://mantle.dvflw.co/docs`,
 	cmd.PersistentFlags().String("log-level", "", "log level (debug, info, warn, error)")
 	cmd.PersistentFlags().String("api-key", "", "API key for authentication (overrides cached credentials)")
 	cmd.PersistentFlags().StringP("output", "o", "text", "Output format: text or json")
+	cmd.PersistentFlags().Int("max-workflow-depth", 0, "Maximum workflow nesting depth (default: 10)")
 
 	// Command groups for organized help output.
 	cmd.AddGroup(

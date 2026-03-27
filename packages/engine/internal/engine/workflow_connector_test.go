@@ -2,12 +2,8 @@ package engine
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"fmt"
 	"testing"
-
-	"github.com/dvflw/mantle/internal/workflow"
 )
 
 // TestWorkflowConnector_BasicInvocation creates a parent and child workflow,
@@ -448,19 +444,4 @@ func TestWorkflowConnector_OutputWrapping_Unit(t *testing.T) {
 	if failStep["error"] != "something broke" {
 		t.Errorf("fail-step error = %v, want %q", failStep["error"], "something broke")
 	}
-}
-
-// applyWorkflowVersioned is a helper that stores a workflow and returns both the version and any error.
-// Used in tests that need to control version behavior.
-func applyWorkflowVersioned(t *testing.T, database *sql.DB, yamlContent []byte) (int, error) {
-	t.Helper()
-	result, err := workflow.ParseBytes(yamlContent)
-	if err != nil {
-		return 0, fmt.Errorf("ParseBytes: %w", err)
-	}
-	version, err := workflow.Save(context.Background(), database, result, yamlContent)
-	if err != nil {
-		return 0, fmt.Errorf("Save: %w", err)
-	}
-	return version, nil
 }

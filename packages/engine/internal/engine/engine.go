@@ -178,6 +178,16 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 
 	// Execute steps sequentially.
 	for _, step := range wf.Steps {
+		// Check if execution was cancelled externally (e.g., mantle cancel).
+		var currentStatus string
+		if err := e.DB.QueryRowContext(ctx, "SELECT status FROM workflow_executions WHERE id = $1", execID).Scan(&currentStatus); err == nil {
+			if currentStatus == "cancelled" {
+				result.Status = "cancelled"
+				result.Error = "execution cancelled"
+				return result, nil
+			}
+		}
+
 		// Skip already-completed steps (checkpoint recovery).
 		if _, done := completedSteps[step.Name]; done {
 			result.Steps[step.Name] = StepResult{
@@ -825,6 +835,14 @@ func (e *Engine) createExecution(ctx context.Context, workflowName string, versi
 
 // updateExecutionStatus updates the status of a workflow execution.
 func (e *Engine) updateExecutionStatus(ctx context.Context, execID, status, errMsg string) error {
+	// Don't overwrite a cancelled status.
+	var existing string
+	if err := e.DB.QueryRowContext(ctx, "SELECT status FROM workflow_executions WHERE id = $1", execID).Scan(&existing); err == nil {
+		if existing == "cancelled" {
+			return nil // Already cancelled, don't overwrite.
+		}
+	}
+
 	var completedAt any
 	if status == "completed" || status == "failed" || status == "cancelled" {
 		completedAt = time.Now()

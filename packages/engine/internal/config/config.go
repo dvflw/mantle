@@ -271,6 +271,9 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	if f := cmd.Flags().Lookup("log-level"); f != nil {
 		_ = v.BindPFlag("log.level", f)
 	}
+	if f := cmd.Flags().Lookup("max-workflow-depth"); f != nil {
+		_ = v.BindPFlag("engine.max_workflow_depth", f)
+	}
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
