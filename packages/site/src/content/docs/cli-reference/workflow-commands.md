@@ -322,7 +322,7 @@ Execution ghi789-jkl012: completed
 If the execution is not in a failed state:
 
 ```text
-Error: execution abc123-def456 is not in a failed state (status: completed). Use --force to retry anyway.
+Error: execution abc123-def456 is not in a failed state (status: completed).
 ```
 
 If `--from-step` references a step that does not exist:

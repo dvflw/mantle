@@ -92,7 +92,9 @@ and everything downstream re-execute.`,
 
 			// JSON output mode.
 			if outputFormat == "json" {
-				_ = json.NewEncoder(cmd.OutOrStdout()).Encode(result)
+				if encErr := json.NewEncoder(cmd.OutOrStdout()).Encode(result); encErr != nil {
+					return fmt.Errorf("encoding JSON output: %w", encErr)
+				}
 				return exitErr
 			}
 

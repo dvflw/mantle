@@ -31,15 +31,11 @@ func (s *Store) Create(ctx context.Context, name, typeName string, data map[stri
 		return nil, fmt.Errorf("marshaling credential data: %w", err)
 	}
 
-	ciphertext, nonce, err := s.Encryptor.Encrypt(plaintext)
-	if err != nil {
-		return nil, fmt.Errorf("encrypting credential: %w", err)
-	}
-
 	teamID := auth.TeamIDFromContext(ctx)
 
 	// Use a transaction with the same advisory lock as RotateAll to serialize
-	// credential writes with key rotation.
+	// credential writes with key rotation. Encryption happens inside the lock
+	// to prevent a concurrent RotateAll from changing keys between encrypt and insert.
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("starting transaction: %w", err)
@@ -48,6 +44,11 @@ func (s *Store) Create(ctx context.Context, name, typeName string, data map[stri
 
 	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", int64(0x4D414E544C45)); err != nil {
 		return nil, fmt.Errorf("acquiring advisory lock: %w", err)
+	}
+
+	ciphertext, nonce, err := s.Encryptor.Encrypt(plaintext)
+	if err != nil {
+		return nil, fmt.Errorf("encrypting credential: %w", err)
 	}
 
 	var cred Credential
