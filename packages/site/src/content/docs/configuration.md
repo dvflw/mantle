@@ -146,6 +146,8 @@ INFO env variable overrides config key=MANTLE_ENV_REGION config_key=env.REGION
 
 This allows operators to override config-file defaults without editing YAML, which is useful in CI pipelines and container deployments.
 
+**Case sensitivity:** All `env:` keys from `mantle.yaml` are normalized to uppercase internally (e.g., `region` becomes `REGION`). The `MANTLE_ENV_*` prefix is stripped and the remaining key must be uppercase to match (e.g., `MANTLE_ENV_REGION` overrides `env.REGION`). Always use uppercase keys in both `mantle.yaml` and environment variables to avoid mismatches.
+
 **Example override:**
 
 ```yaml
