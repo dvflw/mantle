@@ -28,11 +28,16 @@ func newCancelCommand() *cobra.Command {
 			}
 			defer database.Close()
 
-			// Only cancel if currently pending or running.
+			// Cancel the execution and all child executions recursively.
 			result, err := database.ExecContext(cmd.Context(),
-				`UPDATE workflow_executions
-				 SET status = 'cancelled', completed_at = NOW(), updated_at = NOW()
-				 WHERE id = $1 AND status IN ('pending', 'running')`,
+				`WITH RECURSIVE children AS (
+					SELECT id FROM workflow_executions WHERE id = $1
+					UNION ALL
+					SELECT e.id FROM workflow_executions e
+					JOIN children c ON e.parent_execution_id = c.id
+				)
+				UPDATE workflow_executions SET status = 'cancelled', completed_at = NOW(), updated_at = NOW()
+				WHERE id IN (SELECT id FROM children) AND status IN ('pending', 'running', 'queued')`,
 				execID,
 			)
 			if err != nil {
@@ -57,11 +62,16 @@ func newCancelCommand() *cobra.Command {
 				return nil
 			}
 
-			// Also mark any running/pending steps as cancelled.
+			// Also mark any running/pending steps in the tree as cancelled.
 			database.ExecContext(cmd.Context(),
-				`UPDATE step_executions
-				 SET status = 'cancelled', completed_at = NOW(), updated_at = NOW()
-				 WHERE execution_id = $1 AND status IN ('pending', 'running')`,
+				`WITH RECURSIVE children AS (
+					SELECT id FROM workflow_executions WHERE id = $1
+					UNION ALL
+					SELECT e.id FROM workflow_executions e
+					JOIN children c ON e.parent_execution_id = c.id
+				)
+				UPDATE step_executions SET status = 'cancelled', completed_at = NOW(), updated_at = NOW()
+				WHERE execution_id IN (SELECT id FROM children) AND status IN ('pending', 'running')`,
 				execID,
 			)
 
