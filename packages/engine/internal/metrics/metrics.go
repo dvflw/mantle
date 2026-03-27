@@ -157,6 +157,25 @@ var (
 	})
 )
 
+// Concurrency control metrics.
+var (
+	ExecutionsQueued = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "mantle_executions_queued",
+		Help: "Current queue depth per workflow",
+	}, []string{"workflow"})
+
+	ExecutionsRejectedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_executions_rejected_total",
+		Help: "Executions rejected due to concurrency limit",
+	}, []string{"workflow"})
+
+	QueueWaitDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "mantle_queue_wait_duration_seconds",
+		Help:    "Time spent in queue before promotion",
+		Buckets: []float64{0.1, 0.5, 1, 5, 10, 30, 60, 120, 300},
+	}, []string{"workflow"})
+)
+
 // Budget metrics.
 var (
 	BudgetCheckTotal = promauto.NewCounterVec(prometheus.CounterOpts{

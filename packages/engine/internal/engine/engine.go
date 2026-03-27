@@ -78,7 +78,7 @@ type StepResult struct {
 // Execute runs a workflow by name, pinned to the specified version.
 func (e *Engine) Execute(ctx context.Context, workflowName string, version int, inputs map[string]any) (*ExecutionResult, error) {
 	// Create execution record.
-	execID, err := e.createExecution(ctx, workflowName, version, inputs)
+	execID, err := e.createExecution(ctx, workflowName, version, inputs, "pending")
 	if err != nil {
 		return nil, fmt.Errorf("creating execution: %w", err)
 	}
@@ -801,7 +801,9 @@ func (e *Engine) loadWorkflow(ctx context.Context, name string, version int) (*w
 }
 
 // createExecution inserts a new workflow_executions row and returns the ID.
-func (e *Engine) createExecution(ctx context.Context, workflowName string, version int, inputs map[string]any) (string, error) {
+// status should be "pending" for immediate execution or "queued" when
+// concurrency limits require the execution to wait.
+func (e *Engine) createExecution(ctx context.Context, workflowName string, version int, inputs map[string]any, status string) (string, error) {
 	inputsJSON, err := json.Marshal(inputs)
 	if err != nil {
 		return "", fmt.Errorf("marshaling inputs: %w", err)
@@ -812,9 +814,9 @@ func (e *Engine) createExecution(ctx context.Context, workflowName string, versi
 	var id string
 	err = e.DB.QueryRowContext(ctx,
 		`INSERT INTO workflow_executions (workflow_name, workflow_version, status, inputs, started_at, team_id)
-		 VALUES ($1, $2, 'pending', $3, NOW(), $4)
+		 VALUES ($1, $2, $3, $4, NOW(), $5)
 		 RETURNING id`,
-		workflowName, version, inputsJSON, teamID,
+		workflowName, version, status, inputsJSON, teamID,
 	).Scan(&id)
 	if err != nil {
 		return "", err

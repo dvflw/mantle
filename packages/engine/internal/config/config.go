@@ -133,6 +133,7 @@ type EngineConfig struct {
 	AllowedBaseURLs             []string      `mapstructure:"allowed_base_urls"`
 	AllowedModels               []string      `mapstructure:"allowed_models"`       // empty = all allowed
 	MaxToolRoundsLimit          int           `mapstructure:"max_tool_rounds_limit"` // 0 = no limit
+	MaxConcurrentExecutionsPerTeam int        `mapstructure:"max_concurrent_executions_per_team"`
 	Budget                      BudgetConfig  `mapstructure:"budget"`
 }
 
@@ -253,6 +254,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	_ = v.BindEnv("engine.allowed_base_urls", "MANTLE_ENGINE_ALLOWED_BASE_URLS")
 	_ = v.BindEnv("engine.allowed_models", "MANTLE_ENGINE_ALLOWED_MODELS")
 	_ = v.BindEnv("engine.max_tool_rounds_limit", "MANTLE_ENGINE_MAX_TOOL_ROUNDS_LIMIT")
+	_ = v.BindEnv("engine.max_concurrent_executions_per_team", "MANTLE_ENGINE_MAX_CONCURRENT_EXECUTIONS_PER_TEAM")
 
 	// Budget env var bindings
 	_ = v.BindEnv("engine.budget.reset_mode", "MANTLE_ENGINE_BUDGET_RESET_MODE")

@@ -141,6 +141,7 @@ func newRunCommand() *cobra.Command {
 
 	cmd.Flags().StringArrayVar(&inputFlags, "input", nil, "Input parameter (key=value), can be specified multiple times")
 	cmd.Flags().BoolP("verbose", "v", false, "Show step outputs and durations")
+	cmd.Flags().Bool("force", false, "Bypass concurrency limits")
 	return cmd
 }
 

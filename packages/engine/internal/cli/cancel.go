@@ -28,11 +28,11 @@ func newCancelCommand() *cobra.Command {
 			}
 			defer database.Close()
 
-			// Only cancel if currently pending or running.
+			// Only cancel if currently pending, running, or queued.
 			result, err := database.ExecContext(cmd.Context(),
 				`UPDATE workflow_executions
 				 SET status = 'cancelled', completed_at = NOW(), updated_at = NOW()
-				 WHERE id = $1 AND status IN ('pending', 'running')`,
+				 WHERE id = $1 AND status IN ('pending', 'running', 'queued')`,
 				execID,
 			)
 			if err != nil {
