@@ -49,6 +49,9 @@ const (
 	ActionBudgetWarning  Action = "budget.warning"
 	ActionBudgetUpdated  Action = "budget.updated"
 
+	// Promotion operations.
+	ActionExecutionPromoted Action = "execution.promoted"
+
 	// Rollback operations.
 	ActionWorkflowRolledBack Action = "workflow.rolled_back"
 )

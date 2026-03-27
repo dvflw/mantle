@@ -84,6 +84,9 @@ func (e *Engine) RetryExecution(ctx context.Context, originalExecID string, from
 	upstream := findUpstream(wf.Steps, retryStep)
 
 	// 5. Check concurrency limits (unless force-bypassed).
+	// When limits apply, check + insert happen in the same transaction
+	// to prevent a TOCTOU race on the advisory lock.
+	var newExecID string
 	initialStatus := "pending"
 	if !force && (wf.MaxParallelExecutions > 0 || e.MaxConcurrentExecutionsPerTeam > 0) {
 		tx, txErr := e.DB.BeginTx(ctx, nil)
@@ -95,22 +98,28 @@ func (e *Engine) RetryExecution(ctx context.Context, originalExecID string, from
 		cr := CheckConcurrencyLimits(ctx, tx, workflowName,
 			wf.MaxParallelExecutions, wf.OnLimit, e.MaxConcurrentExecutionsPerTeam)
 
-		if err := tx.Commit(); err != nil {
-			return nil, fmt.Errorf("committing concurrency check: %w", err)
-		}
-
 		if cr.Err != nil {
 			return nil, cr.Err
 		}
 		if cr.Queued {
 			initialStatus = "queued"
 		}
-	}
 
-	// 6. Create new execution.
-	newExecID, err := e.createExecution(ctx, workflowName, version, inputs, initialStatus)
-	if err != nil {
-		return nil, fmt.Errorf("creating retry execution: %w", err)
+		// Insert execution row inside the same transaction.
+		newExecID, err = e.createExecutionTx(ctx, tx, workflowName, version, inputs, initialStatus)
+		if err != nil {
+			return nil, fmt.Errorf("creating retry execution: %w", err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("committing concurrency check: %w", err)
+		}
+	} else {
+		// No concurrency limits — use implicit transaction.
+		newExecID, err = e.createExecution(ctx, workflowName, version, inputs, initialStatus)
+		if err != nil {
+			return nil, fmt.Errorf("creating retry execution: %w", err)
+		}
 	}
 
 	// 7. Link new execution to original.
@@ -129,10 +138,10 @@ func (e *Engine) RetryExecution(ctx context.Context, originalExecID string, from
 	}
 
 	rows, err := e.DB.QueryContext(ctx,
-		`SELECT step_name, status, output, error
+		`SELECT DISTINCT ON (step_name) step_name, status, output, error
 		 FROM step_executions
 		 WHERE execution_id = $1 AND hook_block IS NULL
-		 ORDER BY started_at`,
+		 ORDER BY step_name, attempt DESC`,
 		originalExecID,
 	)
 	if err != nil {

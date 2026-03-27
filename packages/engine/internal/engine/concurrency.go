@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"hash/fnv"
+	"time"
 
+	"github.com/dvflw/mantle/internal/audit"
 	"github.com/dvflw/mantle/internal/auth"
 	"github.com/dvflw/mantle/internal/metrics"
 )
@@ -94,8 +96,9 @@ func CheckConcurrencyLimits(ctx context.Context, tx *sql.Tx, workflowName string
 // PromoteQueued picks the oldest queued execution for a workflow and
 // promotes it to pending so it will be picked up by the engine.
 // Uses FOR UPDATE SKIP LOCKED to avoid contention with other promoters.
-func PromoteQueued(ctx context.Context, db *sql.DB, workflowName string) error {
-	result, err := db.ExecContext(ctx,
+func PromoteQueued(ctx context.Context, db *sql.DB, workflowName string, auditor audit.Emitter) error {
+	var promotedID sql.NullString
+	err := db.QueryRowContext(ctx,
 		`UPDATE workflow_executions SET status = 'pending', updated_at = NOW()
 		 WHERE id = (
 		   SELECT id FROM workflow_executions
@@ -103,26 +106,38 @@ func PromoteQueued(ctx context.Context, db *sql.DB, workflowName string) error {
 		   ORDER BY started_at ASC
 		   LIMIT 1
 		   FOR UPDATE SKIP LOCKED
-		 )`,
+		 )
+		 RETURNING id`,
 		workflowName,
-	)
+	).Scan(&promotedID)
+	if err == sql.ErrNoRows {
+		return nil // nothing to promote
+	}
 	if err != nil {
 		return fmt.Errorf("promoting queued execution: %w", err)
 	}
 
-	rows, _ := result.RowsAffected()
-	if rows > 0 {
+	if promotedID.Valid {
 		metrics.ExecutionsQueued.WithLabelValues(workflowName).Dec()
+		auditor.Emit(ctx, audit.Event{
+			Timestamp: time.Now(),
+			Actor:     "engine",
+			Action:    audit.ActionExecutionPromoted,
+			Resource:  audit.Resource{Type: "workflow_execution", ID: promotedID.String},
+			Metadata:  map[string]string{"workflow": workflowName, "scope": "workflow"},
+		})
 	}
 	return nil
 }
 
 // PromoteQueuedByTeam promotes the oldest queued execution across all workflows for a team.
-func PromoteQueuedByTeam(ctx context.Context, db *sql.DB, teamID string) error {
+func PromoteQueuedByTeam(ctx context.Context, db *sql.DB, teamID string, auditor audit.Emitter) error {
 	if teamID == "" {
 		return nil
 	}
-	_, err := db.ExecContext(ctx,
+	var promotedID sql.NullString
+	var promotedWorkflow sql.NullString
+	err := db.QueryRowContext(ctx,
 		`UPDATE workflow_executions
 		 SET status = 'pending', updated_at = NOW()
 		 WHERE id = (
@@ -131,10 +146,29 @@ func PromoteQueuedByTeam(ctx context.Context, db *sql.DB, teamID string) error {
 		    ORDER BY started_at ASC
 		    LIMIT 1
 		    FOR UPDATE SKIP LOCKED
-		 )`,
+		 )
+		 RETURNING id, workflow_name`,
 		teamID,
-	)
-	return err
+	).Scan(&promotedID, &promotedWorkflow)
+	if err == sql.ErrNoRows {
+		return nil // nothing to promote
+	}
+	if err != nil {
+		return fmt.Errorf("promoting queued execution for team: %w", err)
+	}
+
+	if promotedID.Valid {
+		wfName := promotedWorkflow.String
+		metrics.ExecutionsQueued.WithLabelValues(wfName).Dec()
+		auditor.Emit(ctx, audit.Event{
+			Timestamp: time.Now(),
+			Actor:     "engine",
+			Action:    audit.ActionExecutionPromoted,
+			Resource:  audit.Resource{Type: "workflow_execution", ID: promotedID.String},
+			Metadata:  map[string]string{"workflow": wfName, "team_id": teamID, "scope": "team"},
+		})
+	}
+	return nil
 }
 
 // hashString returns a deterministic int64 hash for use as a Postgres advisory lock key.

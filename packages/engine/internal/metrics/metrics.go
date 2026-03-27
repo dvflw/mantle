@@ -51,11 +51,6 @@ var (
 		Name: "mantle_hook_steps_total",
 		Help: "Total hook step executions",
 	}, []string{"workflow", "hook", "step", "status"})
-
-	HookStepsFailedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "mantle_hook_steps_failed_total",
-		Help: "Total hook step failures",
-	}, []string{"workflow", "hook", "step"})
 )
 
 // Queue and distribution metrics.
@@ -187,6 +182,11 @@ var (
 		Help:    "Time spent in queue before promotion",
 		Buckets: []float64{0.1, 0.5, 1, 5, 10, 30, 60, 120, 300},
 	}, []string{"workflow"})
+
+	PromotionFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mantle_promotion_failures_total",
+		Help: "Failed queue promotion attempts",
+	}, []string{"workflow", "scope"})
 )
 
 // Budget metrics.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/dvflw/mantle/internal/audit"
 	"github.com/dvflw/mantle/internal/auth"
 )
 
@@ -166,7 +167,7 @@ func TestPromoteQueued_PromotesOldest(t *testing.T) {
 	}
 
 	// Promote oldest.
-	if err := PromoteQueued(ctx, database, "wf-promote"); err != nil {
+	if err := PromoteQueued(ctx, database, "wf-promote", &audit.NoopEmitter{}); err != nil {
 		t.Fatalf("PromoteQueued() error: %v", err)
 	}
 
@@ -212,7 +213,7 @@ func TestPromoteQueuedByTeam_PromotesOldest(t *testing.T) {
 		t.Fatalf("inserting newest queued: %v", err)
 	}
 
-	if err := PromoteQueuedByTeam(ctx, database, teamID); err != nil {
+	if err := PromoteQueuedByTeam(ctx, database, teamID, &audit.NoopEmitter{}); err != nil {
 		t.Fatalf("PromoteQueuedByTeam() error: %v", err)
 	}
 

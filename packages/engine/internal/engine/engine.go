@@ -95,6 +95,10 @@ func (e *Engine) ExecuteWithOptions(ctx context.Context, workflowName string, ve
 	}
 
 	// Check concurrency limits unless force-bypassed.
+	// When concurrency limits apply, the check and execution insert happen
+	// in the same transaction so the advisory lock is held until the row
+	// exists — closing the TOCTOU window.
+	var execID string
 	initialStatus := "pending"
 	if !opts.Force && (wf.MaxParallelExecutions > 0 || e.MaxConcurrentExecutionsPerTeam > 0) {
 		tx, txErr := e.DB.BeginTx(ctx, nil)
@@ -106,22 +110,28 @@ func (e *Engine) ExecuteWithOptions(ctx context.Context, workflowName string, ve
 		result := CheckConcurrencyLimits(ctx, tx, workflowName,
 			wf.MaxParallelExecutions, wf.OnLimit, e.MaxConcurrentExecutionsPerTeam)
 
-		if err := tx.Commit(); err != nil {
-			return nil, fmt.Errorf("committing concurrency check: %w", err)
-		}
-
 		if result.Err != nil {
 			return nil, result.Err // rejected
 		}
 		if result.Queued {
 			initialStatus = "queued"
 		}
-	}
 
-	// Create execution record.
-	execID, err := e.createExecution(ctx, workflowName, version, inputs, initialStatus)
-	if err != nil {
-		return nil, fmt.Errorf("creating execution: %w", err)
+		// Insert execution row inside the same transaction.
+		execID, err = e.createExecutionTx(ctx, tx, workflowName, version, inputs, initialStatus)
+		if err != nil {
+			return nil, fmt.Errorf("creating execution: %w", err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("committing concurrency check: %w", err)
+		}
+	} else {
+		// No concurrency limits — use implicit transaction.
+		execID, err = e.createExecution(ctx, workflowName, version, inputs, initialStatus)
+		if err != nil {
+			return nil, fmt.Errorf("creating execution: %w", err)
+		}
 	}
 
 	// If queued, return immediately with queued status.
@@ -273,15 +283,31 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 				})
 				metrics.StepsContinuedOnErrorTotal.WithLabelValues(workflowName, step.Name).Inc()
 			} else {
-				// Halt main execution — record failure.
+				// Halt main execution — record failure or timeout.
 				failedStepName = step.Name
-				result.Status = "failed"
-				result.Error = fmt.Sprintf("step %q failed: %s", step.Name, stepResult.Error)
+				terminalStatus := "failed"
+				if ctx.Err() == context.DeadlineExceeded {
+					terminalStatus = "timed_out"
+				}
+				result.Status = terminalStatus
+				if terminalStatus == "timed_out" {
+					result.Error = "workflow timeout exceeded"
+				} else {
+					result.Error = fmt.Sprintf("step %q failed: %s", step.Name, stepResult.Error)
+				}
 				result.Duration = time.Since(execStart)
-				if err := e.updateExecutionStatus(ctx, execID, "failed", result.Error); err != nil {
+				// Use a background context for the DB update in case the original is expired.
+				updateCtx := ctx
+				if ctx.Err() != nil {
+					updateCtx = context.Background()
+					if user := auth.UserFromContext(ctx); user != nil {
+						updateCtx = auth.WithUser(updateCtx, user)
+					}
+				}
+				if err := e.updateExecutionStatus(updateCtx, execID, terminalStatus, result.Error); err != nil {
 					return nil, fmt.Errorf("checkpoint: %w", err)
 				}
-				metrics.ExecutionsTotal.WithLabelValues(workflowName, "failed").Inc()
+				metrics.ExecutionsTotal.WithLabelValues(workflowName, terminalStatus).Inc()
 				metrics.ExecutionDuration.WithLabelValues(workflowName).Observe(time.Since(execStart).Seconds())
 				break
 			}
@@ -330,13 +356,15 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 	// Use a fresh context — the original may be expired if the workflow timed out.
 	promoteCtx, promoteCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer promoteCancel()
-	if err := PromoteQueued(promoteCtx, e.DB, workflowName); err != nil {
+	if err := PromoteQueued(promoteCtx, e.DB, workflowName, e.Auditor); err != nil {
 		log.Printf("failed to promote queued execution for %s: %v", workflowName, err)
+		metrics.PromotionFailuresTotal.WithLabelValues(workflowName, "workflow").Inc()
 	}
 
 	// Also promote by team in case the execution was queued due to a team-level limit.
-	if err := PromoteQueuedByTeam(promoteCtx, e.DB, sc.TeamID); err != nil {
+	if err := PromoteQueuedByTeam(promoteCtx, e.DB, sc.TeamID, e.Auditor); err != nil {
 		log.Printf("failed to promote queued execution for team %s: %v", sc.TeamID, err)
+		metrics.PromotionFailuresTotal.WithLabelValues(workflowName, "team").Inc()
 	}
 
 	return result, nil
@@ -920,10 +948,34 @@ func (e *Engine) createExecution(ctx context.Context, workflowName string, versi
 	return id, nil
 }
 
+// createExecutionTx inserts a new workflow_executions row within an existing
+// transaction and returns the ID. This allows the insert to be atomic with
+// other operations (e.g., concurrency checks) in the same transaction.
+func (e *Engine) createExecutionTx(ctx context.Context, tx *sql.Tx, workflowName string, version int, inputs map[string]any, status string) (string, error) {
+	inputsJSON, err := json.Marshal(inputs)
+	if err != nil {
+		return "", fmt.Errorf("marshaling inputs: %w", err)
+	}
+
+	teamID := auth.TeamIDFromContext(ctx)
+
+	var id string
+	err = tx.QueryRowContext(ctx,
+		`INSERT INTO workflow_executions (workflow_name, workflow_version, status, inputs, started_at, team_id)
+		 VALUES ($1, $2, $3, $4, NOW(), $5)
+		 RETURNING id`,
+		workflowName, version, status, inputsJSON, teamID,
+	).Scan(&id)
+	if err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
 // updateExecutionStatus updates the status of a workflow execution.
 func (e *Engine) updateExecutionStatus(ctx context.Context, execID, status, errMsg string) error {
 	var completedAt any
-	if status == "completed" || status == "failed" || status == "cancelled" {
+	if status == "completed" || status == "failed" || status == "cancelled" || status == "timed_out" {
 		completedAt = time.Now()
 	}
 
