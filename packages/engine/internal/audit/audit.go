@@ -17,7 +17,8 @@ const (
 	ActionStepSkipped           Action = "step.skipped"
 	ActionStepContinuedOnError  Action = "step.continued_on_error"
 	ActionExecutionCancelled    Action = "execution.cancelled"
-	ActionArtifactPersisted  Action = "artifact.persisted"
+	ActionChildWorkflowExecuted Action = "workflow.child_executed"
+	ActionArtifactPersisted     Action = "artifact.persisted"
 
 	// Admin operations.
 	ActionUserCreated       Action = "user.created"

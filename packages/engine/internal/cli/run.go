@@ -64,6 +64,8 @@ func newRunCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("creating engine: %w", err)
 			}
+			eng.MaxWorkflowDepth = cfg.Engine.MaxWorkflowDepth
+			eng.RegisterWorkflowConnector()
 
 			// Configure credential resolver with Postgres-backed store when encryption key is set.
 			if cfg.Encryption.Key != "" {

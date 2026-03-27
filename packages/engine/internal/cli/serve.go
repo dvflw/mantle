@@ -50,6 +50,8 @@ func newServeCommand() *cobra.Command {
 				return fmt.Errorf("creating engine: %w", err)
 			}
 			eng.MaxToolRoundsLimit = cfg.Engine.MaxToolRoundsLimit
+			eng.MaxWorkflowDepth = cfg.Engine.MaxWorkflowDepth
+			eng.RegisterWorkflowConnector()
 
 			// Configure AWS defaults for AI (Bedrock) and S3 connectors.
 			if aiConn, err := eng.Registry.Get("ai/completion"); err == nil {

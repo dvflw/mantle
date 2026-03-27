@@ -30,6 +30,7 @@ type Engine struct {
 	CEL                *mantleCEL.Evaluator
 	Resolver           *secret.Resolver
 	MaxToolRoundsLimit int                  // admin ceiling for max_rounds; 0 = no limit
+	MaxWorkflowDepth   int                  // max nesting depth for workflow/run; 0 = use default (10)
 	BudgetChecker      *budget.Checker      // nil = budget enforcement disabled
 	BudgetStore        *budget.Store        // nil = token usage recording disabled
 	ArtifactStore      *artifact.Store      // nil = artifact system disabled
