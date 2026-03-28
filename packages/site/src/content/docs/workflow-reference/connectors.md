@@ -595,6 +595,83 @@ mantle secrets create --name minio --type generic \
   --field endpoint=http://localhost:9000
 ```
 
+## workflow/run
+
+Invokes another workflow as a child execution. The child workflow runs synchronously within the parent step, with full checkpoint-and-resume support. If the parent crashes and recovers, the child execution is reused rather than re-executed.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `workflow` | string | Yes | Name of the child workflow to execute. |
+| `version` | integer | No | Specific version to run. Omit to use the latest applied version. |
+| `inputs` | map | No | Input parameters to pass to the child workflow. |
+
+**Output:**
+
+| Field | Type | Description |
+|---|---|---|
+| `execution_id` | string | The child workflow's execution ID. |
+| `status` | string | Final status of the child execution (`completed` or `failed`). |
+| `steps` | map | Map of child step names to their results. Each entry has an `output` field (and optionally `error`). |
+
+**Accessing child results in CEL:**
+
+Child step outputs are nested under the parent step's output:
+
+```cel
+steps['my-step'].output.steps['child-step'].output.field
+```
+
+**Depth limiting:** Workflow nesting depth is configurable via `engine.max_workflow_depth` (default: `10`). Exceeding this limit returns an error.
+
+**Checkpoint recovery:** If the parent workflow crashes mid-execution, the child execution record is preserved in the database. On resume, the engine detects the existing child and reuses its result instead of creating a duplicate.
+
+**Cancellation:** Running `mantle cancel` on a parent execution cascades cancellation to all child executions.
+
+**Example -- parent workflow invoking a reusable child:**
+
+```yaml
+name: order-pipeline
+description: Process an order using a reusable validation workflow
+steps:
+  - name: validate
+    action: workflow/run
+    params:
+      workflow: validate-order
+      inputs:
+        order_id: "{{ inputs.order_id }}"
+
+  - name: notify
+    action: slack/send
+    credential: slack-bot
+    params:
+      channel: "#orders"
+      text: "Order validated: {{ steps.validate.output.steps['check-inventory'].output.available }}"
+```
+
+**Example -- child workflow (validate-order):**
+
+```yaml
+name: validate-order
+description: Validate an order's inventory and pricing
+inputs:
+  order_id:
+    type: string
+steps:
+  - name: check-inventory
+    action: http/request
+    params:
+      method: GET
+      url: "https://api.example.com/inventory/{{ inputs.order_id }}"
+
+  - name: check-pricing
+    action: http/request
+    params:
+      method: GET
+      url: "https://api.example.com/pricing/{{ inputs.order_id }}"
+```
+
 ## docker/run
 
 Runs a Docker container to completion and captures its output. The container is created, started, waited on, and optionally removed. Non-zero exit codes do not constitute a step failure — use `if` conditions to branch on exit code.

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -12,6 +13,25 @@ import (
 	"github.com/dvflw/mantle/internal/db"
 	"github.com/spf13/cobra"
 )
+
+// subStep represents a sub-step (tool call) within a step execution.
+type subStep struct {
+	StepName  string     `json:"step_name"`
+	Status    string     `json:"status"`
+	Started   *time.Time `json:"started_at,omitempty"`
+	Completed *time.Time `json:"completed_at,omitempty"`
+}
+
+// stepInfo represents a top-level step execution.
+type stepInfo struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Status      string     `json:"status"`
+	Error       string     `json:"error,omitempty"`
+	StartedAt   *time.Time `json:"started_at,omitempty"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	SubSteps    []subStep  `json:"sub_steps,omitempty"`
+}
 
 func newLogsCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -38,6 +58,7 @@ When called without arguments, lists recent executions with optional filters.`,
 	cmd.Flags().String("status", "", "filter by status (pending, running, completed, failed, cancelled)")
 	cmd.Flags().String("since", "", "filter by time (e.g., 1h, 24h, 7d)")
 	cmd.Flags().Int("limit", 20, "max results to return")
+	cmd.Flags().Bool("shallow", false, "suppress child workflow details")
 
 	return cmd
 }
@@ -81,12 +102,6 @@ func showExecutionDetail(cmd *cobra.Command, execID string) error {
 	defer rows.Close()
 
 	// Fetch sub-steps grouped by parent.
-	type subStep struct {
-		StepName  string     `json:"step_name"`
-		Status    string     `json:"status"`
-		Started   *time.Time `json:"started_at,omitempty"`
-		Completed *time.Time `json:"completed_at,omitempty"`
-	}
 	subStepsByParent := make(map[string][]subStep)
 	subRows, err := database.QueryContext(cmd.Context(),
 		`SELECT parent_step_id, step_name, status, started_at, completed_at
@@ -105,16 +120,6 @@ func showExecutionDetail(cmd *cobra.Command, execID string) error {
 	}
 
 	// Collect step data.
-	type stepInfo struct {
-		ID        string    `json:"id"`
-		Name      string    `json:"name"`
-		Status    string    `json:"status"`
-		Error     string    `json:"error,omitempty"`
-		StartedAt *time.Time `json:"started_at,omitempty"`
-		CompletedAt *time.Time `json:"completed_at,omitempty"`
-		SubSteps  []subStep  `json:"sub_steps,omitempty"`
-	}
-
 	var stepsData []stepInfo
 	for rows.Next() {
 		var stepID, stepName, stepStatus string
@@ -173,7 +178,16 @@ func showExecutionDetail(cmd *cobra.Command, execID string) error {
 	}
 	fmt.Fprintln(cmd.OutOrStdout())
 
+	shallow, _ := cmd.Flags().GetBool("shallow")
+
 	fmt.Fprintln(cmd.OutOrStdout(), "Steps:")
+	printSteps(cmd, database, execID, teamID, stepsData, shallow, "  ")
+
+	return nil
+}
+
+// printSteps renders step details, optionally recursing into child workflow executions.
+func printSteps(cmd *cobra.Command, database *sql.DB, execID, teamID string, stepsData []stepInfo, shallow bool, indent string) {
 	for _, si := range stepsData {
 		icon := statusIcon(si.Status)
 		duration := ""
@@ -181,9 +195,9 @@ func showExecutionDetail(cmd *cobra.Command, execID string) error {
 			duration = fmt.Sprintf(" %s", si.CompletedAt.Sub(*si.StartedAt).Round(time.Millisecond))
 		}
 
-		fmt.Fprintf(cmd.OutOrStdout(), "  %s %-20s %s%s\n", icon, si.Name, si.Status, duration)
+		fmt.Fprintf(cmd.OutOrStdout(), "%s%s %-20s %s%s\n", indent, icon, si.Name, si.Status, duration)
 		if si.Error != "" {
-			fmt.Fprintf(cmd.OutOrStdout(), "      error: %s\n", si.Error)
+			fmt.Fprintf(cmd.OutOrStdout(), "%s    error: %s\n", indent, si.Error)
 		}
 
 		// Render sub-steps (tool calls) as indented tree.
@@ -208,7 +222,7 @@ func showExecutionDetail(cmd *cobra.Command, execID string) error {
 				if isLastRound {
 					connector = "└─"
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "      %s round %s\n", connector, round)
+				fmt.Fprintf(cmd.OutOrStdout(), "%s    %s round %s\n", indent, connector, round)
 
 				for si, s := range rounds[round] {
 					isLast := si == len(rounds[round])-1
@@ -229,13 +243,102 @@ func showExecutionDetail(cmd *cobra.Command, execID string) error {
 					if s.Started != nil && s.Completed != nil {
 						subDur = fmt.Sprintf(" %s", s.Completed.Sub(*s.Started).Round(time.Millisecond))
 					}
-					fmt.Fprintf(cmd.OutOrStdout(), "      %s %s %-16s %s%s\n", prefix, subConn, toolName, s.Status, subDur)
+					fmt.Fprintf(cmd.OutOrStdout(), "%s    %s %s %-16s %s%s\n", indent, prefix, subConn, toolName, s.Status, subDur)
 				}
+			}
+		}
+
+		// Show child workflow execution details if not in shallow mode.
+		if !shallow {
+			printChildExecution(cmd, database, execID, si.Name, teamID, indent+"    ")
+		}
+	}
+}
+
+// printChildExecution queries for a child workflow execution spawned by a given step
+// and recursively renders its steps.
+func printChildExecution(cmd *cobra.Command, database *sql.DB, parentExecID, parentStepName, teamID, indent string) {
+	rows, err := database.QueryContext(cmd.Context(),
+		`SELECT id, workflow_name, status FROM workflow_executions
+		 WHERE parent_execution_id = $1 AND parent_step_name = $2 AND team_id = $3`,
+		parentExecID, parentStepName, teamID,
+	)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var childID, childWorkflow, childStatus string
+		if err := rows.Scan(&childID, &childWorkflow, &childStatus); err != nil {
+			continue
+		}
+
+		fmt.Fprintf(cmd.OutOrStdout(), "%s↳ child: %s (%s) [%s]\n", indent, childWorkflow, childID, childStatus)
+
+		// Fetch child's steps.
+		childSteps := fetchStepsForExecution(cmd, database, childID)
+		if len(childSteps) > 0 {
+			printSteps(cmd, database, childID, teamID, childSteps, false, indent+"  ")
+		}
+	}
+}
+
+// fetchStepsForExecution retrieves step data for a given execution ID.
+func fetchStepsForExecution(cmd *cobra.Command, database *sql.DB, execID string) []stepInfo {
+	stepRows, err := database.QueryContext(cmd.Context(),
+		`SELECT id, step_name, status, error, started_at, completed_at
+		 FROM step_executions WHERE execution_id = $1 AND parent_step_id IS NULL
+		 ORDER BY created_at ASC`, execID,
+	)
+	if err != nil {
+		return nil
+	}
+	defer stepRows.Close()
+
+	// Fetch sub-steps for the child execution.
+	subStepsByParent := make(map[string][]subStep)
+	subRows, err := database.QueryContext(cmd.Context(),
+		`SELECT parent_step_id, step_name, status, started_at, completed_at
+		 FROM step_executions WHERE execution_id = $1 AND parent_step_id IS NOT NULL
+		 ORDER BY created_at ASC`, execID,
+	)
+	if err == nil {
+		defer subRows.Close()
+		for subRows.Next() {
+			var parentID, sName, sStatus string
+			var sStarted, sCompleted *time.Time
+			if err := subRows.Scan(&parentID, &sName, &sStatus, &sStarted, &sCompleted); err == nil {
+				subStepsByParent[parentID] = append(subStepsByParent[parentID], subStep{sName, sStatus, sStarted, sCompleted})
 			}
 		}
 	}
 
-	return nil
+	var steps []stepInfo
+	for stepRows.Next() {
+		var stepID, stepName, stepStatus string
+		var stepError *string
+		var stepStarted, stepCompleted *time.Time
+		if err := stepRows.Scan(&stepID, &stepName, &stepStatus, &stepError, &stepStarted, &stepCompleted); err != nil {
+			continue
+		}
+
+		si := stepInfo{
+			ID:          stepID,
+			Name:        stepName,
+			Status:      stepStatus,
+			StartedAt:   stepStarted,
+			CompletedAt: stepCompleted,
+		}
+		if stepError != nil && *stepError != "" {
+			si.Error = *stepError
+		}
+		if subs, ok := subStepsByParent[stepID]; ok {
+			si.SubSteps = subs
+		}
+		steps = append(steps, si)
+	}
+	return steps
 }
 
 // listExecutions lists recent executions with optional filters.

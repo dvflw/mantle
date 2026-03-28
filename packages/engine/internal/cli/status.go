@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/dvflw/mantle/internal/config"
@@ -97,6 +98,52 @@ func newStatusCommand() *cobra.Command {
 			fmt.Fprintln(cmd.OutOrStdout(), "Steps:")
 			for stepStatus, count := range stepCounts {
 				fmt.Fprintf(cmd.OutOrStdout(), "  %s: %d\n", stepStatus, count)
+			}
+
+			// Query for full descendant execution tree using recursive CTE.
+			// Build a text path for correct preorder traversal ordering of nested trees.
+			childRows, err := database.QueryContext(cmd.Context(),
+				`WITH RECURSIVE tree AS (
+					SELECT id, workflow_name, workflow_version, status, 1 as depth,
+					       id::text as path
+					FROM workflow_executions WHERE parent_execution_id = $1
+					UNION ALL
+					SELECT e.id, e.workflow_name, e.workflow_version, e.status, t.depth + 1,
+					       t.path || '/' || e.id::text
+					FROM workflow_executions e
+					JOIN tree t ON e.parent_execution_id = t.id
+				)
+				SELECT id, workflow_name, workflow_version, status, depth, path FROM tree ORDER BY path`, execID,
+			)
+			if err == nil {
+				defer childRows.Close()
+
+				type childExec struct {
+					ID       string
+					Workflow string
+					Version  int
+					Status   string
+					Depth    int
+					Path     string
+				}
+				var children []childExec
+				for childRows.Next() {
+					var c childExec
+					if err := childRows.Scan(&c.ID, &c.Workflow, &c.Version, &c.Status, &c.Depth, &c.Path); err == nil {
+						children = append(children, c)
+					}
+				}
+
+				if len(children) > 0 {
+					fmt.Fprintln(cmd.OutOrStdout())
+					fmt.Fprintln(cmd.OutOrStdout(), "Execution Tree:")
+					for _, c := range children {
+						icon := statusIcon(c.Status)
+						indent := strings.Repeat("  ", c.Depth)
+						fmt.Fprintf(cmd.OutOrStdout(), "%s%s %-20s v%-4d %s  %s\n",
+							indent, icon, c.Workflow, c.Version, c.Status, c.ID)
+					}
+				}
 			}
 
 			return nil
