@@ -241,12 +241,16 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 	for _, step := range wf.Steps {
 		// Check if execution was cancelled externally (e.g., mantle cancel).
 		var currentStatus string
-		if err := e.DB.QueryRowContext(ctx, "SELECT status FROM workflow_executions WHERE id = $1 AND team_id = $2", execID, sc.TeamID).Scan(&currentStatus); err == nil {
-			if currentStatus == "cancelled" {
-				result.Status = "cancelled"
-				result.Error = "execution cancelled"
-				return result, nil
+		if err := e.DB.QueryRowContext(ctx, "SELECT status FROM workflow_executions WHERE id = $1 AND team_id = $2", execID, sc.TeamID).Scan(&currentStatus); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, fmt.Errorf("execution %s not found", execID)
 			}
+			return nil, fmt.Errorf("checking cancellation status for %s: %w", execID, err)
+		}
+		if currentStatus == "cancelled" {
+			result.Status = "cancelled"
+			result.Error = "execution cancelled"
+			return result, nil
 		}
 
 		// Skip already-completed steps (checkpoint recovery).
@@ -624,7 +628,13 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		// Check if the execution has been cancelled before each retry attempt.
 		var execStatus string
-		if err := e.DB.QueryRowContext(ctx, "SELECT status FROM workflow_executions WHERE id = $1 AND team_id = $2", execID, sc.TeamID).Scan(&execStatus); err == nil && execStatus == "cancelled" {
+		if err := e.DB.QueryRowContext(ctx, "SELECT status FROM workflow_executions WHERE id = $1 AND team_id = $2", execID, sc.TeamID).Scan(&execStatus); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, fmt.Errorf("execution %s not found", execID)
+			}
+			return nil, fmt.Errorf("checking cancellation status for %s: %w", execID, err)
+		}
+		if execStatus == "cancelled" {
 			return nil, fmt.Errorf("execution cancelled")
 		}
 

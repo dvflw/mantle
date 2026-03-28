@@ -606,7 +606,6 @@ Invokes another workflow as a child execution. The child workflow runs synchrono
 | `workflow` | string | Yes | Name of the child workflow to execute. |
 | `version` | integer | No | Specific version to run. Omit to use the latest applied version. |
 | `inputs` | map | No | Input parameters to pass to the child workflow. |
-| `token_budget` | integer | No | Token budget override for the child execution. |
 
 **Output:**
 
@@ -620,7 +619,7 @@ Invokes another workflow as a child execution. The child workflow runs synchrono
 
 Child step outputs are nested under the parent step's output:
 
-```
+```cel
 steps['my-step'].output.steps['child-step'].output.field
 ```
 

@@ -25,7 +25,6 @@ type WorkflowConnector struct {
 //   - workflow (string, required): name of the child workflow
 //   - version (int, optional): version to run; 0 or omitted = latest
 //   - inputs (map[string]any, optional): input parameters for the child
-//   - token_budget (int64, optional): token budget override for the child
 func (wc *WorkflowConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
 	// Extract required workflow name.
 	workflowName, ok := params["workflow"].(string)
