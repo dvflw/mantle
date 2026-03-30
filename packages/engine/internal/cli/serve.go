@@ -51,7 +51,9 @@ func newServeCommand() *cobra.Command {
 			}
 			eng.CEL.SetConfigEnv(cfg.Env)
 			eng.MaxToolRoundsLimit = cfg.Engine.MaxToolRoundsLimit
+			eng.MaxWorkflowDepth = cfg.Engine.MaxWorkflowDepth
 			eng.MaxConcurrentExecutionsPerTeam = cfg.Engine.MaxConcurrentExecutionsPerTeam
+			eng.RegisterWorkflowConnector()
 
 			// Configure AWS defaults for AI (Bedrock) and S3 connectors.
 			if aiConn, err := eng.Registry.Get("ai/completion"); err == nil {

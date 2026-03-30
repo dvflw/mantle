@@ -135,7 +135,8 @@ type EngineConfig struct {
 	AllowedBaseURLs             []string      `mapstructure:"allowed_base_urls"`
 	AllowedModels               []string      `mapstructure:"allowed_models"`       // empty = all allowed
 	MaxToolRoundsLimit          int           `mapstructure:"max_tool_rounds_limit"` // 0 = no limit
-	MaxConcurrentExecutionsPerTeam int        `mapstructure:"max_concurrent_executions_per_team"`
+	MaxWorkflowDepth               int           `mapstructure:"max_workflow_depth"`
+	MaxConcurrentExecutionsPerTeam int           `mapstructure:"max_concurrent_executions_per_team"`
 	Budget                      BudgetConfig  `mapstructure:"budget"`
 }
 
@@ -176,6 +177,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	v.SetDefault("engine.step_output_max_bytes", 1048576)
 	v.SetDefault("engine.default_max_tool_rounds", 10)
 	v.SetDefault("engine.default_max_tool_calls_per_round", 10)
+	v.SetDefault("engine.max_workflow_depth", 10)
 
 	// Budget defaults
 	v.SetDefault("engine.budget.reset_mode", budget.ResetModeCalendar)
@@ -256,6 +258,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	_ = v.BindEnv("engine.allowed_base_urls", "MANTLE_ENGINE_ALLOWED_BASE_URLS")
 	_ = v.BindEnv("engine.allowed_models", "MANTLE_ENGINE_ALLOWED_MODELS")
 	_ = v.BindEnv("engine.max_tool_rounds_limit", "MANTLE_ENGINE_MAX_TOOL_ROUNDS_LIMIT")
+	_ = v.BindEnv("engine.max_workflow_depth", "MANTLE_ENGINE_MAX_WORKFLOW_DEPTH")
 	_ = v.BindEnv("engine.max_concurrent_executions_per_team", "MANTLE_ENGINE_MAX_CONCURRENT_EXECUTIONS_PER_TEAM")
 
 	// Budget env var bindings
@@ -273,6 +276,9 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	}
 	if f := cmd.Flags().Lookup("log-level"); f != nil {
 		_ = v.BindPFlag("log.level", f)
+	}
+	if f := cmd.Flags().Lookup("max-workflow-depth"); f != nil {
+		_ = v.BindPFlag("engine.max_workflow_depth", f)
 	}
 
 	var cfg Config

@@ -31,6 +31,7 @@ type Engine struct {
 	CEL                            *mantleCEL.Evaluator
 	Resolver                       *secret.Resolver
 	MaxToolRoundsLimit             int              // admin ceiling for max_rounds; 0 = no limit
+	MaxWorkflowDepth               int              // max nesting depth for workflow/run; 0 = use default (10)
 	MaxConcurrentExecutionsPerTeam int              // 0 = unlimited; per-team concurrency cap
 	BudgetChecker                  *budget.Checker  // nil = budget enforcement disabled
 	BudgetStore                    *budget.Store    // nil = token usage recording disabled
@@ -238,6 +239,20 @@ func (e *Engine) resumeExecution(ctx context.Context, execID string, workflowNam
 	// Execute steps sequentially, tracking failure state for hooks.
 	var failedStepName string
 	for _, step := range wf.Steps {
+		// Check if execution was cancelled externally (e.g., mantle cancel).
+		var currentStatus string
+		if err := e.DB.QueryRowContext(ctx, "SELECT status FROM workflow_executions WHERE id = $1 AND team_id = $2", execID, sc.TeamID).Scan(&currentStatus); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, fmt.Errorf("execution %s not found", execID)
+			}
+			return nil, fmt.Errorf("checking cancellation status for %s: %w", execID, err)
+		}
+		if currentStatus == "cancelled" {
+			result.Status = "cancelled"
+			result.Error = "execution cancelled"
+			return result, nil
+		}
+
 		// Skip already-completed steps (checkpoint recovery).
 		if _, done := completedSteps[step.Name]; done {
 			result.Steps[step.Name] = StepResult{
@@ -611,6 +626,18 @@ func (e *Engine) executeStepLogic(ctx context.Context, execID string, step workf
 	var lastErr error
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		// Check if the execution has been cancelled before each retry attempt.
+		var execStatus string
+		if err := e.DB.QueryRowContext(ctx, "SELECT status FROM workflow_executions WHERE id = $1 AND team_id = $2", execID, sc.TeamID).Scan(&execStatus); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, fmt.Errorf("execution %s not found", execID)
+			}
+			return nil, fmt.Errorf("checking cancellation status for %s: %w", execID, err)
+		}
+		if execStatus == "cancelled" {
+			return nil, fmt.Errorf("execution cancelled")
+		}
+
 		// Create a fresh artifacts scratch dir per attempt.
 		if len(step.Artifacts) > 0 && e.Storage != nil {
 			if artifactsDir != "" {
@@ -977,7 +1004,8 @@ func (e *Engine) createExecutionTx(ctx context.Context, tx *sql.Tx, workflowName
 	return id, nil
 }
 
-// updateExecutionStatus updates the status of a workflow execution.
+// updateExecutionStatus atomically updates the status of a workflow execution.
+// If the execution is already cancelled, the update is a no-op (returns nil).
 func (e *Engine) updateExecutionStatus(ctx context.Context, execID, status, errMsg string) error {
 	var completedAt any
 	if status == "completed" || status == "failed" || status == "cancelled" || status == "timed_out" {
@@ -985,12 +1013,19 @@ func (e *Engine) updateExecutionStatus(ctx context.Context, execID, status, errM
 	}
 
 	teamID := auth.TeamIDFromContext(ctx)
-	_, err := e.DB.ExecContext(ctx,
-		`UPDATE workflow_executions SET status = $1, completed_at = $2, updated_at = NOW() WHERE id = $3 AND team_id = $4`,
+	result, err := e.DB.ExecContext(ctx,
+		`UPDATE workflow_executions SET status = $1, completed_at = $2, updated_at = NOW()
+		 WHERE id = $3 AND team_id = $4 AND status != 'cancelled'`,
 		status, completedAt, execID, teamID,
 	)
 	if err != nil {
 		return fmt.Errorf("updating execution %s status to %s: %w", execID, status, err)
+	}
+
+	// If no rows were affected, the execution was already cancelled (or doesn't exist).
+	// This is not an error — the cancellation takes precedence.
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		return nil
 	}
 	return nil
 }
@@ -1036,9 +1071,10 @@ func (e *Engine) updateStep(ctx context.Context, execID, stepName, status string
 		completedAt = time.Now()
 	}
 
+	// Don't overwrite a cancelled step.
 	_, err = e.DB.ExecContext(ctx,
 		`UPDATE step_executions SET status = $1, output = $2, error = $3, completed_at = $4, continue_on_error = $5, updated_at = NOW()
-		 WHERE execution_id = $6 AND step_name = $7 AND attempt = 1`,
+		 WHERE execution_id = $6 AND step_name = $7 AND attempt = 1 AND status != 'cancelled'`,
 		status, outputJSON, errorVal, completedAt, continueOnError, execID, stepName,
 	)
 	if err != nil {
