@@ -46,8 +46,8 @@ coverage.html
 ai/
 .stitch/
 
-# Internal development process (plans, specs, design exploration)
-docs/superpowers/
+# Internal development process (ephemeral implementation plans)
+docs/superpowers/plans/
 plans/
 marketing/variants/
 

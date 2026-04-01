@@ -1,0 +1,97 @@
+name: Release Tags
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: Create Package Tags
+    runs-on: ubuntu-latest
+    # Only run on Version PR merges
+    if: "startsWith(github.event.head_commit.message, 'ci: version packages')"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect version bumps
+        id: bumps
+        run: |
+          ENGINE_BUMPED=false
+          HELM_BUMPED=false
+          SITE_BUMPED=false
+
+          # Check engine version bump
+          ENGINE_OLD=$(git show HEAD~1:packages/engine/package.json 2>/dev/null | jq -r '.version' 2>/dev/null || echo "")
+          ENGINE_NEW=$(jq -r '.version' packages/engine/package.json)
+          if [[ -n "$ENGINE_OLD" && "$ENGINE_OLD" != "$ENGINE_NEW" ]]; then
+            echo "Engine version bumped: $ENGINE_OLD -> $ENGINE_NEW"
+            ENGINE_BUMPED=true
+          fi
+
+          # Check helm-chart version bump
+          HELM_OLD=$(git show HEAD~1:packages/helm-chart/package.json 2>/dev/null | jq -r '.version' 2>/dev/null || echo "")
+          HELM_NEW=$(jq -r '.version' packages/helm-chart/package.json)
+          if [[ -n "$HELM_OLD" && "$HELM_OLD" != "$HELM_NEW" ]]; then
+            echo "Helm chart version bumped: $HELM_OLD -> $HELM_NEW"
+            HELM_BUMPED=true
+          fi
+
+          # Check site version bump
+          SITE_OLD=$(git show HEAD~1:packages/site/package.json 2>/dev/null | jq -r '.version' 2>/dev/null || echo "")
+          SITE_NEW=$(jq -r '.version' packages/site/package.json)
+          if [[ -n "$SITE_OLD" && "$SITE_OLD" != "$SITE_NEW" ]]; then
+            echo "Site version bumped: $SITE_OLD -> $SITE_NEW"
+            SITE_BUMPED=true
+          fi
+
+          echo "engine_bumped=${ENGINE_BUMPED}" >> "$GITHUB_OUTPUT"
+          echo "engine_version=${ENGINE_NEW}" >> "$GITHUB_OUTPUT"
+          echo "helm_bumped=${HELM_BUMPED}" >> "$GITHUB_OUTPUT"
+          echo "helm_version=${HELM_NEW}" >> "$GITHUB_OUTPUT"
+          echo "site_bumped=${SITE_BUMPED}" >> "$GITHUB_OUTPUT"
+          echo "site_version=${SITE_NEW}" >> "$GITHUB_OUTPUT"
+
+      - name: Sync Chart.yaml appVersion
+        if: steps.bumps.outputs.engine_bumped == 'true'
+        run: |
+          .github/scripts/sync-chart-appversion.sh "${{ steps.bumps.outputs.engine_version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add packages/helm-chart/Chart.yaml
+          git commit -m "ci: sync Chart.yaml appVersion to ${{ steps.bumps.outputs.engine_version }}"
+          git push
+
+      - name: Create and push tags
+        run: |
+          TAGGED=""
+
+          if [[ "${{ steps.bumps.outputs.engine_bumped }}" == "true" ]]; then
+            git tag "engine/v${{ steps.bumps.outputs.engine_version }}"
+            TAGGED="$TAGGED engine/v${{ steps.bumps.outputs.engine_version }}"
+          fi
+
+          if [[ "${{ steps.bumps.outputs.helm_bumped }}" == "true" ]]; then
+            git tag "helm-chart/v${{ steps.bumps.outputs.helm_version }}"
+            TAGGED="$TAGGED helm-chart/v${{ steps.bumps.outputs.helm_version }}"
+          fi
+
+          if [[ "${{ steps.bumps.outputs.site_bumped }}" == "true" ]]; then
+            git tag "site/v${{ steps.bumps.outputs.site_version }}"
+            TAGGED="$TAGGED site/v${{ steps.bumps.outputs.site_version }}"
+          fi
+
+          if [[ -n "$TAGGED" ]]; then
+            echo "Pushing tags:$TAGGED"
+            git push origin --tags
+          else
+            echo "No version bumps detected"
+          fi

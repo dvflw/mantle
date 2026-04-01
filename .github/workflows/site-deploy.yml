@@ -1,0 +1,34 @@
+name: Deploy Site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/site/**'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        working-directory: packages/site
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        working-directory: packages/site
+        run: bun run build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy packages/site/dist --project-name=mantle-docs

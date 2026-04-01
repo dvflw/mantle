@@ -1,0 +1,85 @@
+version: 2
+
+project_name: mantle
+
+builds:
+  - id: mantle
+    main: ./cmd/mantle/
+    binary: mantle
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/dvflw/mantle/internal/version.Version={{.Version}}
+      - -X github.com/dvflw/mantle/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/dvflw/mantle/internal/version.Date={{.Date}}
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: "mantle-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))?\!?:.*$'
+    - title: Bug Fixes
+      regexp: '^.*?fix(\(.+\))?\!?:.*$'
+    - title: Other
+      order: 999
+
+dockers:
+  - image_templates:
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
+    use: buildx
+    ids: [mantle]
+    goos: linux
+    goarch: amd64
+    dockerfile: Dockerfile.goreleaser
+    build_flag_templates:
+      - "--platform=linux/amd64"
+  - image_templates:
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
+    use: buildx
+    ids: [mantle]
+    goos: linux
+    goarch: arm64
+    dockerfile: Dockerfile.goreleaser
+    build_flag_templates:
+      - "--platform=linux/arm64"
+
+docker_manifests:
+  - name_template: "ghcr.io/dvflw/mantle:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/dvflw/mantle:{{ .Major }}.{{ .Minor }}"
+    image_templates:
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/dvflw/mantle:{{ .Major }}"
+    image_templates:
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/dvflw/mantle:latest"
+    image_templates:
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
+
+release:
+  github:
+    owner: dvflw
+    name: mantle
+  draft: false
+  prerelease: auto

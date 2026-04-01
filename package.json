@@ -1,6 +1,9 @@
 {
   "name": "mantle",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "changeset": "changeset",
     "version": "changeset version",
