@@ -1,0 +1,49 @@
+name: Release Helm Chart
+
+on:
+  push:
+    tags:
+      - 'helm-chart/v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish:
+    name: Package and Publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
+
+      - name: Extract version
+        id: vars
+        run: |
+          TAG="${GITHUB_REF#refs/tags/helm-chart/v}"
+          echo "version=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Package chart
+        run: helm package packages/helm-chart/
+
+      - name: Push to OCI registry
+        run: helm push mantle-${{ steps.vars.outputs.version }}.tgz oci://ghcr.io/dvflw/helm-charts
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          gh release create "${TAG}" \
+            --title "Helm Chart ${VERSION}" \
+            --notes "Published to \`oci://ghcr.io/dvflw/helm-charts/mantle:${VERSION}\`
+
+          Install with:
+          \`\`\`bash
+          helm install mantle oci://ghcr.io/dvflw/helm-charts/mantle --version ${VERSION}
+          \`\`\`"
