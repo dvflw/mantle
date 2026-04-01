@@ -83,7 +83,7 @@ No version tagging — docs deploy immediately on merge. Requires `CLOUDFLARE_AP
 
 **Package registration:** Each package needs a `package.json` with `name` and `version` for changesets to track. The site already has one. Lightweight `package.json` files are added to engine and helm-chart (just `name` + `version`, no dependencies).
 
-**Version script:** The changeset config gets a `versionScript` that runs after bumping `package.json` versions. This syncs the bumped version into `Chart.yaml` for the helm-chart package. The engine doesn't need file syncing — its version comes from the git tag at build time.
+**Chart.yaml sync:** Rather than using a changesets `versionScript`, the `appVersion` sync is handled at tag-creation time in `release-tags.yml`. When an engine tag is created, the workflow updates `Chart.yaml`'s `appVersion`, commits, and pushes. This is cleaner than syncing during version PR preparation because it's driven by actual engine releases. The engine version at build time comes from the git tag via ldflags.
 
 **Tag format:** `engine/v0.4.1`, `helm-chart/v0.2.0`, `site/v1.1.0`. The `release-tags.yml` workflow diffs the merge commit to detect which `package.json` versions changed and creates tags accordingly.
 
@@ -100,8 +100,7 @@ No version tagging — docs deploy immediately on merge. Requires `CLOUDFLARE_AP
 - `packages/helm-chart/package.json` (version anchor for changesets)
 
 ### Modified files
-- `.changeset/config.json` — add version script for `Chart.yaml` sync
-- Root workspace config — register engine and helm-chart as workspace packages
+- Root `package.json` — add `workspaces` field to register all packages
 
 ### Deleted files
 - `.github/workflows/release.yml` — replaced by `release-engine.yml`

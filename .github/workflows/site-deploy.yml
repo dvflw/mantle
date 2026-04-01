@@ -6,6 +6,9 @@ on:
     paths:
       - 'packages/site/**'
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     name: Build and Deploy

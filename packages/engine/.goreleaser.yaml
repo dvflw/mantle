@@ -43,22 +43,21 @@ dockers:
   - image_templates:
       - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
     use: buildx
-    dockerfile: Dockerfile
+    ids: [mantle]
+    goos: linux
+    goarch: amd64
+    dockerfile: Dockerfile.goreleaser
     build_flag_templates:
       - "--platform=linux/amd64"
-      - "--build-arg=VERSION={{.Version}}"
-      - "--build-arg=COMMIT={{.ShortCommit}}"
-      - "--build-arg=DATE={{.Date}}"
   - image_templates:
       - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
     use: buildx
+    ids: [mantle]
+    goos: linux
     goarch: arm64
-    dockerfile: Dockerfile
+    dockerfile: Dockerfile.goreleaser
     build_flag_templates:
       - "--platform=linux/arm64"
-      - "--build-arg=VERSION={{.Version}}"
-      - "--build-arg=COMMIT={{.ShortCommit}}"
-      - "--build-arg=DATE={{.Date}}"
 
 docker_manifests:
   - name_template: "ghcr.io/dvflw/mantle:{{ .Version }}"
