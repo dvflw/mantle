@@ -1,0 +1,906 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Headless AI workflow automation — BYOK, IaC-first, enterprise-grade.",
+        "title": "Mantle API",
+        "contact": {
+            "name": "Mantle",
+            "url": "https://github.com/dvflw/mantle"
+        },
+        "license": {
+            "name": "BSL 1.1",
+            "url": "https://github.com/dvflw/mantle/blob/main/LICENSE"
+        },
+        "version": "1.0"
+    },
+    "basePath": "/",
+    "paths": {
+        "/api/v1/budgets": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OIDCAuth": []
+                    }
+                ],
+                "description": "Returns the token budget configuration for all providers configured by the authenticated team.",
+                "tags": [
+                    "budgets"
+                ],
+                "summary": "List provider budgets",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/budget.TeamBudget"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/budgets/usage": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OIDCAuth": []
+                    }
+                ],
+                "description": "Returns token usage aggregated by provider for the current billing period (calendar month UTC).",
+                "tags": [
+                    "budgets"
+                ],
+                "summary": "Get token usage",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Provider name; omit for total across all providers",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.UsageResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/budgets/{provider}": {
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OIDCAuth": []
+                    }
+                ],
+                "description": "Creates or replaces the monthly token budget for a provider. Enforcement \"hard\" blocks execution when the limit is reached; \"warn\" logs a warning only.",
+                "tags": [
+                    "budgets"
+                ],
+                "summary": "Set provider budget",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Provider name (e.g. openai, bedrock)",
+                        "name": "provider",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Budget configuration",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.SetBudgetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OIDCAuth": []
+                    }
+                ],
+                "description": "Removes the budget configuration for a provider. Does not affect in-flight executions.",
+                "tags": [
+                    "budgets"
+                ],
+                "summary": "Delete provider budget",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Provider name",
+                        "name": "provider",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.StatusResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cancel/{execution}": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OIDCAuth": []
+                    }
+                ],
+                "description": "Sends a cancellation signal to a running execution. The execution may not stop immediately; poll the status endpoint to confirm.",
+                "tags": [
+                    "executions"
+                ],
+                "summary": "Cancel a running execution",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Execution ID (UUID)",
+                        "name": "execution",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.CancelResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/executions": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OIDCAuth": []
+                    }
+                ],
+                "description": "Returns a paginated list of workflow executions for the authenticated team. Supports filtering by workflow name, status, and age.",
+                "tags": [
+                    "executions"
+                ],
+                "summary": "List executions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by workflow name",
+                        "name": "workflow",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "pending",
+                            "running",
+                            "completed",
+                            "failed",
+                            "cancelled"
+                        ],
+                        "type": "string",
+                        "description": "Filter by status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by age (e.g. 1h, 7d)",
+                        "name": "since",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max results (default 20)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.ExecutionListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/executions/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OIDCAuth": []
+                    }
+                ],
+                "description": "Returns full details of a single execution including all step results.",
+                "tags": [
+                    "executions"
+                ],
+                "summary": "Get execution detail",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Execution ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.ExecutionDetail"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/run/{workflow}": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OIDCAuth": []
+                    }
+                ],
+                "description": "Triggers the latest applied version of the named workflow. Returns a 202 Accepted response with the new execution ID.",
+                "tags": [
+                    "executions"
+                ],
+                "summary": "Trigger a workflow execution",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workflow name",
+                        "name": "workflow",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/server.RunResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/workflows": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OIDCAuth": []
+                    }
+                ],
+                "description": "Returns all workflow definitions ever applied by the authenticated team.",
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "List workflow definitions",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.WorkflowListResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/workflows/{name}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OIDCAuth": []
+                    }
+                ],
+                "description": "Returns the latest applied definition for a workflow.",
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Get latest workflow definition",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workflow name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.WorkflowDetailResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/workflows/{name}/versions": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OIDCAuth": []
+                    }
+                ],
+                "description": "Returns all historical versions of a workflow in reverse chronological order.",
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "List versions of a workflow",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workflow name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.WorkflowVersionListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/workflows/{name}/versions/{version}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "OIDCAuth": []
+                    }
+                ],
+                "description": "Returns a specific historical version of a workflow definition.",
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Get a specific workflow version",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workflow name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Version number",
+                        "name": "version",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.WorkflowDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/healthz": {
+            "get": {
+                "tags": [
+                    "system"
+                ],
+                "summary": "Liveness probe",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.HealthResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/readyz": {
+            "get": {
+                "tags": [
+                    "system"
+                ],
+                "summary": "Readiness probe",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.ReadyzResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/server.ReadyzResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "budget.TeamBudget": {
+            "type": "object",
+            "properties": {
+                "enforcement": {
+                    "description": "\"hard\" blocks execution when exceeded; \"warn\" logs only",
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "monthly_token_limit": {
+                    "description": "Maximum tokens allowed per billing period",
+                    "type": "integer"
+                },
+                "provider": {
+                    "description": "AI provider name (e.g. \"openai\", \"bedrock\")",
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.CancelResponse": {
+            "type": "object",
+            "properties": {
+                "execution_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.ExecutionDetail": {
+            "type": "object",
+            "properties": {
+                "completed_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.StepSummary"
+                    }
+                },
+                "version": {
+                    "type": "integer"
+                },
+                "workflow": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.ExecutionListResponse": {
+            "type": "object",
+            "properties": {
+                "executions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.ExecutionSummary"
+                    }
+                }
+            }
+        },
+        "server.ExecutionSummary": {
+            "type": "object",
+            "properties": {
+                "completed_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                },
+                "workflow": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.ReadyzResponse": {
+            "type": "object",
+            "properties": {
+                "details": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.RunResponse": {
+            "type": "object",
+            "properties": {
+                "execution_id": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                },
+                "workflow": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.SetBudgetRequest": {
+            "type": "object",
+            "properties": {
+                "enforcement": {
+                    "description": "\"hard\" or \"warn\"",
+                    "type": "string"
+                },
+                "monthly_token_limit": {
+                    "type": "integer"
+                }
+            }
+        },
+        "server.StatusResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.StepSummary": {
+            "type": "object",
+            "properties": {
+                "completed_at": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.UsageResponse": {
+            "type": "object",
+            "properties": {
+                "completion_tokens": {
+                    "type": "integer"
+                },
+                "period_start": {
+                    "type": "string"
+                },
+                "prompt_tokens": {
+                    "type": "integer"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "total_tokens": {
+                    "type": "integer"
+                }
+            }
+        },
+        "server.WorkflowDetailResponse": {
+            "type": "object",
+            "properties": {
+                "definition": {
+                    "type": "object"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "server.WorkflowListResponse": {
+            "type": "object",
+            "properties": {
+                "workflows": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflow.WorkflowSummary"
+                    }
+                }
+            }
+        },
+        "server.WorkflowVersionListResponse": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "versions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflow.VersionSummary"
+                    }
+                }
+            }
+        },
+        "workflow.VersionSummary": {
+            "type": "object",
+            "properties": {
+                "content_hash": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "workflow.WorkflowSummary": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "latest_version": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "securityDefinitions": {
+        "ApiKeyAuth": {
+            "description": "Bearer API key. Format: \"Bearer mk_...\"",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        },
+        "OIDCAuth": {
+            "description": "Bearer OIDC JWT. Format: \"Bearer \u003cjwt\u003e\"",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
+    }
+}

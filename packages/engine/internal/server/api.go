@@ -15,37 +15,51 @@ import (
 	"github.com/dvflw/mantle/internal/workflow"
 )
 
-// executionSummary is the JSON representation of an execution in list responses.
-type executionSummary struct {
+// ExecutionSummary is the JSON representation of an execution in list responses.
+type ExecutionSummary struct {
 	ID          string  `json:"id"`
 	Workflow    string  `json:"workflow"`
 	Version     int     `json:"version"`
 	Status      string  `json:"status"`
-	StartedAt   *string `json:"started_at"`
+	StartedAt   *string `json:"started_at,omitempty"`
 	CompletedAt *string `json:"completed_at,omitempty"`
 }
 
-// executionDetail is the JSON representation of a single execution with steps.
-type executionDetail struct {
+// ExecutionDetail is the JSON representation of a single execution with steps.
+type ExecutionDetail struct {
 	ID          string        `json:"id"`
 	Workflow    string        `json:"workflow"`
 	Version     int           `json:"version"`
 	Status      string        `json:"status"`
-	StartedAt   *string       `json:"started_at"`
+	StartedAt   *string       `json:"started_at,omitempty"`
 	CompletedAt *string       `json:"completed_at,omitempty"`
-	Steps       []stepSummary `json:"steps"`
+	Steps       []StepSummary `json:"steps"`
 }
 
-// stepSummary is the JSON representation of a step execution.
-type stepSummary struct {
+// StepSummary is the JSON representation of a step execution.
+type StepSummary struct {
 	Name        string  `json:"name"`
 	Status      string  `json:"status"`
 	Error       string  `json:"error,omitempty"`
-	StartedAt   *string `json:"started_at"`
+	StartedAt   *string `json:"started_at,omitempty"`
 	CompletedAt *string `json:"completed_at,omitempty"`
 }
 
 // handleListExecutions handles GET /api/v1/executions with query param filters.
+//
+//	@Summary      List executions
+//	@Description  Returns a paginated list of workflow executions for the authenticated team. Supports filtering by workflow name, status, and age.
+//	@Tags         executions
+//	@Param    workflow  query  string   false  "Filter by workflow name"
+//	@Param    status    query  string   false  "Filter by status"   Enums(pending,running,completed,failed,cancelled)
+//	@Param    since     query  string   false  "Filter by age (e.g. 1h, 7d)"
+//	@Param    limit     query  integer  false  "Max results (default 20)"
+//	@Success  200  {object}  ExecutionListResponse
+//	@Failure  400  {object}  ErrorResponse
+//	@Failure  500  {object}  ErrorResponse
+//	@Security ApiKeyAuth
+//	@Security OIDCAuth
+//	@Router   /api/v1/executions [get]
 func (s *Server) handleListExecutions(w http.ResponseWriter, r *http.Request) {
 	workflow := r.URL.Query().Get("workflow")
 	status := r.URL.Query().Get("status")
@@ -118,7 +132,7 @@ func (s *Server) handleListExecutions(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	executions := []executionSummary{}
+	executions := []ExecutionSummary{}
 	for rows.Next() {
 		var id, wfName, wfStatus string
 		var version int
@@ -129,7 +143,7 @@ func (s *Server) handleListExecutions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		exec := executionSummary{
+		exec := ExecutionSummary{
 			ID:       id,
 			Workflow: wfName,
 			Version:  version,
@@ -152,10 +166,22 @@ func (s *Server) handleListExecutions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"executions": executions})
+	writeJSON(w, http.StatusOK, ExecutionListResponse{Executions: executions})
 }
 
 // handleGetExecution handles GET /api/v1/executions/{id} with step details.
+//
+//	@Summary      Get execution detail
+//	@Description  Returns full details of a single execution including all step results.
+//	@Tags         executions
+//	@Param    id  path  string  true  "Execution ID (UUID)"
+//	@Success  200  {object}  ExecutionDetail
+//	@Failure  400  {object}  ErrorResponse
+//	@Failure  404  {object}  ErrorResponse
+//	@Failure  500  {object}  ErrorResponse
+//	@Security ApiKeyAuth
+//	@Security OIDCAuth
+//	@Router   /api/v1/executions/{id} [get]
 func (s *Server) handleGetExecution(w http.ResponseWriter, r *http.Request) {
 	execID := r.PathValue("id")
 	if execID == "" {
@@ -177,12 +203,12 @@ func (s *Server) handleGetExecution(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	detail := executionDetail{
+	detail := ExecutionDetail{
 		ID:       execID,
 		Workflow: workflowName,
 		Version:  version,
 		Status:   status,
-		Steps:    []stepSummary{},
+		Steps:    []StepSummary{},
 	}
 	if startedAt != nil {
 		ts := startedAt.Format(time.RFC3339)
@@ -216,7 +242,7 @@ func (s *Server) handleGetExecution(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		step := stepSummary{
+		step := StepSummary{
 			Name:   stepName,
 			Status: stepStatus,
 		}
@@ -266,6 +292,67 @@ func parseSinceDuration(s string) (time.Duration, error) {
 	return d, nil
 }
 
+// RunResponse is returned when a workflow execution is accepted.
+type RunResponse struct {
+	ExecutionID string `json:"execution_id"`
+	Workflow    string `json:"workflow"`
+	Version     int    `json:"version"`
+}
+
+// CancelResponse is returned when an execution is cancelled.
+type CancelResponse struct {
+	ExecutionID string `json:"execution_id"`
+	Status      string `json:"status"`
+}
+
+// ExecutionListResponse wraps a list of executions.
+type ExecutionListResponse struct {
+	Executions []ExecutionSummary `json:"executions"`
+}
+
+// WorkflowListResponse wraps a list of workflow summaries.
+type WorkflowListResponse struct {
+	Workflows []workflow.WorkflowSummary `json:"workflows"`
+}
+
+// WorkflowDetailResponse is returned for GET /api/v1/workflows/{name}.
+type WorkflowDetailResponse struct {
+	Name       string          `json:"name"`
+	Version    int             `json:"version"`
+	Definition json.RawMessage `json:"definition" swaggertype:"object"`
+}
+
+// WorkflowVersionListResponse wraps a list of workflow versions.
+type WorkflowVersionListResponse struct {
+	Name     string                    `json:"name"`
+	Versions []workflow.VersionSummary `json:"versions"`
+}
+
+// ErrorResponse is the standard error envelope.
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
+// UsageResponse is returned for GET /api/v1/budgets/usage.
+type UsageResponse struct {
+	PeriodStart      string `json:"period_start"`
+	Provider         string `json:"provider"`
+	PromptTokens     int64  `json:"prompt_tokens"`
+	CompletionTokens int64  `json:"completion_tokens"`
+	TotalTokens      int64  `json:"total_tokens"`
+}
+
+// SetBudgetRequest is the request body for PUT /api/v1/budgets/{provider}.
+type SetBudgetRequest struct {
+	MonthlyTokenLimit int64  `json:"monthly_token_limit"`
+	Enforcement       string `json:"enforcement"` // "hard" or "warn"
+}
+
+// StatusResponse is returned for mutations that produce no data payload.
+type StatusResponse struct {
+	Status string `json:"status"`
+}
+
 func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -279,6 +366,15 @@ func writeJSONError(w http.ResponseWriter, message string, status int) {
 }
 
 // handleListWorkflows handles GET /api/v1/workflows.
+//
+//	@Summary      List workflow definitions
+//	@Description  Returns all workflow definitions ever applied by the authenticated team.
+//	@Tags         workflows
+//	@Success  200  {object}  WorkflowListResponse
+//	@Failure  500  {object}  ErrorResponse
+//	@Security ApiKeyAuth
+//	@Security OIDCAuth
+//	@Router   /api/v1/workflows [get]
 func (s *Server) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
 	workflows, err := workflow.ListWorkflows(r.Context(), s.DB)
 	if err != nil {
@@ -289,10 +385,21 @@ func (s *Server) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
 	if workflows == nil {
 		workflows = []workflow.WorkflowSummary{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"workflows": workflows})
+	writeJSON(w, http.StatusOK, WorkflowListResponse{Workflows: workflows})
 }
 
 // handleGetWorkflow handles GET /api/v1/workflows/{name} — returns latest version.
+//
+//	@Summary      Get latest workflow definition
+//	@Description  Returns the latest applied definition for a workflow.
+//	@Tags         workflows
+//	@Param    name  path  string  true  "Workflow name"
+//	@Success  200  {object}  WorkflowDetailResponse
+//	@Failure  404  {object}  ErrorResponse
+//	@Failure  500  {object}  ErrorResponse
+//	@Security ApiKeyAuth
+//	@Security OIDCAuth
+//	@Router   /api/v1/workflows/{name} [get]
 func (s *Server) handleGetWorkflow(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
@@ -311,15 +418,25 @@ func (s *Server) handleGetWorkflow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var def json.RawMessage = content
-	writeJSON(w, http.StatusOK, map[string]any{
-		"name":    name,
-		"version": version,
-		"definition": def,
+	writeJSON(w, http.StatusOK, WorkflowDetailResponse{
+		Name:       name,
+		Version:    version,
+		Definition: json.RawMessage(content),
 	})
 }
 
 // handleListWorkflowVersions handles GET /api/v1/workflows/{name}/versions.
+//
+//	@Summary      List versions of a workflow
+//	@Description  Returns all historical versions of a workflow in reverse chronological order.
+//	@Tags         workflows
+//	@Param    name  path  string  true  "Workflow name"
+//	@Success  200  {object}  WorkflowVersionListResponse
+//	@Failure  400  {object}  ErrorResponse
+//	@Failure  500  {object}  ErrorResponse
+//	@Security ApiKeyAuth
+//	@Security OIDCAuth
+//	@Router   /api/v1/workflows/{name}/versions [get]
 func (s *Server) handleListWorkflowVersions(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
@@ -336,10 +453,22 @@ func (s *Server) handleListWorkflowVersions(w http.ResponseWriter, r *http.Reque
 	if versions == nil {
 		versions = []workflow.VersionSummary{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"name": name, "versions": versions})
+	writeJSON(w, http.StatusOK, WorkflowVersionListResponse{Name: name, Versions: versions})
 }
 
 // handleGetWorkflowVersion handles GET /api/v1/workflows/{name}/versions/{version}.
+//
+//	@Summary      Get a specific workflow version
+//	@Description  Returns a specific historical version of a workflow definition.
+//	@Tags         workflows
+//	@Param    name     path  string   true  "Workflow name"
+//	@Param    version  path  integer  true  "Version number"
+//	@Success  200  {object}  WorkflowDetailResponse
+//	@Failure  400  {object}  ErrorResponse
+//	@Failure  404  {object}  ErrorResponse
+//	@Security ApiKeyAuth
+//	@Security OIDCAuth
+//	@Router   /api/v1/workflows/{name}/versions/{version} [get]
 func (s *Server) handleGetWorkflowVersion(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
@@ -360,46 +489,67 @@ func (s *Server) handleGetWorkflowVersion(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var def json.RawMessage = content
-	writeJSON(w, http.StatusOK, map[string]any{
-		"name":       name,
-		"version":    version,
-		"definition": def,
+	writeJSON(w, http.StatusOK, WorkflowDetailResponse{
+		Name:       name,
+		Version:    version,
+		Definition: json.RawMessage(content),
 	})
 }
 
+// handleListBudgets lists AI provider budgets for the authenticated team.
+//
+//	@Summary      List provider budgets
+//	@Description  Returns the token budget configuration for all providers configured by the authenticated team.
+//	@Tags         budgets
+//	@Success  200  {array}   budget.TeamBudget
+//	@Failure  500  {object}  ErrorResponse
+//	@Security ApiKeyAuth
+//	@Security OIDCAuth
+//	@Router   /api/v1/budgets [get]
 func (s *Server) handleListBudgets(w http.ResponseWriter, r *http.Request) {
 	teamID := auth.TeamIDFromContext(r.Context())
 	budgets, err := s.BudgetStore.ListTeamBudgets(r.Context(), teamID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		s.Logger.Error("listing budgets", "error", err)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, http.StatusOK, budgets)
 }
 
+// handleSetBudget sets or updates the token budget for a provider.
+//
+//	@Summary      Set provider budget
+//	@Description  Creates or replaces the monthly token budget for a provider. Enforcement "hard" blocks execution when the limit is reached; "warn" logs a warning only.
+//	@Tags         budgets
+//	@Param        provider  path  string           true  "Provider name (e.g. openai, bedrock)"
+//	@Param        body      body  SetBudgetRequest  true  "Budget configuration"
+//	@Success      200  {object}  StatusResponse
+//	@Failure  400  {object}  ErrorResponse
+//	@Failure  500  {object}  ErrorResponse
+//	@Security ApiKeyAuth
+//	@Security OIDCAuth
+//	@Router   /api/v1/budgets/{provider} [put]
 func (s *Server) handleSetBudget(w http.ResponseWriter, r *http.Request) {
 	teamID := auth.TeamIDFromContext(r.Context())
 	provider := r.PathValue("provider")
 
-	var body struct {
-		MonthlyTokenLimit int64  `json:"monthly_token_limit"`
-		Enforcement       string `json:"enforcement"`
-	}
+	var body SetBudgetRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		writeJSONError(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 	if body.Enforcement == "" {
 		body.Enforcement = "hard"
 	}
 	if body.Enforcement != "hard" && body.Enforcement != "warn" {
-		http.Error(w, "enforcement must be 'hard' or 'warn'", http.StatusBadRequest)
+		writeJSONError(w, "enforcement must be 'hard' or 'warn'", http.StatusBadRequest)
 		return
 	}
 
 	if err := s.BudgetStore.SetTeamBudget(r.Context(), teamID, provider, body.MonthlyTokenLimit, body.Enforcement); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		s.Logger.Error("setting budget", "provider", provider, "error", err)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -424,12 +574,24 @@ func (s *Server) handleSetBudget(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// handleDeleteBudget removes the token budget for a provider.
+//
+//	@Summary      Delete provider budget
+//	@Description  Removes the budget configuration for a provider. Does not affect in-flight executions.
+//	@Tags         budgets
+//	@Param        provider  path  string  true  "Provider name"
+//	@Success      200  {object}  StatusResponse
+//	@Failure  500  {object}  ErrorResponse
+//	@Security ApiKeyAuth
+//	@Security OIDCAuth
+//	@Router   /api/v1/budgets/{provider} [delete]
 func (s *Server) handleDeleteBudget(w http.ResponseWriter, r *http.Request) {
 	teamID := auth.TeamIDFromContext(r.Context())
 	provider := r.PathValue("provider")
 
 	if err := s.BudgetStore.DeleteTeamBudget(r.Context(), teamID, provider); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		s.Logger.Error("deleting budget", "provider", provider, "error", err)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -452,6 +614,17 @@ func (s *Server) handleDeleteBudget(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// handleGetUsage returns token usage for the current billing period.
+//
+//	@Summary      Get token usage
+//	@Description  Returns token usage aggregated by provider for the current billing period (calendar month UTC).
+//	@Tags         budgets
+//	@Param    provider  query  string  false  "Provider name; omit for total across all providers"
+//	@Success  200  {object}  UsageResponse
+//	@Failure  500  {object}  ErrorResponse
+//	@Security ApiKeyAuth
+//	@Security OIDCAuth
+//	@Router   /api/v1/budgets/usage [get]
 func (s *Server) handleGetUsage(w http.ResponseWriter, r *http.Request) {
 	teamID := auth.TeamIDFromContext(r.Context())
 	cfg := config.FromContext(r.Context())
@@ -467,7 +640,8 @@ func (s *Server) handleGetUsage(w http.ResponseWriter, r *http.Request) {
 		usage, err = s.BudgetStore.GetTotalUsage(r.Context(), teamID, period)
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		s.Logger.Error("getting usage", "provider", provider, "error", err)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 

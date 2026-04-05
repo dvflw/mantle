@@ -148,6 +148,9 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("DELETE /api/v1/budgets/{provider}", s.handleDeleteBudget)
 	mux.HandleFunc("GET /api/v1/budgets/usage", s.handleGetUsage)
 
+	// OpenAPI spec endpoint.
+	mux.HandleFunc("GET /api/v1/openapi.json", handleOpenAPISpec)
+
 	// Start distributed engine components (worker + reaper).
 	if cfg := config.FromContext(ctx); cfg != nil {
 		claimer := &engine.Claimer{
@@ -400,6 +403,18 @@ func (s *Server) waitForExecutions(ctx context.Context) {
 }
 
 // handleRun triggers a workflow execution via the API.
+//
+//	@Summary      Trigger a workflow execution
+//	@Description  Triggers the latest applied version of the named workflow. Returns a 202 Accepted response with the new execution ID.
+//	@Tags         executions
+//	@Param    workflow  path  string  true  "Workflow name"
+//	@Success  202  {object}  RunResponse
+//	@Failure  400  {object}  ErrorResponse
+//	@Failure  404  {object}  ErrorResponse
+//	@Failure  500  {object}  ErrorResponse
+//	@Security ApiKeyAuth
+//	@Security OIDCAuth
+//	@Router   /api/v1/run/{workflow} [post]
 func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB limit
 
@@ -429,6 +444,17 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCancel cancels a running execution via the API.
+//
+//	@Summary      Cancel a running execution
+//	@Description  Sends a cancellation signal to a running execution. The execution may not stop immediately; poll the status endpoint to confirm.
+//	@Tags         executions
+//	@Param    execution  path  string  true  "Execution ID (UUID)"
+//	@Success  200  {object}  CancelResponse
+//	@Failure  404  {object}  ErrorResponse
+//	@Failure  500  {object}  ErrorResponse
+//	@Security ApiKeyAuth
+//	@Security OIDCAuth
+//	@Router   /api/v1/cancel/{execution} [post]
 func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 	execID := r.PathValue("execution")
 

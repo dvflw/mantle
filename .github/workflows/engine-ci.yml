@@ -83,3 +83,24 @@ jobs:
         run: go install github.com/securego/gosec/v2/cmd/gosec@latest
       - name: Run gosec
         run: gosec -exclude=G101,G104,G112,G115,G117,G202,G204,G301,G304,G306,G404,G703,G705,G706 ./...
+
+  spec:
+    name: Spec Freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Install swag
+        run: go install github.com/swaggo/swag/cmd/swag@v1.16.6
+      - name: Regenerate spec
+        run: |
+          swag init \
+            -g docs.go \
+            --dir internal/server,internal/workflow,internal/budget \
+            --output internal/server/docs \
+            --outputTypes json,yaml \
+            --parseInternal
+      - name: Check for drift
+        run: git diff --exit-code internal/server/docs/
