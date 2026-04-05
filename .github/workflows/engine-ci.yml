@@ -65,7 +65,7 @@ jobs:
           # Fixed in: N/A — no upstream fix available. Remove exclusions when a patched release ships.
           OUTPUT=$(govulncheck ./... 2>&1 || true)
           echo "$OUTPUT"
-          ACTIONABLE=$(echo "$OUTPUT" | grep -E '^Vulnerability #[0-9]+:' | grep -vE 'GO-2026-4887|GO-2026-4883')
+          ACTIONABLE=$(echo "$OUTPUT" | grep -E '^Vulnerability #[0-9]+:' | grep -vE 'GO-2026-4887|GO-2026-4883' || true)
           if [ -n "$ACTIONABLE" ]; then
             echo "FAIL: unfixed actionable vulnerabilities found"
             exit 1

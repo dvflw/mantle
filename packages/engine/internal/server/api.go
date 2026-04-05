@@ -166,7 +166,7 @@ func (s *Server) handleListExecutions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"executions": executions})
+	writeJSON(w, http.StatusOK, ExecutionListResponse{Executions: executions})
 }
 
 // handleGetExecution handles GET /api/v1/executions/{id} with step details.
@@ -385,7 +385,7 @@ func (s *Server) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
 	if workflows == nil {
 		workflows = []workflow.WorkflowSummary{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"workflows": workflows})
+	writeJSON(w, http.StatusOK, WorkflowListResponse{Workflows: workflows})
 }
 
 // handleGetWorkflow handles GET /api/v1/workflows/{name} — returns latest version.
@@ -418,11 +418,10 @@ func (s *Server) handleGetWorkflow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var def json.RawMessage = content
-	writeJSON(w, http.StatusOK, map[string]any{
-		"name":    name,
-		"version": version,
-		"definition": def,
+	writeJSON(w, http.StatusOK, WorkflowDetailResponse{
+		Name:       name,
+		Version:    version,
+		Definition: json.RawMessage(content),
 	})
 }
 
@@ -454,7 +453,7 @@ func (s *Server) handleListWorkflowVersions(w http.ResponseWriter, r *http.Reque
 	if versions == nil {
 		versions = []workflow.VersionSummary{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"name": name, "versions": versions})
+	writeJSON(w, http.StatusOK, WorkflowVersionListResponse{Name: name, Versions: versions})
 }
 
 // handleGetWorkflowVersion handles GET /api/v1/workflows/{name}/versions/{version}.
@@ -490,11 +489,10 @@ func (s *Server) handleGetWorkflowVersion(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var def json.RawMessage = content
-	writeJSON(w, http.StatusOK, map[string]any{
-		"name":       name,
-		"version":    version,
-		"definition": def,
+	writeJSON(w, http.StatusOK, WorkflowDetailResponse{
+		Name:       name,
+		Version:    version,
+		Definition: json.RawMessage(content),
 	})
 }
 
