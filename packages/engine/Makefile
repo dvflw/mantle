@@ -28,7 +28,7 @@ run:
 dev:
 	docker-compose up -d
 
-spec: ## Regenerate OpenAPI spec (requires: go install github.com/swaggo/swag/cmd/swag@latest)
+spec: ## Regenerate OpenAPI spec (requires: go install github.com/swaggo/swag/cmd/swag@v1.16.6)
 	swag init \
 	  -g docs.go \
 	  --dir internal/server,internal/workflow,internal/budget \
