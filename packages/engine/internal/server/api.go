@@ -15,8 +15,8 @@ import (
 	"github.com/dvflw/mantle/internal/workflow"
 )
 
-// executionSummary is the JSON representation of an execution in list responses.
-type executionSummary struct {
+// ExecutionSummary is the JSON representation of an execution in list responses.
+type ExecutionSummary struct {
 	ID          string  `json:"id"`
 	Workflow    string  `json:"workflow"`
 	Version     int     `json:"version"`
@@ -25,19 +25,19 @@ type executionSummary struct {
 	CompletedAt *string `json:"completed_at,omitempty"`
 }
 
-// executionDetail is the JSON representation of a single execution with steps.
-type executionDetail struct {
+// ExecutionDetail is the JSON representation of a single execution with steps.
+type ExecutionDetail struct {
 	ID          string        `json:"id"`
 	Workflow    string        `json:"workflow"`
 	Version     int           `json:"version"`
 	Status      string        `json:"status"`
 	StartedAt   *string       `json:"started_at"`
 	CompletedAt *string       `json:"completed_at,omitempty"`
-	Steps       []stepSummary `json:"steps"`
+	Steps       []StepSummary `json:"steps"`
 }
 
-// stepSummary is the JSON representation of a step execution.
-type stepSummary struct {
+// StepSummary is the JSON representation of a step execution.
+type StepSummary struct {
 	Name        string  `json:"name"`
 	Status      string  `json:"status"`
 	Error       string  `json:"error,omitempty"`
@@ -118,7 +118,7 @@ func (s *Server) handleListExecutions(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	executions := []executionSummary{}
+	executions := []ExecutionSummary{}
 	for rows.Next() {
 		var id, wfName, wfStatus string
 		var version int
@@ -129,7 +129,7 @@ func (s *Server) handleListExecutions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		exec := executionSummary{
+		exec := ExecutionSummary{
 			ID:       id,
 			Workflow: wfName,
 			Version:  version,
@@ -177,12 +177,12 @@ func (s *Server) handleGetExecution(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	detail := executionDetail{
+	detail := ExecutionDetail{
 		ID:       execID,
 		Workflow: workflowName,
 		Version:  version,
 		Status:   status,
-		Steps:    []stepSummary{},
+		Steps:    []StepSummary{},
 	}
 	if startedAt != nil {
 		ts := startedAt.Format(time.RFC3339)
@@ -216,7 +216,7 @@ func (s *Server) handleGetExecution(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		step := stepSummary{
+		step := StepSummary{
 			Name:   stepName,
 			Status: stepStatus,
 		}
@@ -264,6 +264,62 @@ func parseSinceDuration(s string) (time.Duration, error) {
 		return 0, fmt.Errorf("duration must be positive")
 	}
 	return d, nil
+}
+
+// RunResponse is returned when a workflow execution is accepted.
+type RunResponse struct {
+	ExecutionID string `json:"execution_id"`
+	Workflow    string `json:"workflow"`
+	Version     int    `json:"version"`
+}
+
+// CancelResponse is returned when an execution is cancelled.
+type CancelResponse struct {
+	ExecutionID string `json:"execution_id"`
+	Status      string `json:"status"`
+}
+
+// ExecutionListResponse wraps a list of executions.
+type ExecutionListResponse struct {
+	Executions []ExecutionSummary `json:"executions"`
+}
+
+// WorkflowListResponse wraps a list of workflow summaries.
+type WorkflowListResponse struct {
+	Workflows []workflow.WorkflowSummary `json:"workflows"`
+}
+
+// WorkflowDetailResponse is returned for GET /api/v1/workflows/{name}.
+type WorkflowDetailResponse struct {
+	Name       string          `json:"name"`
+	Version    int             `json:"version"`
+	Definition json.RawMessage `json:"definition"`
+}
+
+// WorkflowVersionListResponse wraps a list of workflow versions.
+type WorkflowVersionListResponse struct {
+	Name     string                    `json:"name"`
+	Versions []workflow.VersionSummary `json:"versions"`
+}
+
+// ErrorResponse is the standard error envelope.
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
+// UsageResponse is returned for GET /api/v1/budgets/usage.
+type UsageResponse struct {
+	PeriodStart      string `json:"period_start"`
+	Provider         string `json:"provider"`
+	PromptTokens     int64  `json:"prompt_tokens"`
+	CompletionTokens int64  `json:"completion_tokens"`
+	TotalTokens      int64  `json:"total_tokens"`
+}
+
+// SetBudgetRequest is the request body for PUT /api/v1/budgets/{provider}.
+type SetBudgetRequest struct {
+	MonthlyTokenLimit int64  `json:"monthly_token_limit"`
+	Enforcement       string `json:"enforcement"` // "hard" or "warn"
 }
 
 func writeJSON(w http.ResponseWriter, status int, data any) {
@@ -382,10 +438,7 @@ func (s *Server) handleSetBudget(w http.ResponseWriter, r *http.Request) {
 	teamID := auth.TeamIDFromContext(r.Context())
 	provider := r.PathValue("provider")
 
-	var body struct {
-		MonthlyTokenLimit int64  `json:"monthly_token_limit"`
-		Enforcement       string `json:"enforcement"`
-	}
+	var body SetBudgetRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return

@@ -49,6 +49,31 @@ func TestWriteJSON(t *testing.T) {
 	}
 }
 
+func TestResponseTypesExported(t *testing.T) {
+	ts := "2026-01-01T00:00:00Z"
+	summary := ExecutionSummary{
+		ID:        "exec-1",
+		Workflow:  "wf",
+		Version:   1,
+		Status:    "completed",
+		StartedAt: &ts,
+	}
+	data, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatalf("marshal ExecutionSummary: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got["id"] != "exec-1" {
+		t.Errorf("id = %v, want exec-1", got["id"])
+	}
+	if got["workflow"] != "wf" {
+		t.Errorf("workflow = %v, want wf", got["workflow"])
+	}
+}
+
 func TestWriteJSONError(t *testing.T) {
 	rec := httptest.NewRecorder()
 	writeJSONError(rec, "something went wrong", 422)
