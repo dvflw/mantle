@@ -148,6 +148,9 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("DELETE /api/v1/budgets/{provider}", s.handleDeleteBudget)
 	mux.HandleFunc("GET /api/v1/budgets/usage", s.handleGetUsage)
 
+	// OpenAPI spec endpoint.
+	mux.HandleFunc("GET /api/v1/openapi.json", handleOpenAPISpec)
+
 	// Start distributed engine components (worker + reaper).
 	if cfg := config.FromContext(ctx); cfg != nil {
 		claimer := &engine.Claimer{
