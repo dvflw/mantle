@@ -68,14 +68,17 @@ docker_manifests:
     image_templates:
       - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
       - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
+    skip_push: auto
   - name_template: "ghcr.io/dvflw/mantle:{{ .Major }}"
     image_templates:
       - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
       - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
+    skip_push: auto
   - name_template: "ghcr.io/dvflw/mantle:latest"
     image_templates:
       - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
       - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
+    skip_push: auto
 
 release:
   github:

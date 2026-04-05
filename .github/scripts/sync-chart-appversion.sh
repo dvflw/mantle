@@ -4,6 +4,11 @@ set -euo pipefail
 # Usage: sync-chart-appversion.sh <engine-version>
 # Example: sync-chart-appversion.sh 0.4.1
 
+if [[ -z "${1-}" ]]; then
+  echo "Usage: sync-chart-appversion.sh <engine_version>" >&2
+  exit 1
+fi
+
 ENGINE_VERSION="$1"
 CHART_FILE="packages/helm-chart/Chart.yaml"
 
