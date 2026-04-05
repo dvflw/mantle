@@ -317,7 +317,7 @@ type WorkflowListResponse struct {
 type WorkflowDetailResponse struct {
 	Name       string          `json:"name"`
 	Version    int             `json:"version"`
-	Definition json.RawMessage `json:"definition"`
+	Definition json.RawMessage `json:"definition" swaggertype:"object"`
 }
 
 // WorkflowVersionListResponse wraps a list of workflow versions.

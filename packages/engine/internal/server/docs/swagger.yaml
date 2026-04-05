@@ -1,0 +1,554 @@
+basePath: /
+definitions:
+  budget.TeamBudget:
+    properties:
+      enforcement:
+        type: string
+      id:
+        type: string
+      monthly_token_limit:
+        type: integer
+      provider:
+        type: string
+      team_id:
+        type: string
+    type: object
+  server.CancelResponse:
+    properties:
+      execution_id:
+        type: string
+      status:
+        type: string
+    type: object
+  server.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  server.ExecutionDetail:
+    properties:
+      completed_at:
+        type: string
+      id:
+        type: string
+      started_at:
+        type: string
+      status:
+        type: string
+      steps:
+        items:
+          $ref: '#/definitions/server.StepSummary'
+        type: array
+      version:
+        type: integer
+      workflow:
+        type: string
+    type: object
+  server.ExecutionListResponse:
+    properties:
+      executions:
+        items:
+          $ref: '#/definitions/server.ExecutionSummary'
+        type: array
+    type: object
+  server.ExecutionSummary:
+    properties:
+      completed_at:
+        type: string
+      id:
+        type: string
+      started_at:
+        type: string
+      status:
+        type: string
+      version:
+        type: integer
+      workflow:
+        type: string
+    type: object
+  server.HealthResponse:
+    properties:
+      status:
+        type: string
+    type: object
+  server.ReadyzResponse:
+    properties:
+      details:
+        additionalProperties:
+          type: string
+        type: object
+      status:
+        type: string
+    type: object
+  server.RunResponse:
+    properties:
+      execution_id:
+        type: string
+      version:
+        type: integer
+      workflow:
+        type: string
+    type: object
+  server.SetBudgetRequest:
+    properties:
+      enforcement:
+        description: '"hard" or "warn"'
+        type: string
+      monthly_token_limit:
+        type: integer
+    type: object
+  server.StepSummary:
+    properties:
+      completed_at:
+        type: string
+      error:
+        type: string
+      name:
+        type: string
+      started_at:
+        type: string
+      status:
+        type: string
+    type: object
+  server.UsageResponse:
+    properties:
+      completion_tokens:
+        type: integer
+      period_start:
+        type: string
+      prompt_tokens:
+        type: integer
+      provider:
+        type: string
+      total_tokens:
+        type: integer
+    type: object
+  server.WorkflowDetailResponse:
+    properties:
+      definition:
+        type: object
+      name:
+        type: string
+      version:
+        type: integer
+    type: object
+  server.WorkflowListResponse:
+    properties:
+      workflows:
+        items:
+          $ref: '#/definitions/workflow.WorkflowSummary'
+        type: array
+    type: object
+  server.WorkflowVersionListResponse:
+    properties:
+      name:
+        type: string
+      versions:
+        items:
+          $ref: '#/definitions/workflow.VersionSummary'
+        type: array
+    type: object
+  workflow.VersionSummary:
+    properties:
+      content_hash:
+        type: string
+      created_at:
+        type: string
+      version:
+        type: integer
+    type: object
+  workflow.WorkflowSummary:
+    properties:
+      created_at:
+        type: string
+      latest_version:
+        type: integer
+      name:
+        type: string
+      updated_at:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    name: Mantle
+    url: https://github.com/dvflw/mantle
+  description: Headless AI workflow automation — BYOK, IaC-first, enterprise-grade.
+  license:
+    name: BSL 1.1
+    url: https://github.com/dvflw/mantle/blob/main/LICENSE
+  title: Mantle API
+  version: "1.0"
+paths:
+  /api/v1/budgets:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/budget.TeamBudget'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      - OIDCAuth: []
+      summary: List provider budgets
+      tags:
+      - budgets
+  /api/v1/budgets/{provider}:
+    delete:
+      parameters:
+      - description: Provider name
+        in: path
+        name: provider
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      - OIDCAuth: []
+      summary: Delete provider budget
+      tags:
+      - budgets
+    put:
+      parameters:
+      - description: Provider name (e.g. openai, bedrock)
+        in: path
+        name: provider
+        required: true
+        type: string
+      - description: Budget configuration
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.SetBudgetRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      - OIDCAuth: []
+      summary: Set provider budget
+      tags:
+      - budgets
+  /api/v1/budgets/usage:
+    get:
+      parameters:
+      - description: Provider name; omit for total across all providers
+        in: query
+        name: provider
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.UsageResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      - OIDCAuth: []
+      summary: Get token usage
+      tags:
+      - budgets
+  /api/v1/cancel/{execution}:
+    post:
+      parameters:
+      - description: Execution ID (UUID)
+        in: path
+        name: execution
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.CancelResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      - OIDCAuth: []
+      summary: Cancel a running execution
+      tags:
+      - executions
+  /api/v1/executions:
+    get:
+      parameters:
+      - description: Filter by workflow name
+        in: query
+        name: workflow
+        type: string
+      - description: Filter by status
+        enum:
+        - pending
+        - running
+        - completed
+        - failed
+        - cancelled
+        in: query
+        name: status
+        type: string
+      - description: Filter by age (e.g. 1h, 7d)
+        in: query
+        name: since
+        type: string
+      - description: Max results (default 20)
+        in: query
+        name: limit
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.ExecutionListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      - OIDCAuth: []
+      summary: List executions
+      tags:
+      - executions
+  /api/v1/executions/{id}:
+    get:
+      parameters:
+      - description: Execution ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.ExecutionDetail'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      - OIDCAuth: []
+      summary: Get execution detail
+      tags:
+      - executions
+  /api/v1/run/{workflow}:
+    post:
+      parameters:
+      - description: Workflow name
+        in: path
+        name: workflow
+        required: true
+        type: string
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/server.RunResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      - OIDCAuth: []
+      summary: Trigger a workflow execution
+      tags:
+      - executions
+  /api/v1/workflows:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.WorkflowListResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      - OIDCAuth: []
+      summary: List workflow definitions
+      tags:
+      - workflows
+  /api/v1/workflows/{name}:
+    get:
+      parameters:
+      - description: Workflow name
+        in: path
+        name: name
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.WorkflowDetailResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      - OIDCAuth: []
+      summary: Get latest workflow definition
+      tags:
+      - workflows
+  /api/v1/workflows/{name}/versions:
+    get:
+      parameters:
+      - description: Workflow name
+        in: path
+        name: name
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.WorkflowVersionListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      - OIDCAuth: []
+      summary: List versions of a workflow
+      tags:
+      - workflows
+  /api/v1/workflows/{name}/versions/{version}:
+    get:
+      parameters:
+      - description: Workflow name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Version number
+        in: path
+        name: version
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.WorkflowDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      - OIDCAuth: []
+      summary: Get a specific workflow version
+      tags:
+      - workflows
+  /healthz:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.HealthResponse'
+      summary: Liveness probe
+      tags:
+      - system
+  /readyz:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.ReadyzResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/server.ReadyzResponse'
+      summary: Readiness probe
+      tags:
+      - system
+securityDefinitions:
+  ApiKeyAuth:
+    description: 'Bearer API key. Format: "Bearer mk_..."'
+    in: header
+    name: Authorization
+    type: apiKey
+  OIDCAuth:
+    description: 'Bearer OIDC JWT. Format: "Bearer <jwt>"'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
