@@ -404,8 +404,9 @@ func (s *Server) waitForExecutions(ctx context.Context) {
 
 // handleRun triggers a workflow execution via the API.
 //
-//	@Summary  Trigger a workflow execution
-//	@Tags     executions
+//	@Summary      Trigger a workflow execution
+//	@Description  Triggers the latest applied version of the named workflow. Returns a 202 Accepted response with the new execution ID.
+//	@Tags         executions
 //	@Param    workflow  path  string  true  "Workflow name"
 //	@Success  202  {object}  RunResponse
 //	@Failure  400  {object}  ErrorResponse
@@ -444,8 +445,9 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 
 // handleCancel cancels a running execution via the API.
 //
-//	@Summary  Cancel a running execution
-//	@Tags     executions
+//	@Summary      Cancel a running execution
+//	@Description  Sends a cancellation signal to a running execution. The execution may not stop immediately; poll the status endpoint to confirm.
+//	@Tags         executions
 //	@Param    execution  path  string  true  "Execution ID (UUID)"
 //	@Success  200  {object}  CancelResponse
 //	@Failure  404  {object}  ErrorResponse

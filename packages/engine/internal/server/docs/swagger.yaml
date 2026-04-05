@@ -3,12 +3,15 @@ definitions:
   budget.TeamBudget:
     properties:
       enforcement:
+        description: '"hard" blocks execution when exceeded; "warn" logs only'
         type: string
       id:
         type: string
       monthly_token_limit:
+        description: Maximum tokens allowed per billing period
         type: integer
       provider:
+        description: AI provider name (e.g. "openai", "bedrock")
         type: string
       team_id:
         type: string
@@ -97,6 +100,11 @@ definitions:
       monthly_token_limit:
         type: integer
     type: object
+  server.StatusResponse:
+    properties:
+      status:
+        type: string
+    type: object
   server.StepSummary:
     properties:
       completed_at:
@@ -182,6 +190,8 @@ info:
 paths:
   /api/v1/budgets:
     get:
+      description: Returns the token budget configuration for all providers configured
+        by the authenticated team.
       responses:
         "200":
           description: OK
@@ -201,6 +211,8 @@ paths:
       - budgets
   /api/v1/budgets/{provider}:
     delete:
+      description: Removes the budget configuration for a provider. Does not affect
+        in-flight executions.
       parameters:
       - description: Provider name
         in: path
@@ -211,9 +223,7 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/server.StatusResponse'
         "500":
           description: Internal Server Error
           schema:
@@ -225,6 +235,8 @@ paths:
       tags:
       - budgets
     put:
+      description: Creates or replaces the monthly token budget for a provider. Enforcement
+        "hard" blocks execution when the limit is reached; "warn" logs a warning only.
       parameters:
       - description: Provider name (e.g. openai, bedrock)
         in: path
@@ -241,9 +253,7 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/server.StatusResponse'
         "400":
           description: Bad Request
           schema:
@@ -260,6 +270,8 @@ paths:
       - budgets
   /api/v1/budgets/usage:
     get:
+      description: Returns token usage aggregated by provider for the current billing
+        period (calendar month UTC).
       parameters:
       - description: Provider name; omit for total across all providers
         in: query
@@ -282,6 +294,8 @@ paths:
       - budgets
   /api/v1/cancel/{execution}:
     post:
+      description: Sends a cancellation signal to a running execution. The execution
+        may not stop immediately; poll the status endpoint to confirm.
       parameters:
       - description: Execution ID (UUID)
         in: path
@@ -309,6 +323,8 @@ paths:
       - executions
   /api/v1/executions:
     get:
+      description: Returns a paginated list of workflow executions for the authenticated
+        team. Supports filtering by workflow name, status, and age.
       parameters:
       - description: Filter by workflow name
         in: query
@@ -353,6 +369,7 @@ paths:
       - executions
   /api/v1/executions/{id}:
     get:
+      description: Returns full details of a single execution including all step results.
       parameters:
       - description: Execution ID (UUID)
         in: path
@@ -384,6 +401,8 @@ paths:
       - executions
   /api/v1/run/{workflow}:
     post:
+      description: Triggers the latest applied version of the named workflow. Returns
+        a 202 Accepted response with the new execution ID.
       parameters:
       - description: Workflow name
         in: path
@@ -415,6 +434,8 @@ paths:
       - executions
   /api/v1/workflows:
     get:
+      description: Returns all workflow definitions ever applied by the authenticated
+        team.
       responses:
         "200":
           description: OK
@@ -432,6 +453,7 @@ paths:
       - workflows
   /api/v1/workflows/{name}:
     get:
+      description: Returns the latest applied definition for a workflow.
       parameters:
       - description: Workflow name
         in: path
@@ -459,6 +481,8 @@ paths:
       - workflows
   /api/v1/workflows/{name}/versions:
     get:
+      description: Returns all historical versions of a workflow in reverse chronological
+        order.
       parameters:
       - description: Workflow name
         in: path
@@ -486,6 +510,7 @@ paths:
       - workflows
   /api/v1/workflows/{name}/versions/{version}:
     get:
+      description: Returns a specific historical version of a workflow definition.
       parameters:
       - description: Workflow name
         in: path

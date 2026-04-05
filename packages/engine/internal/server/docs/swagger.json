@@ -26,6 +26,7 @@
                         "OIDCAuth": []
                     }
                 ],
+                "description": "Returns the token budget configuration for all providers configured by the authenticated team.",
                 "tags": [
                     "budgets"
                 ],
@@ -59,6 +60,7 @@
                         "OIDCAuth": []
                     }
                 ],
+                "description": "Returns token usage aggregated by provider for the current billing period (calendar month UTC).",
                 "tags": [
                     "budgets"
                 ],
@@ -97,6 +99,7 @@
                         "OIDCAuth": []
                     }
                 ],
+                "description": "Creates or replaces the monthly token budget for a provider. Enforcement \"hard\" blocks execution when the limit is reached; \"warn\" logs a warning only.",
                 "tags": [
                     "budgets"
                 ],
@@ -123,10 +126,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/server.StatusResponse"
                         }
                     },
                     "400": {
@@ -152,6 +152,7 @@
                         "OIDCAuth": []
                     }
                 ],
+                "description": "Removes the budget configuration for a provider. Does not affect in-flight executions.",
                 "tags": [
                     "budgets"
                 ],
@@ -169,10 +170,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/server.StatusResponse"
                         }
                     },
                     "500": {
@@ -194,6 +192,7 @@
                         "OIDCAuth": []
                     }
                 ],
+                "description": "Sends a cancellation signal to a running execution. The execution may not stop immediately; poll the status endpoint to confirm.",
                 "tags": [
                     "executions"
                 ],
@@ -239,6 +238,7 @@
                         "OIDCAuth": []
                     }
                 ],
+                "description": "Returns a paginated list of workflow executions for the authenticated team. Supports filtering by workflow name, status, and age.",
                 "tags": [
                     "executions"
                 ],
@@ -308,6 +308,7 @@
                         "OIDCAuth": []
                     }
                 ],
+                "description": "Returns full details of a single execution including all step results.",
                 "tags": [
                     "executions"
                 ],
@@ -359,6 +360,7 @@
                         "OIDCAuth": []
                     }
                 ],
+                "description": "Triggers the latest applied version of the named workflow. Returns a 202 Accepted response with the new execution ID.",
                 "tags": [
                     "executions"
                 ],
@@ -410,6 +412,7 @@
                         "OIDCAuth": []
                     }
                 ],
+                "description": "Returns all workflow definitions ever applied by the authenticated team.",
                 "tags": [
                     "workflows"
                 ],
@@ -440,6 +443,7 @@
                         "OIDCAuth": []
                     }
                 ],
+                "description": "Returns the latest applied definition for a workflow.",
                 "tags": [
                     "workflows"
                 ],
@@ -485,6 +489,7 @@
                         "OIDCAuth": []
                     }
                 ],
+                "description": "Returns all historical versions of a workflow in reverse chronological order.",
                 "tags": [
                     "workflows"
                 ],
@@ -530,6 +535,7 @@
                         "OIDCAuth": []
                     }
                 ],
+                "description": "Returns a specific historical version of a workflow definition.",
                 "tags": [
                     "workflows"
                 ],
@@ -616,15 +622,18 @@
             "type": "object",
             "properties": {
                 "enforcement": {
+                    "description": "\"hard\" blocks execution when exceeded; \"warn\" logs only",
                     "type": "string"
                 },
                 "id": {
                     "type": "string"
                 },
                 "monthly_token_limit": {
+                    "description": "Maximum tokens allowed per billing period",
                     "type": "integer"
                 },
                 "provider": {
+                    "description": "AI provider name (e.g. \"openai\", \"bedrock\")",
                     "type": "string"
                 },
                 "team_id": {
@@ -759,6 +768,14 @@
                 },
                 "monthly_token_limit": {
                     "type": "integer"
+                }
+            }
+        },
+        "server.StatusResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
                 }
             }
         },

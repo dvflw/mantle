@@ -47,8 +47,9 @@ type StepSummary struct {
 
 // handleListExecutions handles GET /api/v1/executions with query param filters.
 //
-//	@Summary  List executions
-//	@Tags     executions
+//	@Summary      List executions
+//	@Description  Returns a paginated list of workflow executions for the authenticated team. Supports filtering by workflow name, status, and age.
+//	@Tags         executions
 //	@Param    workflow  query  string   false  "Filter by workflow name"
 //	@Param    status    query  string   false  "Filter by status"   Enums(pending,running,completed,failed,cancelled)
 //	@Param    since     query  string   false  "Filter by age (e.g. 1h, 7d)"
@@ -170,8 +171,9 @@ func (s *Server) handleListExecutions(w http.ResponseWriter, r *http.Request) {
 
 // handleGetExecution handles GET /api/v1/executions/{id} with step details.
 //
-//	@Summary  Get execution detail
-//	@Tags     executions
+//	@Summary      Get execution detail
+//	@Description  Returns full details of a single execution including all step results.
+//	@Tags         executions
 //	@Param    id  path  string  true  "Execution ID (UUID)"
 //	@Success  200  {object}  ExecutionDetail
 //	@Failure  400  {object}  ErrorResponse
@@ -346,6 +348,11 @@ type SetBudgetRequest struct {
 	Enforcement       string `json:"enforcement"` // "hard" or "warn"
 }
 
+// StatusResponse is returned for mutations that produce no data payload.
+type StatusResponse struct {
+	Status string `json:"status"`
+}
+
 func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -360,8 +367,9 @@ func writeJSONError(w http.ResponseWriter, message string, status int) {
 
 // handleListWorkflows handles GET /api/v1/workflows.
 //
-//	@Summary  List workflow definitions
-//	@Tags     workflows
+//	@Summary      List workflow definitions
+//	@Description  Returns all workflow definitions ever applied by the authenticated team.
+//	@Tags         workflows
 //	@Success  200  {object}  WorkflowListResponse
 //	@Failure  500  {object}  ErrorResponse
 //	@Security ApiKeyAuth
@@ -382,8 +390,9 @@ func (s *Server) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
 
 // handleGetWorkflow handles GET /api/v1/workflows/{name} — returns latest version.
 //
-//	@Summary  Get latest workflow definition
-//	@Tags     workflows
+//	@Summary      Get latest workflow definition
+//	@Description  Returns the latest applied definition for a workflow.
+//	@Tags         workflows
 //	@Param    name  path  string  true  "Workflow name"
 //	@Success  200  {object}  WorkflowDetailResponse
 //	@Failure  404  {object}  ErrorResponse
@@ -419,8 +428,9 @@ func (s *Server) handleGetWorkflow(w http.ResponseWriter, r *http.Request) {
 
 // handleListWorkflowVersions handles GET /api/v1/workflows/{name}/versions.
 //
-//	@Summary  List versions of a workflow
-//	@Tags     workflows
+//	@Summary      List versions of a workflow
+//	@Description  Returns all historical versions of a workflow in reverse chronological order.
+//	@Tags         workflows
 //	@Param    name  path  string  true  "Workflow name"
 //	@Success  200  {object}  WorkflowVersionListResponse
 //	@Failure  400  {object}  ErrorResponse
@@ -449,8 +459,9 @@ func (s *Server) handleListWorkflowVersions(w http.ResponseWriter, r *http.Reque
 
 // handleGetWorkflowVersion handles GET /api/v1/workflows/{name}/versions/{version}.
 //
-//	@Summary  Get a specific workflow version
-//	@Tags     workflows
+//	@Summary      Get a specific workflow version
+//	@Description  Returns a specific historical version of a workflow definition.
+//	@Tags         workflows
 //	@Param    name     path  string   true  "Workflow name"
 //	@Param    version  path  integer  true  "Version number"
 //	@Success  200  {object}  WorkflowDetailResponse
@@ -489,8 +500,9 @@ func (s *Server) handleGetWorkflowVersion(w http.ResponseWriter, r *http.Request
 
 // handleListBudgets lists AI provider budgets for the authenticated team.
 //
-//	@Summary  List provider budgets
-//	@Tags     budgets
+//	@Summary      List provider budgets
+//	@Description  Returns the token budget configuration for all providers configured by the authenticated team.
+//	@Tags         budgets
 //	@Success  200  {array}   budget.TeamBudget
 //	@Failure  500  {object}  ErrorResponse
 //	@Security ApiKeyAuth
@@ -508,11 +520,12 @@ func (s *Server) handleListBudgets(w http.ResponseWriter, r *http.Request) {
 
 // handleSetBudget sets or updates the token budget for a provider.
 //
-//	@Summary  Set provider budget
-//	@Tags     budgets
-//	@Param    provider  path  string           true  "Provider name (e.g. openai, bedrock)"
-//	@Param    body      body  SetBudgetRequest  true  "Budget configuration"
-//	@Success  200  {object}  map[string]string
+//	@Summary      Set provider budget
+//	@Description  Creates or replaces the monthly token budget for a provider. Enforcement "hard" blocks execution when the limit is reached; "warn" logs a warning only.
+//	@Tags         budgets
+//	@Param        provider  path  string           true  "Provider name (e.g. openai, bedrock)"
+//	@Param        body      body  SetBudgetRequest  true  "Budget configuration"
+//	@Success      200  {object}  StatusResponse
 //	@Failure  400  {object}  ErrorResponse
 //	@Failure  500  {object}  ErrorResponse
 //	@Security ApiKeyAuth
@@ -563,10 +576,11 @@ func (s *Server) handleSetBudget(w http.ResponseWriter, r *http.Request) {
 
 // handleDeleteBudget removes the token budget for a provider.
 //
-//	@Summary  Delete provider budget
-//	@Tags     budgets
-//	@Param    provider  path  string  true  "Provider name"
-//	@Success  200  {object}  map[string]string
+//	@Summary      Delete provider budget
+//	@Description  Removes the budget configuration for a provider. Does not affect in-flight executions.
+//	@Tags         budgets
+//	@Param        provider  path  string  true  "Provider name"
+//	@Success      200  {object}  StatusResponse
 //	@Failure  500  {object}  ErrorResponse
 //	@Security ApiKeyAuth
 //	@Security OIDCAuth
@@ -601,8 +615,9 @@ func (s *Server) handleDeleteBudget(w http.ResponseWriter, r *http.Request) {
 
 // handleGetUsage returns token usage for the current billing period.
 //
-//	@Summary  Get token usage
-//	@Tags     budgets
+//	@Summary      Get token usage
+//	@Description  Returns token usage aggregated by provider for the current billing period (calendar month UTC).
+//	@Tags         budgets
 //	@Param    provider  query  string  false  "Provider name; omit for total across all providers"
 //	@Success  200  {object}  UsageResponse
 //	@Failure  500  {object}  ErrorResponse

@@ -18,9 +18,9 @@ type ProviderUsage struct {
 type TeamBudget struct {
 	ID                string `json:"id"`
 	TeamID            string `json:"team_id"`
-	Provider          string `json:"provider"`
-	MonthlyTokenLimit int64  `json:"monthly_token_limit"`
-	Enforcement       string `json:"enforcement"`
+	Provider          string `json:"provider"`                // AI provider name (e.g. "openai", "bedrock")
+	MonthlyTokenLimit int64  `json:"monthly_token_limit"`     // Maximum tokens allowed per billing period
+	Enforcement       string `json:"enforcement"`             // "hard" blocks execution when exceeded; "warn" logs only
 }
 
 // Store handles budget-related database operations.
