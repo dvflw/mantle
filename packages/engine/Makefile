@@ -5,7 +5,7 @@ LDFLAGS := -X github.com/dvflw/mantle/internal/version.Version=$(VERSION) \
            -X github.com/dvflw/mantle/internal/version.Commit=$(COMMIT) \
            -X github.com/dvflw/mantle/internal/version.Date=$(DATE)
 
-.PHONY: build test lint clean migrate run dev
+.PHONY: build test lint clean migrate run dev spec
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o mantle ./cmd/mantle
@@ -27,3 +27,11 @@ run:
 
 dev:
 	docker-compose up -d
+
+spec: ## Regenerate OpenAPI spec (requires: go install github.com/swaggo/swag/cmd/swag@latest)
+	swag init \
+	  -g docs.go \
+	  --dir internal/server,internal/workflow,internal/budget \
+	  --output internal/server/docs \
+	  --outputTypes json,yaml \
+	  --parseInternal
