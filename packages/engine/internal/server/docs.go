@@ -8,7 +8,6 @@
 //	@license.name   BSL 1.1
 //	@license.url    https://github.com/dvflw/mantle/blob/main/LICENSE
 //
-//	@host        localhost:8080
 //	@basePath    /
 //
 //	@securityDefinitions.apikey ApiKeyAuth

@@ -21,7 +21,7 @@ type ExecutionSummary struct {
 	Workflow    string  `json:"workflow"`
 	Version     int     `json:"version"`
 	Status      string  `json:"status"`
-	StartedAt   *string `json:"started_at"`
+	StartedAt   *string `json:"started_at,omitempty"`
 	CompletedAt *string `json:"completed_at,omitempty"`
 }
 
@@ -31,7 +31,7 @@ type ExecutionDetail struct {
 	Workflow    string        `json:"workflow"`
 	Version     int           `json:"version"`
 	Status      string        `json:"status"`
-	StartedAt   *string       `json:"started_at"`
+	StartedAt   *string       `json:"started_at,omitempty"`
 	CompletedAt *string       `json:"completed_at,omitempty"`
 	Steps       []StepSummary `json:"steps"`
 }
@@ -41,7 +41,7 @@ type StepSummary struct {
 	Name        string  `json:"name"`
 	Status      string  `json:"status"`
 	Error       string  `json:"error,omitempty"`
-	StartedAt   *string `json:"started_at"`
+	StartedAt   *string `json:"started_at,omitempty"`
 	CompletedAt *string `json:"completed_at,omitempty"`
 }
 
@@ -512,7 +512,8 @@ func (s *Server) handleListBudgets(w http.ResponseWriter, r *http.Request) {
 	teamID := auth.TeamIDFromContext(r.Context())
 	budgets, err := s.BudgetStore.ListTeamBudgets(r.Context(), teamID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		s.Logger.Error("listing budgets", "error", err)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, http.StatusOK, budgets)
@@ -537,19 +538,20 @@ func (s *Server) handleSetBudget(w http.ResponseWriter, r *http.Request) {
 
 	var body SetBudgetRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		writeJSONError(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 	if body.Enforcement == "" {
 		body.Enforcement = "hard"
 	}
 	if body.Enforcement != "hard" && body.Enforcement != "warn" {
-		http.Error(w, "enforcement must be 'hard' or 'warn'", http.StatusBadRequest)
+		writeJSONError(w, "enforcement must be 'hard' or 'warn'", http.StatusBadRequest)
 		return
 	}
 
 	if err := s.BudgetStore.SetTeamBudget(r.Context(), teamID, provider, body.MonthlyTokenLimit, body.Enforcement); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		s.Logger.Error("setting budget", "provider", provider, "error", err)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -590,7 +592,8 @@ func (s *Server) handleDeleteBudget(w http.ResponseWriter, r *http.Request) {
 	provider := r.PathValue("provider")
 
 	if err := s.BudgetStore.DeleteTeamBudget(r.Context(), teamID, provider); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		s.Logger.Error("deleting budget", "provider", provider, "error", err)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -639,7 +642,8 @@ func (s *Server) handleGetUsage(w http.ResponseWriter, r *http.Request) {
 		usage, err = s.BudgetStore.GetTotalUsage(r.Context(), teamID, period)
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		s.Logger.Error("getting usage", "provider", provider, "error", err)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
