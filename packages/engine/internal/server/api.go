@@ -48,7 +48,7 @@ type StepSummary struct {
 // handleListExecutions handles GET /api/v1/executions with query param filters.
 //
 //	@Summary      List executions
-//	@Description  Returns a paginated list of workflow executions for the authenticated team. Supports filtering by workflow name, status, and age.
+//	@Description  Returns a list of workflow executions for the authenticated team, most recent first. Supports filtering by workflow name, status, and age. Use the limit parameter to cap results (default 20).
 //	@Tags         executions
 //	@Param    workflow  query  string   false  "Filter by workflow name"
 //	@Param    status    query  string   false  "Filter by status"   Enums(pending,running,completed,failed,cancelled)

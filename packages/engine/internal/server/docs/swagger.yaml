@@ -15,6 +15,12 @@ definitions:
         type: string
       team_id:
         type: string
+    required:
+      - id
+      - team_id
+      - provider
+      - monthly_token_limit
+      - enforcement
     type: object
   server.CancelResponse:
     properties:
@@ -22,19 +28,26 @@ definitions:
         type: string
       status:
         type: string
+    required:
+      - execution_id
+      - status
     type: object
   server.ErrorResponse:
     properties:
       error:
         type: string
+    required:
+      - error
     type: object
   server.ExecutionDetail:
     properties:
       completed_at:
+        format: date-time
         type: string
       id:
         type: string
       started_at:
+        format: date-time
         type: string
       status:
         type: string
@@ -46,6 +59,12 @@ definitions:
         type: integer
       workflow:
         type: string
+    required:
+      - id
+      - workflow
+      - version
+      - status
+      - steps
     type: object
   server.ExecutionListResponse:
     properties:
@@ -53,14 +72,18 @@ definitions:
         items:
           $ref: '#/definitions/server.ExecutionSummary'
         type: array
+    required:
+      - executions
     type: object
   server.ExecutionSummary:
     properties:
       completed_at:
+        format: date-time
         type: string
       id:
         type: string
       started_at:
+        format: date-time
         type: string
       status:
         type: string
@@ -68,11 +91,18 @@ definitions:
         type: integer
       workflow:
         type: string
+    required:
+      - id
+      - workflow
+      - version
+      - status
     type: object
   server.HealthResponse:
     properties:
       status:
         type: string
+    required:
+      - status
     type: object
   server.ReadyzResponse:
     properties:
@@ -82,6 +112,8 @@ definitions:
         type: object
       status:
         type: string
+    required:
+      - status
     type: object
   server.RunResponse:
     properties:
@@ -91,6 +123,10 @@ definitions:
         type: integer
       workflow:
         type: string
+    required:
+      - execution_id
+      - workflow
+      - version
     type: object
   server.SetBudgetRequest:
     properties:
@@ -99,30 +135,41 @@ definitions:
         type: string
       monthly_token_limit:
         type: integer
+    required:
+      - monthly_token_limit
+      - enforcement
     type: object
   server.StatusResponse:
     properties:
       status:
         type: string
+    required:
+      - status
     type: object
   server.StepSummary:
     properties:
       completed_at:
+        format: date-time
         type: string
       error:
         type: string
       name:
         type: string
       started_at:
+        format: date-time
         type: string
       status:
         type: string
+    required:
+      - name
+      - status
     type: object
   server.UsageResponse:
     properties:
       completion_tokens:
         type: integer
       period_start:
+        format: date-time
         type: string
       prompt_tokens:
         type: integer
@@ -130,15 +177,27 @@ definitions:
         type: string
       total_tokens:
         type: integer
+    required:
+      - period_start
+      - provider
+      - prompt_tokens
+      - completion_tokens
+      - total_tokens
     type: object
   server.WorkflowDetailResponse:
     properties:
       definition:
+        additionalProperties: true
+        description: Free-form workflow definition as stored (YAML parsed to JSON)
         type: object
       name:
         type: string
       version:
         type: integer
+    required:
+      - name
+      - version
+      - definition
     type: object
   server.WorkflowListResponse:
     properties:
@@ -146,6 +205,8 @@ definitions:
         items:
           $ref: '#/definitions/workflow.WorkflowSummary'
         type: array
+    required:
+      - workflows
     type: object
   server.WorkflowVersionListResponse:
     properties:
@@ -155,26 +216,41 @@ definitions:
         items:
           $ref: '#/definitions/workflow.VersionSummary'
         type: array
+    required:
+      - name
+      - versions
     type: object
   workflow.VersionSummary:
     properties:
       content_hash:
         type: string
       created_at:
+        format: date-time
         type: string
       version:
         type: integer
+    required:
+      - version
+      - content_hash
+      - created_at
     type: object
   workflow.WorkflowSummary:
     properties:
       created_at:
+        format: date-time
         type: string
       latest_version:
         type: integer
       name:
         type: string
       updated_at:
+        format: date-time
         type: string
+    required:
+      - name
+      - latest_version
+      - created_at
+      - updated_at
     type: object
 info:
   contact:
@@ -218,6 +294,8 @@ paths:
         name: provider
         required: true
         type: string
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -234,6 +312,8 @@ paths:
       tags:
       - budgets
     put:
+      consumes:
+      - application/json
       description: Creates or replaces the monthly token budget for a provider. Enforcement
         "hard" blocks execution when the limit is reached; "warn" logs a warning only.
       parameters:
@@ -248,6 +328,8 @@ paths:
         required: true
         schema:
           $ref: '#/definitions/server.SetBudgetRequest'
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -301,6 +383,8 @@ paths:
         name: execution
         required: true
         type: string
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -322,8 +406,9 @@ paths:
       - executions
   /api/v1/executions:
     get:
-      description: Returns a paginated list of workflow executions for the authenticated
-        team. Supports filtering by workflow name, status, and age.
+      description: Returns a list of workflow executions for the authenticated team,
+        most recent first. Supports filtering by workflow name, status, and age. Use
+        the limit parameter to cap results (default 20).
       parameters:
       - description: Filter by workflow name
         in: query
@@ -408,6 +493,8 @@ paths:
         name: workflow
         required: true
         type: string
+      produces:
+      - application/json
       responses:
         "202":
           description: Accepted

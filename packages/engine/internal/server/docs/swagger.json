@@ -1,7 +1,7 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "Headless AI workflow automation — BYOK, IaC-first, enterprise-grade.",
+        "description": "Headless AI workflow automation \u2014 BYOK, IaC-first, enterprise-grade.",
         "title": "Mantle API",
         "contact": {
             "name": "Mantle",
@@ -46,7 +46,10 @@
                             "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
-                }
+                },
+                "produces": [
+                    "application/json"
+                ]
             }
         },
         "/api/v1/budgets/usage": {
@@ -85,7 +88,10 @@
                             "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
-                }
+                },
+                "produces": [
+                    "application/json"
+                ]
             }
         },
         "/api/v1/budgets/{provider}": {
@@ -140,7 +146,13 @@
                             "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
-                }
+                },
+                "produces": [
+                    "application/json"
+                ],
+                "consumes": [
+                    "application/json"
+                ]
             },
             "delete": {
                 "security": [
@@ -178,7 +190,10 @@
                             "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
-                }
+                },
+                "produces": [
+                    "application/json"
+                ]
             }
         },
         "/api/v1/cancel/{execution}": {
@@ -224,7 +239,10 @@
                             "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
-                }
+                },
+                "produces": [
+                    "application/json"
+                ]
             }
         },
         "/api/v1/executions": {
@@ -237,7 +255,7 @@
                         "OIDCAuth": []
                     }
                 ],
-                "description": "Returns a paginated list of workflow executions for the authenticated team. Supports filtering by workflow name, status, and age.",
+                "description": "Returns a list of workflow executions for the authenticated team, most recent first. Supports filtering by workflow name, status, and age. Use the limit parameter to cap results (default 20).",
                 "tags": [
                     "executions"
                 ],
@@ -294,7 +312,10 @@
                             "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
-                }
+                },
+                "produces": [
+                    "application/json"
+                ]
             }
         },
         "/api/v1/executions/{id}": {
@@ -346,7 +367,10 @@
                             "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
-                }
+                },
+                "produces": [
+                    "application/json"
+                ]
             }
         },
         "/api/v1/run/{workflow}": {
@@ -398,7 +422,10 @@
                             "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
-                }
+                },
+                "produces": [
+                    "application/json"
+                ]
             }
         },
         "/api/v1/workflows": {
@@ -429,7 +456,10 @@
                             "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
-                }
+                },
+                "produces": [
+                    "application/json"
+                ]
             }
         },
         "/api/v1/workflows/{name}": {
@@ -475,7 +505,10 @@
                             "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
-                }
+                },
+                "produces": [
+                    "application/json"
+                ]
             }
         },
         "/api/v1/workflows/{name}/versions": {
@@ -521,7 +554,10 @@
                             "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
-                }
+                },
+                "produces": [
+                    "application/json"
+                ]
             }
         },
         "/api/v1/workflows/{name}/versions/{version}": {
@@ -574,7 +610,10 @@
                             "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
-                }
+                },
+                "produces": [
+                    "application/json"
+                ]
             }
         },
         "/healthz": {
@@ -590,7 +629,10 @@
                             "$ref": "#/definitions/server.HealthResponse"
                         }
                     }
-                }
+                },
+                "produces": [
+                    "application/json"
+                ]
             }
         },
         "/readyz": {
@@ -612,7 +654,10 @@
                             "$ref": "#/definitions/server.ReadyzResponse"
                         }
                     }
-                }
+                },
+                "produces": [
+                    "application/json"
+                ]
             }
         }
     },
@@ -638,7 +683,14 @@
                 "team_id": {
                     "type": "string"
                 }
-            }
+            },
+            "required": [
+                "id",
+                "team_id",
+                "provider",
+                "monthly_token_limit",
+                "enforcement"
+            ]
         },
         "server.CancelResponse": {
             "type": "object",
@@ -649,7 +701,11 @@
                 "status": {
                     "type": "string"
                 }
-            }
+            },
+            "required": [
+                "execution_id",
+                "status"
+            ]
         },
         "server.ErrorResponse": {
             "type": "object",
@@ -657,19 +713,24 @@
                 "error": {
                     "type": "string"
                 }
-            }
+            },
+            "required": [
+                "error"
+            ]
         },
         "server.ExecutionDetail": {
             "type": "object",
             "properties": {
                 "completed_at": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "date-time"
                 },
                 "id": {
                     "type": "string"
                 },
                 "started_at": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "date-time"
                 },
                 "status": {
                     "type": "string"
@@ -686,7 +747,14 @@
                 "workflow": {
                     "type": "string"
                 }
-            }
+            },
+            "required": [
+                "id",
+                "workflow",
+                "version",
+                "status",
+                "steps"
+            ]
         },
         "server.ExecutionListResponse": {
             "type": "object",
@@ -697,19 +765,24 @@
                         "$ref": "#/definitions/server.ExecutionSummary"
                     }
                 }
-            }
+            },
+            "required": [
+                "executions"
+            ]
         },
         "server.ExecutionSummary": {
             "type": "object",
             "properties": {
                 "completed_at": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "date-time"
                 },
                 "id": {
                     "type": "string"
                 },
                 "started_at": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "date-time"
                 },
                 "status": {
                     "type": "string"
@@ -720,7 +793,13 @@
                 "workflow": {
                     "type": "string"
                 }
-            }
+            },
+            "required": [
+                "id",
+                "workflow",
+                "version",
+                "status"
+            ]
         },
         "server.HealthResponse": {
             "type": "object",
@@ -728,7 +807,10 @@
                 "status": {
                     "type": "string"
                 }
-            }
+            },
+            "required": [
+                "status"
+            ]
         },
         "server.ReadyzResponse": {
             "type": "object",
@@ -742,7 +824,10 @@
                 "status": {
                     "type": "string"
                 }
-            }
+            },
+            "required": [
+                "status"
+            ]
         },
         "server.RunResponse": {
             "type": "object",
@@ -756,7 +841,12 @@
                 "workflow": {
                     "type": "string"
                 }
-            }
+            },
+            "required": [
+                "execution_id",
+                "workflow",
+                "version"
+            ]
         },
         "server.SetBudgetRequest": {
             "type": "object",
@@ -768,7 +858,11 @@
                 "monthly_token_limit": {
                     "type": "integer"
                 }
-            }
+            },
+            "required": [
+                "monthly_token_limit",
+                "enforcement"
+            ]
         },
         "server.StatusResponse": {
             "type": "object",
@@ -776,13 +870,17 @@
                 "status": {
                     "type": "string"
                 }
-            }
+            },
+            "required": [
+                "status"
+            ]
         },
         "server.StepSummary": {
             "type": "object",
             "properties": {
                 "completed_at": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "date-time"
                 },
                 "error": {
                     "type": "string"
@@ -791,12 +889,17 @@
                     "type": "string"
                 },
                 "started_at": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "date-time"
                 },
                 "status": {
                     "type": "string"
                 }
-            }
+            },
+            "required": [
+                "name",
+                "status"
+            ]
         },
         "server.UsageResponse": {
             "type": "object",
@@ -805,7 +908,8 @@
                     "type": "integer"
                 },
                 "period_start": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "date-time"
                 },
                 "prompt_tokens": {
                     "type": "integer"
@@ -816,13 +920,22 @@
                 "total_tokens": {
                     "type": "integer"
                 }
-            }
+            },
+            "required": [
+                "period_start",
+                "provider",
+                "prompt_tokens",
+                "completion_tokens",
+                "total_tokens"
+            ]
         },
         "server.WorkflowDetailResponse": {
             "type": "object",
             "properties": {
                 "definition": {
-                    "type": "object"
+                    "type": "object",
+                    "additionalProperties": true,
+                    "description": "Free-form workflow definition as stored (YAML parsed to JSON)"
                 },
                 "name": {
                     "type": "string"
@@ -830,7 +943,12 @@
                 "version": {
                     "type": "integer"
                 }
-            }
+            },
+            "required": [
+                "name",
+                "version",
+                "definition"
+            ]
         },
         "server.WorkflowListResponse": {
             "type": "object",
@@ -841,7 +959,10 @@
                         "$ref": "#/definitions/workflow.WorkflowSummary"
                     }
                 }
-            }
+            },
+            "required": [
+                "workflows"
+            ]
         },
         "server.WorkflowVersionListResponse": {
             "type": "object",
@@ -855,7 +976,11 @@
                         "$ref": "#/definitions/workflow.VersionSummary"
                     }
                 }
-            }
+            },
+            "required": [
+                "name",
+                "versions"
+            ]
         },
         "workflow.VersionSummary": {
             "type": "object",
@@ -864,18 +989,25 @@
                     "type": "string"
                 },
                 "created_at": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "date-time"
                 },
                 "version": {
                     "type": "integer"
                 }
-            }
+            },
+            "required": [
+                "version",
+                "content_hash",
+                "created_at"
+            ]
         },
         "workflow.WorkflowSummary": {
             "type": "object",
             "properties": {
                 "created_at": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "date-time"
                 },
                 "latest_version": {
                     "type": "integer"
@@ -884,9 +1016,16 @@
                     "type": "string"
                 },
                 "updated_at": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "date-time"
                 }
-            }
+            },
+            "required": [
+                "name",
+                "latest_version",
+                "created_at",
+                "updated_at"
+            ]
         }
     },
     "securityDefinitions": {
@@ -897,7 +1036,7 @@
             "in": "header"
         },
         "OIDCAuth": {
-            "description": "Bearer OIDC JWT. Format: \"Bearer \u003cjwt\u003e\"",
+            "description": "Bearer OIDC JWT. Format: \"Bearer <jwt>\"",
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"

@@ -48,8 +48,8 @@ ai/
 
 # Internal development process (ephemeral implementation plans)
 docs/superpowers/plans/
-plans/
-marketing/variants/
+/plans/
+/marketing/variants/
 
 # Node / Bun
 node_modules/
