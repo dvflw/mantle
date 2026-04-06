@@ -10,6 +10,7 @@ import (
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
 	"github.com/dvflw/mantle/internal/engine"
+	"github.com/dvflw/mantle/internal/environment"
 	"github.com/dvflw/mantle/internal/secret"
 	"github.com/dvflw/mantle/internal/workflow"
 	"github.com/spf13/cobra"
@@ -18,6 +19,7 @@ import (
 func newRunCommand() *cobra.Command {
 	var inputFlags []string
 	var valuesFile string
+	var envName string
 
 	cmd := &cobra.Command{
 		Use:   "run <workflow>",
@@ -51,7 +53,20 @@ func newRunCommand() *cobra.Command {
 				return fmt.Errorf("workflow %q not found — have you run 'mantle apply'?", workflowName)
 			}
 
-			// Parse --input flags into a map.
+			// Resolve named environment if --env provided.
+			var envInputs map[string]any
+			var envEnvVars map[string]string
+			if envName != "" {
+				envStore := &environment.Store{DB: database}
+				storedEnv, envErr := envStore.Get(cmd.Context(), envName)
+				if envErr != nil {
+					return fmt.Errorf("resolving environment %q: %w", envName, envErr)
+				}
+				envInputs = storedEnv.Inputs
+				envEnvVars = storedEnv.Env
+			}
+
+			// Parse --input flags.
 			inputs := make(map[string]any)
 			for _, kv := range inputFlags {
 				key, value, ok := strings.Cut(kv, "=")
@@ -61,21 +76,24 @@ func newRunCommand() *cobra.Command {
 				inputs[key] = value
 			}
 
-			// Load values file if provided.
+			// Build merged inputs: named env < values file < inline --input flags.
+			mergedInputs := make(map[string]any)
+			for k, v := range envInputs {
+				mergedInputs[k] = v
+			}
 			var valuesEnv map[string]string
 			if valuesFile != "" {
 				vals, valErr := workflow.LoadValues(valuesFile)
 				if valErr != nil {
 					return fmt.Errorf("loading values file: %w", valErr)
 				}
-				// Merge inputs: values file < inline --input flags.
-				// Workflow defaults are applied later by the engine.
 				for k, v := range vals.Inputs {
-					if _, ok := inputs[k]; !ok {
-						inputs[k] = v
-					}
+					mergedInputs[k] = v
 				}
 				valuesEnv = vals.Env
+			}
+			for k, v := range inputs {
+				mergedInputs[k] = v
 			}
 
 			eng, err := engine.New(database)
@@ -85,8 +103,16 @@ func newRunCommand() *cobra.Command {
 			eng.MaxWorkflowDepth = cfg.Engine.MaxWorkflowDepth
 			eng.MaxConcurrentExecutionsPerTeam = cfg.Engine.MaxConcurrentExecutionsPerTeam
 			eng.CEL.SetConfigEnv(cfg.Env)
-			if valuesEnv != nil {
-				eng.CEL.SetValuesEnv(valuesEnv)
+			// Layer env overrides: named env < values file < MANTLE_ENV_*.
+			combinedEnv := make(map[string]string)
+			for k, v := range envEnvVars {
+				combinedEnv[k] = v
+			}
+			for k, v := range valuesEnv {
+				combinedEnv[k] = v
+			}
+			if len(combinedEnv) > 0 {
+				eng.CEL.SetValuesEnv(combinedEnv)
 			}
 			eng.RegisterWorkflowConnector()
 
@@ -109,7 +135,7 @@ func newRunCommand() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "Running %s (version %d)...\n", workflowName, version)
 			}
 
-			result, err := eng.ExecuteWithOptions(cmd.Context(), workflowName, version, inputs, engine.ExecuteOptions{Force: force})
+			result, err := eng.ExecuteWithOptions(cmd.Context(), workflowName, version, mergedInputs, engine.ExecuteOptions{Force: force})
 			if err != nil {
 				return fmt.Errorf("execution failed: %w", err)
 			}
@@ -174,6 +200,7 @@ func newRunCommand() *cobra.Command {
 
 	cmd.Flags().StringArrayVar(&inputFlags, "input", nil, "Input parameter (key=value), can be specified multiple times")
 	cmd.Flags().StringVar(&valuesFile, "values", "", "Values file with input and env overrides (YAML)")
+	cmd.Flags().StringVar(&envName, "env", "", "Named environment to use for input and env overrides")
 	cmd.Flags().BoolP("verbose", "v", false, "Show step outputs and durations")
 	cmd.Flags().Bool("force", false, "Bypass per-workflow and per-team concurrency limits — executions will not be queued and may exceed configured limits")
 	return cmd

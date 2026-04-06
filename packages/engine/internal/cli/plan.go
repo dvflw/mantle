@@ -9,12 +9,14 @@ import (
 
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
+	"github.com/dvflw/mantle/internal/environment"
 	"github.com/dvflw/mantle/internal/workflow"
 	"github.com/spf13/cobra"
 )
 
 func newPlanCommand() *cobra.Command {
 	var valuesFile string
+	var envName string
 
 	cmd := &cobra.Command{
 		Use:   "plan <file>",
@@ -42,6 +44,13 @@ func newPlanCommand() *cobra.Command {
 				return fmt.Errorf("failed to connect to database: %w", err)
 			}
 			defer database.Close()
+
+			if envName != "" {
+				envStore := &environment.Store{DB: database}
+				if _, envErr := envStore.Get(cmd.Context(), envName); envErr != nil {
+					return fmt.Errorf("resolving environment %q: %w", envName, envErr)
+				}
+			}
 
 			rawContent, err := os.ReadFile(filename)
 			if err != nil {
@@ -105,5 +114,6 @@ func newPlanCommand() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&valuesFile, "values", "", "Values file with input and env overrides (YAML)")
+	cmd.Flags().StringVar(&envName, "env", "", "Named environment (validates it exists)")
 	return cmd
 }
