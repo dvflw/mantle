@@ -36,6 +36,11 @@ jobs:
           # Strip "engine/" prefix so goreleaser sees a clean semver tag
           TAG="${GITHUB_REF#refs/tags/engine/}"
           echo "GORELEASER_CURRENT_TAG=${TAG}" >> "$GITHUB_ENV"
+          # Create a local tag alias so goreleaser can validate the tag against
+          # the current commit. Goreleaser reads tags but never pushes them, so
+          # this won't pollute the remote. The namespaced tag (engine/vX.Y.Z) is
+          # what triggered this workflow; goreleaser needs the plain vX.Y.Z form.
+          git tag "${TAG}"
 
       - name: Run goreleaser
         uses: goreleaser/goreleaser-action@v6
