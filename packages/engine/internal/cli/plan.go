@@ -113,7 +113,7 @@ func newPlanCommand() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&valuesFile, "values", "", "Values file with input and env overrides (YAML)")
-	cmd.Flags().StringVar(&envName, "env", "", "Named environment (validates it exists)")
+	cmd.Flags().StringVar(&valuesFile, "values", "", "Validate a values file (does not affect diff output)")
+	cmd.Flags().StringVar(&envName, "env", "", "Validate that a named environment exists (does not affect diff output)")
 	return cmd
 }

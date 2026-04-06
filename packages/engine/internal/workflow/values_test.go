@@ -201,7 +201,7 @@ func TestMergeInputs_FullPrecedence(t *testing.T) {
 		"url": "https://prod.example.com",
 	}
 
-	result := MergeInputs(workflowInputs, valuesInputs, inlineInputs)
+	result := MergeInputs(workflowInputs, nil, valuesInputs, inlineInputs)
 
 	// Inline wins over values and defaults for url.
 	if result["url"] != "https://prod.example.com" {
@@ -218,7 +218,7 @@ func TestMergeInputs_FullPrecedence(t *testing.T) {
 }
 
 func TestMergeInputs_NilLayers(t *testing.T) {
-	result := MergeInputs(nil, nil, nil)
+	result := MergeInputs(nil, nil, nil, nil)
 
 	if result == nil {
 		t.Fatal("result should not be nil")
@@ -236,7 +236,7 @@ func TestMergeInputs_InlineOverridesWithNoDefault(t *testing.T) {
 		"name": "alice",
 	}
 
-	result := MergeInputs(workflowInputs, nil, inlineInputs)
+	result := MergeInputs(workflowInputs, nil, nil, inlineInputs)
 
 	if result["name"] != "alice" {
 		t.Errorf("name: got %v, want %q", result["name"], "alice")
@@ -251,7 +251,7 @@ func TestMergeInputs_ValuesWithNoDefault(t *testing.T) {
 		"region": "us-east-1",
 	}
 
-	result := MergeInputs(workflowInputs, valuesInputs, nil)
+	result := MergeInputs(workflowInputs, nil, valuesInputs, nil)
 
 	if result["region"] != "us-east-1" {
 		t.Errorf("region: got %v, want %q", result["region"], "us-east-1")
@@ -264,7 +264,7 @@ func TestMergeInputs_DefaultsOnlyWhenNoOverrides(t *testing.T) {
 		"limit":   {Type: "number", Default: 100},
 	}
 
-	result := MergeInputs(workflowInputs, nil, nil)
+	result := MergeInputs(workflowInputs, nil, nil, nil)
 
 	if result["verbose"] != false {
 		t.Errorf("verbose: got %v, want false", result["verbose"])
@@ -279,9 +279,49 @@ func TestMergeInputs_InputsWithNilDefaultNotIncluded(t *testing.T) {
 		"required_input": {Type: "string"}, // no default, nil Default
 	}
 
-	result := MergeInputs(workflowInputs, nil, nil)
+	result := MergeInputs(workflowInputs, nil, nil, nil)
 
 	if _, ok := result["required_input"]; ok {
 		t.Error("input with nil Default should not appear in result")
+	}
+}
+
+func TestMergeInputs_FourLayerPrecedence(t *testing.T) {
+	workflowInputs := map[string]Input{
+		"url":     {Type: "string", Default: "https://default.example.com"},
+		"retries": {Type: "number", Default: 3},
+		"timeout": {Type: "string", Default: "30s"},
+		"region":  {Type: "string", Default: "us-west-2"},
+	}
+	envInputs := map[string]any{
+		"url":     "https://env.example.com",
+		"retries": 5,
+		"region":  "eu-west-1",
+	}
+	valuesInputs := map[string]any{
+		"url":     "https://values.example.com",
+		"retries": 10,
+	}
+	inlineInputs := map[string]any{
+		"url": "https://inline.example.com",
+	}
+
+	result := MergeInputs(workflowInputs, envInputs, valuesInputs, inlineInputs)
+
+	// Inline wins for url.
+	if result["url"] != "https://inline.example.com" {
+		t.Errorf("url = %v, want %q (inline wins)", result["url"], "https://inline.example.com")
+	}
+	// Values wins over env for retries.
+	if result["retries"] != 10 {
+		t.Errorf("retries = %v, want 10 (values wins over env)", result["retries"])
+	}
+	// Env wins over default for region.
+	if result["region"] != "eu-west-1" {
+		t.Errorf("region = %v, want %q (env wins over default)", result["region"], "eu-west-1")
+	}
+	// Default used for timeout.
+	if result["timeout"] != "30s" {
+		t.Errorf("timeout = %v, want %q (default)", result["timeout"], "30s")
 	}
 }

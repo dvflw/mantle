@@ -187,3 +187,13 @@ func TestStore_DuplicateName(t *testing.T) {
 		t.Fatal("Create() second call expected error for duplicate name, got nil")
 	}
 }
+
+func TestStore_InvalidName(t *testing.T) {
+	store := &Store{DB: setupTestDB(t)}
+	ctx := context.Background()
+
+	_, err := store.Create(ctx, "Invalid Name!", nil, nil)
+	if err == nil {
+		t.Fatal("expected error for invalid name")
+	}
+}

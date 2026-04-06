@@ -5,10 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/dvflw/mantle/internal/auth"
 )
+
+var validEnvNamePattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 // Environment represents a named set of input and env overrides.
 type Environment struct {
@@ -27,6 +30,13 @@ type Store struct {
 
 // Create stores a new named environment.
 func (s *Store) Create(ctx context.Context, name string, inputs map[string]any, env map[string]string) (*Environment, error) {
+	if name == "" {
+		return nil, fmt.Errorf("environment name is required")
+	}
+	if !validEnvNamePattern.MatchString(name) {
+		return nil, fmt.Errorf("invalid environment name %q: must match %s", name, validEnvNamePattern.String())
+	}
+
 	teamID := auth.TeamIDFromContext(ctx)
 
 	inputsJSON, err := json.Marshal(inputs)

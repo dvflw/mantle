@@ -58,11 +58,10 @@ func LoadValuesBytes(data []byte) (*Values, error) {
 
 // MergeInputs combines input values with the following precedence (highest wins):
 //
-//	inline --input flags > values file inputs > workflow definition defaults
+//	inline --input flags > values file inputs > named environment inputs > workflow definition defaults
 //
-// All three layers are optional (nil-safe). The returned map always contains
-// entries from all layers, with higher-precedence values overriding lower ones.
-func MergeInputs(workflowInputs map[string]Input, valuesInputs map[string]any, inlineInputs map[string]any) map[string]any {
+// All layers are optional (nil-safe).
+func MergeInputs(workflowInputs map[string]Input, envInputs map[string]any, valuesInputs map[string]any, inlineInputs map[string]any) map[string]any {
 	result := make(map[string]any)
 
 	// Layer 1: workflow definition defaults (lowest precedence).
@@ -72,12 +71,17 @@ func MergeInputs(workflowInputs map[string]Input, valuesInputs map[string]any, i
 		}
 	}
 
-	// Layer 2: values file inputs.
+	// Layer 2: named environment inputs.
+	for k, v := range envInputs {
+		result[k] = v
+	}
+
+	// Layer 3: values file inputs.
 	for k, v := range valuesInputs {
 		result[k] = v
 	}
 
-	// Layer 3: inline --input flags (highest precedence).
+	// Layer 4: inline --input flags (highest precedence).
 	for k, v := range inlineInputs {
 		result[k] = v
 	}

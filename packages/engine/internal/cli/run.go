@@ -76,25 +76,21 @@ func newRunCommand() *cobra.Command {
 				inputs[key] = value
 			}
 
-			// Build merged inputs: named env < values file < inline --input flags.
-			mergedInputs := make(map[string]any)
-			for k, v := range envInputs {
-				mergedInputs[k] = v
-			}
+			// Load values file and merge all input layers.
+			var valuesInputs map[string]any
 			var valuesEnv map[string]string
 			if valuesFile != "" {
 				vals, valErr := workflow.LoadValues(valuesFile)
 				if valErr != nil {
 					return fmt.Errorf("loading values file: %w", valErr)
 				}
-				for k, v := range vals.Inputs {
-					mergedInputs[k] = v
-				}
+				valuesInputs = vals.Inputs
 				valuesEnv = vals.Env
 			}
-			for k, v := range inputs {
-				mergedInputs[k] = v
-			}
+
+			// NOTE: MergeInputs does not apply workflow defaults (that's the engine's job
+			// during execution). Pass nil for workflowInputs here — the engine handles it.
+			mergedInputs := workflow.MergeInputs(nil, envInputs, valuesInputs, inputs)
 
 			eng, err := engine.New(database)
 			if err != nil {
