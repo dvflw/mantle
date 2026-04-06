@@ -68,7 +68,7 @@ When a step fails (after exhausting retries):
 
 - **All steps that transitively depend on the failed step** are marked `cancelled` (not executed). The orchestrator walks the DAG forward from the failed step and sets all reachable pending steps to `cancelled`.
 - **Steps with no dependency on the failed step** continue executing. The execution completes in `failed` state once all non-cancelled steps reach a terminal state.
-- **No `continue_on_failure` option in V1.1.** This is noted as a future enhancement. The cascading model is simple: one failure poisons its entire downstream subgraph, but independent subgraphs are unaffected.
+- **`continue_on_error` remains supported where configured.** By default, a failure poisons its downstream subgraph (transitive dependents are cancelled). If a step is configured with `continue_on_error`, that failed step is treated as resolved for dependency scheduling, matching current orchestrator behavior. There is no separate `continue_on_failure` setting — V1.1's cascading failure model applies only to steps without `continue_on_error`.
 
 ## 3. Tool Use Execution Model
 
@@ -148,7 +148,7 @@ The AI connector drives a loop:
 
 Child step executions use the `parent_step_id` column from Phase 7:
 
-```
+```text
 step_executions:
   id: uuid-child-1
   execution_id: <same as parent>
@@ -200,7 +200,7 @@ When a crashed AI step is reclaimed and restarted:
 2. Load all child `step_execution` rows, ordered by `step_name` (which encodes the round index).
 3. Reconstruct the conversation using the following algorithm:
 
-```
+```text
 conversation = [system_prompt, user_prompt]
 for i, llm_response in enumerate(cached_llm_responses):
     append llm_response to conversation
@@ -267,7 +267,7 @@ When any limit is hit, the AI connector sends a final message to the LLM: "Tool 
 
 ### `mantle logs` output
 
-```
+```text
 EXECUTION abc123
   ✓ fetch_data          completed  1.2s
   ✓ research_agent      completed  8.4s
