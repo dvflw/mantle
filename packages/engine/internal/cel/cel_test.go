@@ -303,7 +303,7 @@ func TestEnvVars_PrefixStripping(t *testing.T) {
 	os.Setenv("MANTLE_DATABASE_URL", "should-not-appear")
 	defer os.Unsetenv("MANTLE_DATABASE_URL")
 
-	result := mergeEnvVars(nil)
+	result := mergeEnvVars(nil, nil)
 
 	if v, ok := result["TEST_KEY"]; !ok || v != "test-value" {
 		t.Errorf("mergeEnvVars()[TEST_KEY] = %q, %v; want %q, true", v, ok, "test-value")
