@@ -22,8 +22,14 @@ builds:
 
 archives:
   - id: default
-    format: tar.gz
+    formats: ["tar.gz"]
     name_template: "mantle-{{ .Os }}-{{ .Arch }}"
+    files:
+      # Bundle the license so every distributed archive satisfies BUSL-1.1's
+      # notice requirement. Path is relative to the goreleaser workdir
+      # (packages/engine); LICENSE lives at the repo root.
+      - src: "../../LICENSE"
+        dst: "LICENSE"
 
 checksum:
   name_template: checksums.txt
@@ -34,51 +40,26 @@ changelog:
   groups:
     - title: Features
       regexp: '^.*?feat(\(.+\))?\!?:.*$'
+      order: 0
     - title: Bug Fixes
       regexp: '^.*?fix(\(.+\))?\!?:.*$'
+      order: 1
     - title: Other
       order: 999
 
-dockers:
-  - image_templates:
-      - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
-    use: buildx
-    ids: [mantle]
-    goos: linux
-    goarch: amd64
+dockers_v2:
+  - ids: [mantle]
     dockerfile: Dockerfile.goreleaser
-    build_flag_templates:
-      - "--platform=linux/amd64"
-  - image_templates:
-      - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
-    use: buildx
-    ids: [mantle]
-    goos: linux
-    goarch: arm64
-    dockerfile: Dockerfile.goreleaser
-    build_flag_templates:
-      - "--platform=linux/arm64"
-
-docker_manifests:
-  - name_template: "ghcr.io/dvflw/mantle:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
-      - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/dvflw/mantle:{{ .Major }}.{{ .Minor }}"
-    image_templates:
-      - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
-      - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
-    skip_push: auto
-  - name_template: "ghcr.io/dvflw/mantle:{{ .Major }}"
-    image_templates:
-      - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
-      - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
-    skip_push: auto
-  - name_template: "ghcr.io/dvflw/mantle:latest"
-    image_templates:
-      - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
-      - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
-    skip_push: auto
+    images:
+      - "ghcr.io/dvflw/mantle"
+    tags:
+      - "{{ .Version }}"
+      # Floating tags (major.minor, major, latest) are only pushed for stable
+      # releases. Empty template results are skipped by goreleaser, so these
+      # evaluate to "" and are dropped for any pre-release version.
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}{{ end }}"
+      - "{{ if not .Prerelease }}{{ .Major }}{{ end }}"
+      - "{{ if not .Prerelease }}latest{{ end }}"
 
 release:
   github:

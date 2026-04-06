@@ -4,7 +4,8 @@ RUN apk add --no-cache ca-certificates tzdata \
     && addgroup -S mantle \
     && adduser -S -G mantle -h /home/mantle -s /bin/sh mantle
 
-COPY mantle /usr/local/bin/mantle
+ARG TARGETPLATFORM
+COPY $TARGETPLATFORM/mantle /usr/local/bin/mantle
 
 ENV MANTLE_LOG_LEVEL=info
 ENV MANTLE_API_ADDRESS=:8080
