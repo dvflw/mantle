@@ -14,7 +14,9 @@ import (
 )
 
 func newPlanCommand() *cobra.Command {
-	return &cobra.Command{
+	var valuesFile string
+
+	cmd := &cobra.Command{
 		Use:   "plan <file>",
 		Short: "Show what will change",
 		Long:  "Diffs a local workflow definition against the currently applied version and shows what will change.",
@@ -25,6 +27,14 @@ func newPlanCommand() *cobra.Command {
 			cfg := config.FromContext(cmd.Context())
 			if cfg == nil {
 				return fmt.Errorf("config not loaded")
+			}
+
+			// Load values file early so we fail fast on bad input.
+			if valuesFile != "" {
+				_, valErr := workflow.LoadValues(valuesFile)
+				if valErr != nil {
+					return fmt.Errorf("loading values file: %w", valErr)
+				}
 			}
 
 			database, err := db.Open(cfg.Database)
@@ -93,4 +103,7 @@ func newPlanCommand() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVar(&valuesFile, "values", "", "Values file with input and env overrides (YAML)")
+	return cmd
 }

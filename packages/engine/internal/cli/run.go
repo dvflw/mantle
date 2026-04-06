@@ -17,6 +17,7 @@ import (
 
 func newRunCommand() *cobra.Command {
 	var inputFlags []string
+	var valuesFile string
 
 	cmd := &cobra.Command{
 		Use:   "run <workflow>",
@@ -60,6 +61,23 @@ func newRunCommand() *cobra.Command {
 				inputs[key] = value
 			}
 
+			// Load values file if provided.
+			var valuesEnv map[string]string
+			if valuesFile != "" {
+				vals, valErr := workflow.LoadValues(valuesFile)
+				if valErr != nil {
+					return fmt.Errorf("loading values file: %w", valErr)
+				}
+				// Merge inputs: values file < inline --input flags.
+				// Workflow defaults are applied later by the engine.
+				for k, v := range vals.Inputs {
+					if _, ok := inputs[k]; !ok {
+						inputs[k] = v
+					}
+				}
+				valuesEnv = vals.Env
+			}
+
 			eng, err := engine.New(database)
 			if err != nil {
 				return fmt.Errorf("creating engine: %w", err)
@@ -67,6 +85,9 @@ func newRunCommand() *cobra.Command {
 			eng.MaxWorkflowDepth = cfg.Engine.MaxWorkflowDepth
 			eng.MaxConcurrentExecutionsPerTeam = cfg.Engine.MaxConcurrentExecutionsPerTeam
 			eng.CEL.SetConfigEnv(cfg.Env)
+			if valuesEnv != nil {
+				eng.CEL.SetValuesEnv(valuesEnv)
+			}
 			eng.RegisterWorkflowConnector()
 
 			// Configure credential resolver with Postgres-backed store when encryption key is set.
@@ -152,6 +173,7 @@ func newRunCommand() *cobra.Command {
 	}
 
 	cmd.Flags().StringArrayVar(&inputFlags, "input", nil, "Input parameter (key=value), can be specified multiple times")
+	cmd.Flags().StringVar(&valuesFile, "values", "", "Values file with input and env overrides (YAML)")
 	cmd.Flags().BoolP("verbose", "v", false, "Show step outputs and durations")
 	cmd.Flags().Bool("force", false, "Bypass per-workflow and per-team concurrency limits — executions will not be queued and may exceed configured limits")
 	return cmd
