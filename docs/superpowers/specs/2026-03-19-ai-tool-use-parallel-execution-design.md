@@ -259,8 +259,8 @@ When any limit is hit, the AI connector sends a final message to the LLM: "Tool 
 `mantle validate` checks:
 
 - Tool `name` is unique within a step's tool list.
-- Tool `action` references a valid connector.
-- Tool params are valid for that connector (same validation as regular steps).
+- Each tool's `action` must reference a valid connector.
+- Parameters for each tool are valid for that connector (same validation as regular steps).
 - `max_tool_rounds` is within bounds.
 - `depends_on` cycle detection includes implicit dependencies from CEL expressions.
 - Circular tool references are impossible in V1.1 (tools can't declare sub-tools).

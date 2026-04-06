@@ -44,11 +44,11 @@ Postgres 16 Alpine for small image size. Credentials: `mantle/mantle` on databas
 ## Config Default Update
 
 Change the default `database.url` from:
-```
+```text
 postgres://localhost:5432/mantle?sslmode=disable
 ```
 to:
-```
+```text
 postgres://mantle:mantle@localhost:5432/mantle?sslmode=disable
 ```
 

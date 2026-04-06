@@ -16,7 +16,7 @@ Add a configuration system using Viper that loads settings from `mantle.yaml`, w
 
 ## Package Structure
 
-```
+```text
 internal/
   config/
     config.go        # Config struct, Load() function, Viper setup

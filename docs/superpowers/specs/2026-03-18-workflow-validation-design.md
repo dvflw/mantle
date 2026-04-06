@@ -21,7 +21,7 @@ internal/
   workflow/
     workflow.go        # Workflow, Step, Input, RetryPolicy structs
     parse.go           # Parse(filename) — YAML parsing with yaml.Node line tracking
-    validate.go        # Validate(*Workflow) — structural validation rules
+    validate.go        # Validate(*ParseResult) — structural validation rules
     parse_test.go      # Parsing tests
     validate_test.go   # Validation tests
   cli/

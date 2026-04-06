@@ -193,7 +193,7 @@ Multiple reapers running is safe — the UPDATE/DELETE statements are idempotent
 When a step fails (either from connector error or reaper expiry), the orchestrator:
 
 1. Checks if `attempt < max_attempts` — if so, creates a new `step_execution` row with `attempt + 1` and `status = 'pending'`.
-2. If retries are exhausted, marks the `workflow_execution` as `failed`. All pending steps for this execution are set to `cancelled` (not executed).
+2. If retries are exhausted, marks the `workflow_executions` row as `failed`. All pending steps for this execution are set to `cancelled` (not executed).
 3. In-flight steps for the same execution are allowed to complete (their results are checkpointed but the execution is already marked failed).
 
 ### Timestamp discipline

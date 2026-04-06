@@ -56,7 +56,7 @@ engine:
   max_workflow_depth: 10  # default
 ```
 
-Add `MaxWorkflowDepth int` to `EngineConfig` with default 10:
+Ensure `EngineConfig.MaxWorkflowDepth` uses default 10 and is bound to env/config:
 
 ```go
 v.SetDefault("engine.max_workflow_depth", 10)

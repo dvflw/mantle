@@ -15,7 +15,7 @@ Initialize the Go project with module, directory structure, CLI framework (Cobra
 
 ## Project Structure
 
-```
+```text
 cmd/mantle/
   main.go              # Entrypoint: initializes root command, calls Execute()
 internal/
@@ -35,12 +35,12 @@ Only what's needed for `mantle version`. Future issues add packages under `inter
 ## Version Output
 
 Default (dev build):
-```
+```text
 mantle dev (none, built 2026-03-18T00:00:00Z)
 ```
 
 With ldflags (release build):
-```
+```text
 mantle v0.1.0 (abc1234, built 2026-03-18T15:30:00Z)
 ```
 
