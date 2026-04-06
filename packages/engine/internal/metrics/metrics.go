@@ -1,3 +1,4 @@
+// Package metrics defines Prometheus metrics for the Mantle server.
 package metrics
 
 import (

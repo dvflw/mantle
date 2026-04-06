@@ -1,3 +1,4 @@
+// Package health provides HTTP health-check endpoints for the Mantle API server.
 package health
 
 import (

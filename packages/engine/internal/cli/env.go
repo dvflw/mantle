@@ -76,6 +76,7 @@ func newEnvListCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List all environments",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, cleanup, err := newEnvStore(cmd)
 			if err != nil {

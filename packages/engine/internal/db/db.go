@@ -1,3 +1,4 @@
+// Package db provides Postgres connection management and query helpers.
 package db
 
 import (

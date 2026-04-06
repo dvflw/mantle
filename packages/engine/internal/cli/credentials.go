@@ -1,3 +1,4 @@
+// Package cli implements the Mantle command-line interface.
 package cli
 
 import (
