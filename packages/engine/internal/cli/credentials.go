@@ -15,6 +15,7 @@ const (
 	CredTypeOIDC   = "oidc"
 )
 
+// Credentials holds the authentication material persisted to disk.
 type Credentials struct {
 	Type         string    `json:"type"`
 	APIKey       string    `json:"api_key,omitempty"`
@@ -23,11 +24,15 @@ type Credentials struct {
 	ExpiresAt    time.Time `json:"expires_at,omitempty"`
 }
 
+// DefaultCredentialsPath returns ~/.mantle/credentials, the default location
+// where authentication material is stored.
 func DefaultCredentialsPath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".mantle", "credentials")
 }
 
+// SaveCredentials marshals cred to JSON and writes it to path with
+// 0600 permissions, creating parent directories as needed.
 func SaveCredentials(path string, cred *Credentials) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return fmt.Errorf("creating credentials directory: %w", err)
@@ -42,6 +47,7 @@ func SaveCredentials(path string, cred *Credentials) error {
 	return nil
 }
 
+// LoadCredentials reads and parses the JSON credentials file at path.
 func LoadCredentials(path string) (*Credentials, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -54,6 +60,8 @@ func LoadCredentials(path string) (*Credentials, error) {
 	return &cred, nil
 }
 
+// DeleteCredentials removes the credentials file at path. It is not an error
+// if the file does not exist.
 func DeleteCredentials(path string) error {
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("removing credentials: %w", err)

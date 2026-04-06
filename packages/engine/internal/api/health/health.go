@@ -17,6 +17,8 @@ type LivenessChecker interface {
 	Name() string
 }
 
+// HealthzHandler returns an HTTP handler that always responds 200 OK, used as
+// a liveness probe.
 func HealthzHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -25,6 +27,9 @@ func HealthzHandler() http.HandlerFunc {
 	}
 }
 
+// ReadyzHandler returns an HTTP handler used as a readiness probe. It pings
+// the database and checks each LivenessChecker; it responds 503 if any check
+// fails.
 func ReadyzHandler(database *sql.DB, checkers ...LivenessChecker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

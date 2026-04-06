@@ -96,7 +96,7 @@ func newEnvListCommand() *cobra.Command {
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "NAME\tCREATED")
 			for _, e := range envs {
-				fmt.Fprintf(w, "%s\t%s\n", e.Name, e.CreatedAt.Format("2006-01-02 15:04:05"))
+				fmt.Fprintf(w, "%s\t%s\n", e.Name, e.CreatedAt.UTC().Format("2006-01-02 15:04:05 UTC"))
 			}
 			return w.Flush()
 		},
