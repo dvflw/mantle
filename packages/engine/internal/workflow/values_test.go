@@ -190,7 +190,7 @@ func TestLoadValues_EmptyFile(t *testing.T) {
 func TestMergeInputs_FullPrecedence(t *testing.T) {
 	workflowInputs := map[string]Input{
 		"url":     {Type: "string", Default: "https://default.example.com"},
-		"retries": {Type: "int", Default: 3},
+		"retries": {Type: "number", Default: 3},
 		"timeout": {Type: "string", Default: "30s"},
 	}
 	valuesInputs := map[string]any{
@@ -260,8 +260,8 @@ func TestMergeInputs_ValuesWithNoDefault(t *testing.T) {
 
 func TestMergeInputs_DefaultsOnlyWhenNoOverrides(t *testing.T) {
 	workflowInputs := map[string]Input{
-		"verbose": {Type: "bool", Default: false},
-		"limit":   {Type: "int", Default: 100},
+		"verbose": {Type: "boolean", Default: false},
+		"limit":   {Type: "number", Default: 100},
 	}
 
 	result := MergeInputs(workflowInputs, nil, nil)
