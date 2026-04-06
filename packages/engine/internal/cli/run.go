@@ -38,6 +38,28 @@ func newRunCommand() *cobra.Command {
 				return fmt.Errorf("config not loaded")
 			}
 
+			// Parse --input flags early (no I/O needed).
+			inputs := make(map[string]any)
+			for _, kv := range inputFlags {
+				key, value, ok := strings.Cut(kv, "=")
+				if !ok {
+					return fmt.Errorf("invalid input format %q — expected key=value", kv)
+				}
+				inputs[key] = value
+			}
+
+			// Load values file early so we fail fast on bad input (before DB open).
+			var valuesInputs map[string]any
+			var valuesEnv map[string]string
+			if valuesFile != "" {
+				vals, valErr := workflow.LoadValues(valuesFile)
+				if valErr != nil {
+					return fmt.Errorf("loading values file: %w", valErr)
+				}
+				valuesInputs = vals.Inputs
+				valuesEnv = vals.Env
+			}
+
 			database, err := db.Open(cfg.Database)
 			if err != nil {
 				return fmt.Errorf("failed to connect to database: %w", err)
@@ -64,28 +86,6 @@ func newRunCommand() *cobra.Command {
 				}
 				envInputs = storedEnv.Inputs
 				envEnvVars = storedEnv.Env
-			}
-
-			// Parse --input flags.
-			inputs := make(map[string]any)
-			for _, kv := range inputFlags {
-				key, value, ok := strings.Cut(kv, "=")
-				if !ok {
-					return fmt.Errorf("invalid input format %q — expected key=value", kv)
-				}
-				inputs[key] = value
-			}
-
-			// Load values file and merge all input layers.
-			var valuesInputs map[string]any
-			var valuesEnv map[string]string
-			if valuesFile != "" {
-				vals, valErr := workflow.LoadValues(valuesFile)
-				if valErr != nil {
-					return fmt.Errorf("loading values file: %w", valErr)
-				}
-				valuesInputs = vals.Inputs
-				valuesEnv = vals.Env
 			}
 
 			// NOTE: MergeInputs does not apply workflow defaults (that's the engine's job

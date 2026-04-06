@@ -169,6 +169,21 @@ env:
 	}
 }
 
+func TestLoadValues_EnvKeyCollision(t *testing.T) {
+	path := writeValuesFile(t, `
+env:
+  api_key: lowercase_value
+  API_KEY: uppercase_value
+`)
+	_, err := LoadValues(path)
+	if err == nil {
+		t.Fatal("expected error for env key collision")
+	}
+	if !strings.Contains(err.Error(), "collision") {
+		t.Errorf("error = %q, want it to contain %q", err.Error(), "collision")
+	}
+}
+
 func TestLoadValues_EmptyFile(t *testing.T) {
 	path := writeValuesFile(t, "")
 

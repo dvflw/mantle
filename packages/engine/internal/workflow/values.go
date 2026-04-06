@@ -45,10 +45,17 @@ func LoadValuesBytes(data []byte) (*Values, error) {
 	}
 
 	// Normalize env keys to uppercase (matches config.go behavior).
+	// Detect collisions where different-cased keys map to the same uppercase key.
 	if len(vals.Env) > 0 {
 		normalized := make(map[string]string, len(vals.Env))
+		sources := make(map[string]string, len(vals.Env)) // uppercase key -> original key
 		for k, v := range vals.Env {
-			normalized[strings.ToUpper(k)] = v
+			upper := strings.ToUpper(k)
+			if orig, exists := sources[upper]; exists && orig != k {
+				return nil, fmt.Errorf("env key collision: %q and %q both normalize to %q", orig, k, upper)
+			}
+			sources[upper] = k
+			normalized[upper] = v
 		}
 		vals.Env = normalized
 	}

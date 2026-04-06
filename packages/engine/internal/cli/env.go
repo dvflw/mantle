@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"sort"
 	"text/tabwriter"
 
 	"github.com/dvflw/mantle/internal/config"
@@ -117,14 +118,24 @@ func newEnvShowCommand() *cobra.Command {
 			fmt.Fprintf(cmd.OutOrStdout(), "Name: %s\n", env.Name)
 			if len(env.Inputs) > 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "\nInputs:")
-				for k, v := range env.Inputs {
-					fmt.Fprintf(cmd.OutOrStdout(), "  %s: %v\n", k, v)
+				keys := make([]string, 0, len(env.Inputs))
+				for k := range env.Inputs {
+					keys = append(keys, k)
+				}
+				sort.Strings(keys)
+				for _, k := range keys {
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s: %v\n", k, env.Inputs[k])
 				}
 			}
 			if len(env.Env) > 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "\nEnv:")
-				for k, v := range env.Env {
-					fmt.Fprintf(cmd.OutOrStdout(), "  %s: %s\n", k, v)
+				keys := make([]string, 0, len(env.Env))
+				for k := range env.Env {
+					keys = append(keys, k)
+				}
+				sort.Strings(keys)
+				for _, k := range keys {
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s: %s\n", k, env.Env[k])
 				}
 			}
 			return nil
