@@ -202,7 +202,7 @@ func TestLoadValues_EmptyFile(t *testing.T) {
 
 // --- MergeInputs tests ---
 
-func TestMergeInputs_FullPrecedence(t *testing.T) {
+func TestMergeInputs_ThreeLayerPrecedence(t *testing.T) {
 	workflowInputs := map[string]Input{
 		"url":     {Type: "string", Default: "https://default.example.com"},
 		"retries": {Type: "number", Default: 3},
