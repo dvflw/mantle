@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// newEnvCommand returns the "env" subcommand for managing named environments.
 func newEnvCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "env",
@@ -27,6 +28,8 @@ func newEnvCommand() *cobra.Command {
 	return cmd
 }
 
+// newEnvCreateCommand returns the "env create" subcommand, which stores a new
+// named environment loaded from a values file.
 func newEnvCreateCommand() *cobra.Command {
 	var fromFile string
 
@@ -67,6 +70,8 @@ func newEnvCreateCommand() *cobra.Command {
 	return cmd
 }
 
+// newEnvListCommand returns the "env list" subcommand, which prints all named
+// environments for the current team.
 func newEnvListCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
@@ -98,6 +103,8 @@ func newEnvListCommand() *cobra.Command {
 	}
 }
 
+// newEnvShowCommand returns the "env show" subcommand, which prints the inputs
+// and env vars stored in a named environment.
 func newEnvShowCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show <name>",
@@ -143,6 +150,8 @@ func newEnvShowCommand() *cobra.Command {
 	}
 }
 
+// newEnvDeleteCommand returns the "env delete" subcommand, which removes a
+// named environment from the database.
 func newEnvDeleteCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "delete <name>",
