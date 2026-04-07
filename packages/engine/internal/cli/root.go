@@ -55,6 +55,7 @@ Full documentation: https://mantle.dvflw.co/docs`,
 		newCancelCommand(),
 		newLogsCommand(),
 		newStatusCommand(),
+		newEnvCommand(),
 	)
 
 	// Server & triggers.

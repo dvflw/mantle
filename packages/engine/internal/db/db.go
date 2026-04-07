@@ -1,3 +1,4 @@
+// Package db provides Postgres connection management and query helpers.
 package db
 
 import (
@@ -43,10 +44,13 @@ func Open(cfg config.DatabaseConfig) (*sql.DB, error) {
 	return database, nil
 }
 
+// WithContext stores database in ctx so it can be retrieved by FromContext.
 func WithContext(ctx context.Context, database *sql.DB) context.Context {
 	return context.WithValue(ctx, contextKey{}, database)
 }
 
+// FromContext retrieves the *sql.DB previously stored by WithContext. It
+// returns nil if no database is present in ctx.
 func FromContext(ctx context.Context) *sql.DB {
 	database, _ := ctx.Value(contextKey{}).(*sql.DB)
 	return database

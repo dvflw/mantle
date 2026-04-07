@@ -9,12 +9,16 @@ import (
 
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
+	"github.com/dvflw/mantle/internal/environment"
 	"github.com/dvflw/mantle/internal/workflow"
 	"github.com/spf13/cobra"
 )
 
 func newPlanCommand() *cobra.Command {
-	return &cobra.Command{
+	var valuesFile string
+	var envName string
+
+	cmd := &cobra.Command{
 		Use:   "plan <file>",
 		Short: "Show what will change",
 		Long:  "Diffs a local workflow definition against the currently applied version and shows what will change.",
@@ -27,11 +31,26 @@ func newPlanCommand() *cobra.Command {
 				return fmt.Errorf("config not loaded")
 			}
 
+			// Load values file early so we fail fast on bad input.
+			if valuesFile != "" {
+				_, valErr := workflow.LoadValues(valuesFile)
+				if valErr != nil {
+					return fmt.Errorf("loading values file: %w", valErr)
+				}
+			}
+
 			database, err := db.Open(cfg.Database)
 			if err != nil {
 				return fmt.Errorf("failed to connect to database: %w", err)
 			}
 			defer database.Close()
+
+			if envName != "" {
+				envStore := &environment.Store{DB: database}
+				if _, envErr := envStore.Get(cmd.Context(), envName); envErr != nil {
+					return fmt.Errorf("resolving environment %q: %w", envName, envErr)
+				}
+			}
 
 			rawContent, err := os.ReadFile(filename)
 			if err != nil {
@@ -93,4 +112,8 @@ func newPlanCommand() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVar(&valuesFile, "values", "", "Validate a values file (does not affect diff output)")
+	cmd.Flags().StringVar(&envName, "env", "", "Validate that a named environment exists (does not affect diff output)")
+	return cmd
 }

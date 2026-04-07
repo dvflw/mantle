@@ -10,6 +10,7 @@ import (
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
 	"github.com/dvflw/mantle/internal/engine"
+	"github.com/dvflw/mantle/internal/environment"
 	"github.com/dvflw/mantle/internal/secret"
 	"github.com/dvflw/mantle/internal/workflow"
 	"github.com/spf13/cobra"
@@ -17,6 +18,8 @@ import (
 
 func newRunCommand() *cobra.Command {
 	var inputFlags []string
+	var valuesFile string
+	var envName string
 
 	cmd := &cobra.Command{
 		Use:   "run <workflow>",
@@ -35,6 +38,28 @@ func newRunCommand() *cobra.Command {
 				return fmt.Errorf("config not loaded")
 			}
 
+			// Parse --input flags early (no I/O needed).
+			inputs := make(map[string]any)
+			for _, kv := range inputFlags {
+				key, value, ok := strings.Cut(kv, "=")
+				if !ok {
+					return fmt.Errorf("invalid input format %q — expected key=value", kv)
+				}
+				inputs[key] = value
+			}
+
+			// Load values file early so we fail fast on bad input (before DB open).
+			var valuesInputs map[string]any
+			var valuesEnv map[string]string
+			if valuesFile != "" {
+				vals, valErr := workflow.LoadValues(valuesFile)
+				if valErr != nil {
+					return fmt.Errorf("loading values file: %w", valErr)
+				}
+				valuesInputs = vals.Inputs
+				valuesEnv = vals.Env
+			}
+
 			database, err := db.Open(cfg.Database)
 			if err != nil {
 				return fmt.Errorf("failed to connect to database: %w", err)
@@ -50,15 +75,22 @@ func newRunCommand() *cobra.Command {
 				return fmt.Errorf("workflow %q not found — have you run 'mantle apply'?", workflowName)
 			}
 
-			// Parse --input flags into a map.
-			inputs := make(map[string]any)
-			for _, kv := range inputFlags {
-				key, value, ok := strings.Cut(kv, "=")
-				if !ok {
-					return fmt.Errorf("invalid input format %q — expected key=value", kv)
+			// Resolve named environment if --env provided.
+			var envInputs map[string]any
+			var envEnvVars map[string]string
+			if envName != "" {
+				envStore := &environment.Store{DB: database}
+				storedEnv, envErr := envStore.Get(cmd.Context(), envName)
+				if envErr != nil {
+					return fmt.Errorf("resolving environment %q: %w", envName, envErr)
 				}
-				inputs[key] = value
+				envInputs = storedEnv.Inputs
+				envEnvVars = storedEnv.Env
 			}
+
+			// NOTE: MergeInputs does not apply workflow defaults (that's the engine's job
+			// during execution). Pass nil for workflowInputs here — the engine handles it.
+			mergedInputs := workflow.MergeInputs(nil, envInputs, valuesInputs, inputs)
 
 			eng, err := engine.New(database)
 			if err != nil {
@@ -67,6 +99,17 @@ func newRunCommand() *cobra.Command {
 			eng.MaxWorkflowDepth = cfg.Engine.MaxWorkflowDepth
 			eng.MaxConcurrentExecutionsPerTeam = cfg.Engine.MaxConcurrentExecutionsPerTeam
 			eng.CEL.SetConfigEnv(cfg.Env)
+			// Layer env overrides: named env < values file < MANTLE_ENV_*.
+			combinedEnv := make(map[string]string)
+			for k, v := range envEnvVars {
+				combinedEnv[k] = v
+			}
+			for k, v := range valuesEnv {
+				combinedEnv[k] = v
+			}
+			if len(combinedEnv) > 0 {
+				eng.CEL.SetValuesEnv(combinedEnv)
+			}
 			eng.RegisterWorkflowConnector()
 
 			// Configure credential resolver with Postgres-backed store when encryption key is set.
@@ -88,7 +131,7 @@ func newRunCommand() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "Running %s (version %d)...\n", workflowName, version)
 			}
 
-			result, err := eng.ExecuteWithOptions(cmd.Context(), workflowName, version, inputs, engine.ExecuteOptions{Force: force})
+			result, err := eng.ExecuteWithOptions(cmd.Context(), workflowName, version, mergedInputs, engine.ExecuteOptions{Force: force})
 			if err != nil {
 				return fmt.Errorf("execution failed: %w", err)
 			}
@@ -152,6 +195,8 @@ func newRunCommand() *cobra.Command {
 	}
 
 	cmd.Flags().StringArrayVar(&inputFlags, "input", nil, "Input parameter (key=value), can be specified multiple times")
+	cmd.Flags().StringVar(&valuesFile, "values", "", "Values file with input and env overrides (YAML)")
+	cmd.Flags().StringVar(&envName, "env", "", "Named environment to use for input and env overrides")
 	cmd.Flags().BoolP("verbose", "v", false, "Show step outputs and durations")
 	cmd.Flags().Bool("force", false, "Bypass per-workflow and per-team concurrency limits — executions will not be queued and may exceed configured limits")
 	return cmd

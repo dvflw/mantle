@@ -1,3 +1,4 @@
+// Package metrics defines Prometheus metrics for the Mantle server.
 package metrics
 
 import (
@@ -131,10 +132,17 @@ var (
 // Queue helper functions.
 
 func SetQueueDepth(n int)                { QueueDepth.Set(float64(n)) }
+// RecordClaimDuration records the duration of a queue claim attempt.
 func RecordClaimDuration(d time.Duration) { ClaimDurationSeconds.Observe(d.Seconds()) }
-func RecordLeaseRenewal()                { LeaseRenewalsTotal.Inc() }
-func RecordLeaseExpiration()             { LeaseExpirationsTotal.Inc() }
-func RecordReaperReclaimed(n int)        { ReaperReclaimedTotal.Add(float64(n)) }
+
+// RecordLeaseRenewal increments the lease renewal counter.
+func RecordLeaseRenewal() { LeaseRenewalsTotal.Inc() }
+
+// RecordLeaseExpiration increments the lease expiration counter.
+func RecordLeaseExpiration() { LeaseExpirationsTotal.Inc() }
+
+// RecordReaperReclaimed increments the reaper reclaimed counter by n.
+func RecordReaperReclaimed(n int) { ReaperReclaimedTotal.Add(float64(n)) }
 
 // Email trigger metrics.
 var (
@@ -202,9 +210,16 @@ var (
 func RecordToolCall(step, tool, status string) {
 	ToolCallsTotal.WithLabelValues(step, tool, status).Inc()
 }
+// RecordToolRound increments the tool-round counter for the given step.
 func RecordToolRound(step string) { ToolRoundsTotal.WithLabelValues(step).Inc() }
+
+// RecordToolRoundDuration records the duration of a tool-use round for the given step.
 func RecordToolRoundDuration(step string, d time.Duration) {
 	ToolRoundDurationSeconds.WithLabelValues(step).Observe(d.Seconds())
 }
-func RecordLLMCacheHit()          { LLMCacheHitsTotal.Inc() }
+
+// RecordLLMCacheHit increments the LLM cache hit counter.
+func RecordLLMCacheHit() { LLMCacheHitsTotal.Inc() }
+
+// SetParallelStepsInFlight sets the gauge tracking concurrent step executions.
 func SetParallelStepsInFlight(n int) { ParallelStepsInFlight.Set(float64(n)) }
