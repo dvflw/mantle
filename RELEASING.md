@@ -28,7 +28,7 @@ The automated CI path (Version PR → merge) requires no local tooling beyond gi
 5b. release-helm.yml    → helm push OCI + GitHub Release
 ```
 
-> **Note on workflow naming:** `release-please.yml` is named after a tool we evaluated but didn't adopt — it actually runs the Changesets CLI. A rename to `changeset-version.yml` is tracked in [the relevant issue].
+> **Note on workflow naming:** `release-please.yml` is named after a tool we evaluated but didn't adopt — it actually runs the Changesets CLI. A rename to `changeset-version.yml` is tracked in [dvflw/mantle#123](https://github.com/dvflw/mantle/issues/123).
 
 ## Step 1: Add a Changeset (During Development)
 
