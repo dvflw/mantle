@@ -860,8 +860,7 @@
                 }
             },
             "required": [
-                "monthly_token_limit",
-                "enforcement"
+                "monthly_token_limit"
             ]
         },
         "server.StatusResponse": {
@@ -909,7 +908,7 @@
                 },
                 "period_start": {
                     "type": "string",
-                    "format": "date-time"
+                    "format": "date"
                 },
                 "prompt_tokens": {
                     "type": "integer"

@@ -137,7 +137,6 @@ definitions:
         type: integer
     required:
       - monthly_token_limit
-      - enforcement
     type: object
   server.StatusResponse:
     properties:
@@ -169,7 +168,7 @@ definitions:
       completion_tokens:
         type: integer
       period_start:
-        format: date-time
+        format: date
         type: string
       prompt_tokens:
         type: integer
