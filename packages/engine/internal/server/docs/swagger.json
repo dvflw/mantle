@@ -622,6 +622,7 @@
                     "system"
                 ],
                 "summary": "Liveness probe",
+                "security": [],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -641,6 +642,7 @@
                     "system"
                 ],
                 "summary": "Readiness probe",
+                "security": [],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -1040,5 +1042,9 @@
             "name": "Authorization",
             "in": "header"
         }
-    }
+    },
+    "security": [
+        {"ApiKeyAuth": []},
+        {"OIDCAuth": []}
+    ]
 }

@@ -633,6 +633,7 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/server.HealthResponse'
+      security: []
       summary: Liveness probe
       tags:
       - system
@@ -647,9 +648,13 @@ paths:
           description: Service Unavailable
           schema:
             $ref: '#/definitions/server.ReadyzResponse'
+      security: []
       summary: Readiness probe
       tags:
       - system
+security:
+- ApiKeyAuth: []
+- OIDCAuth: []
 securityDefinitions:
   ApiKeyAuth:
     description: 'Bearer API key. Format: "Bearer mk_..."'
