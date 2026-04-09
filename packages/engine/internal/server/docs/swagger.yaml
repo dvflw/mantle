@@ -131,6 +131,7 @@ definitions:
   server.SetBudgetRequest:
     properties:
       enforcement:
+        default: "hard"
         description: '"hard" or "warn"'
         type: string
       monthly_token_limit:

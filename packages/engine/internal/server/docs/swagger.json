@@ -854,6 +854,7 @@
             "type": "object",
             "properties": {
                 "enforcement": {
+                    "default": "hard",
                     "description": "\"hard\" or \"warn\"",
                     "type": "string"
                 },
