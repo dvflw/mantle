@@ -71,7 +71,7 @@ jobs:
           echo "govulncheck IDs found: ${ALL_IDS:-none}"
           ACTIONABLE_IDS=$(echo "$ALL_IDS" | grep -vE '^(GO-2026-4887|GO-2026-4883)$' || true)
           for ID in $ACTIONABLE_IDS; do
-            echo "::error title=Unfixed vulnerability::$ID — add to exclusion list or upgrade the affected dependency"
+            echo "::error file=go.mod,line=1,title=Unfixed vulnerability::$ID — add to exclusion list or upgrade the affected dependency"
           done
           ACTIONABLE=$(echo "$OUTPUT" | grep -E '^Vulnerability #[0-9]+:' | grep -vE 'GO-2026-4887|GO-2026-4883' || true)
           if [ -n "$ACTIONABLE" ]; then
