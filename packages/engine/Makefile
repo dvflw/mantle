@@ -41,7 +41,7 @@ spec-patch: ## Re-apply manual OpenAPI patches lost on swag regeneration
 	@# swag init does not emit global security declarations, per-operation security
 	@# overrides, or additionalProperties on free-form objects. Patch them back after
 	@# every regeneration run. Requires jq and yq (pip install yq).
-	jq '.security=[{"ApiKeyAuth":[]},{"OIDCAuth":[]}]|.paths["/healthz"].get.security=[]|.paths["/readyz"].get.security=[]|.definitions["server.WorkflowDetailResponse"].properties.definition.additionalProperties=true' \
+	jq --indent 4 --ascii-output '.security=[{"ApiKeyAuth":[]},{"OIDCAuth":[]}]|.paths["/healthz"].get.security=[]|.paths["/readyz"].get.security=[]|.definitions["server.WorkflowDetailResponse"].properties.definition.additionalProperties=true' \
 	  internal/server/docs/swagger.json > internal/server/docs/swagger.json.tmp && \
 	  mv internal/server/docs/swagger.json.tmp internal/server/docs/swagger.json
 	yq -y '.security=[{"ApiKeyAuth":[]},{"OIDCAuth":[]}]|.paths["/healthz"].get.security=[]|.paths["/readyz"].get.security=[]|.definitions["server.WorkflowDetailResponse"].properties.definition.additionalProperties=true' \
