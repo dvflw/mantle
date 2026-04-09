@@ -66,13 +66,15 @@ jobs:
           # Fixed in: N/A — no upstream fix available. Remove exclusions when a patched release ships.
           OUTPUT=$(govulncheck ./... 2>&1 || true)
           echo "$OUTPUT"
-          # Extract and log all found IDs so failures are easy to diagnose.
+          # Emit each actionable vulnerability ID as a GHA error annotation for visibility.
           ALL_IDS=$(echo "$OUTPUT" | grep -oE 'GO-[0-9]+-[0-9]+' | sort -u || true)
-          echo "--- govulncheck: all vulnerability IDs found: ${ALL_IDS:-none} ---"
+          echo "govulncheck IDs found: ${ALL_IDS:-none}"
+          ACTIONABLE_IDS=$(echo "$ALL_IDS" | grep -vE '^(GO-2026-4887|GO-2026-4883)$' || true)
+          for ID in $ACTIONABLE_IDS; do
+            echo "::error title=Unfixed vulnerability::$ID — add to exclusion list or upgrade the affected dependency"
+          done
           ACTIONABLE=$(echo "$OUTPUT" | grep -E '^Vulnerability #[0-9]+:' | grep -vE 'GO-2026-4887|GO-2026-4883' || true)
           if [ -n "$ACTIONABLE" ]; then
-            echo "FAIL: unfixed actionable vulnerabilities found:"
-            echo "$ACTIONABLE"
             exit 1
           fi
 
