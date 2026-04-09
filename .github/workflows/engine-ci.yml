@@ -101,6 +101,7 @@ jobs:
             --dir internal/server,internal/workflow,internal/budget \
             --output internal/server/docs \
             --outputTypes json,yaml \
-            --parseInternal
+            --parseInternal \
+            --requiredByDefault
       - name: Check for drift
         run: git diff --exit-code internal/server/docs/

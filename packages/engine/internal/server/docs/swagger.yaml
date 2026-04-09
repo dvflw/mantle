@@ -16,11 +16,11 @@ definitions:
       team_id:
         type: string
     required:
-      - id
-      - team_id
-      - provider
-      - monthly_token_limit
-      - enforcement
+    - enforcement
+    - id
+    - monthly_token_limit
+    - provider
+    - team_id
     type: object
   server.CancelResponse:
     properties:
@@ -29,25 +29,23 @@ definitions:
       status:
         type: string
     required:
-      - execution_id
-      - status
+    - execution_id
+    - status
     type: object
   server.ErrorResponse:
     properties:
       error:
         type: string
     required:
-      - error
+    - error
     type: object
   server.ExecutionDetail:
     properties:
       completed_at:
-        format: date-time
         type: string
       id:
         type: string
       started_at:
-        format: date-time
         type: string
       status:
         type: string
@@ -60,11 +58,11 @@ definitions:
       workflow:
         type: string
     required:
-      - id
-      - workflow
-      - version
-      - status
-      - steps
+    - id
+    - status
+    - steps
+    - version
+    - workflow
     type: object
   server.ExecutionListResponse:
     properties:
@@ -73,17 +71,15 @@ definitions:
           $ref: '#/definitions/server.ExecutionSummary'
         type: array
     required:
-      - executions
+    - executions
     type: object
   server.ExecutionSummary:
     properties:
       completed_at:
-        format: date-time
         type: string
       id:
         type: string
       started_at:
-        format: date-time
         type: string
       status:
         type: string
@@ -92,17 +88,17 @@ definitions:
       workflow:
         type: string
     required:
-      - id
-      - workflow
-      - version
-      - status
+    - id
+    - status
+    - version
+    - workflow
     type: object
   server.HealthResponse:
     properties:
       status:
         type: string
     required:
-      - status
+    - status
     type: object
   server.ReadyzResponse:
     properties:
@@ -113,7 +109,7 @@ definitions:
       status:
         type: string
     required:
-      - status
+    - status
     type: object
   server.RunResponse:
     properties:
@@ -124,52 +120,49 @@ definitions:
       workflow:
         type: string
     required:
-      - execution_id
-      - workflow
-      - version
+    - execution_id
+    - version
+    - workflow
     type: object
   server.SetBudgetRequest:
     properties:
       enforcement:
-        default: "hard"
-        description: '"hard" or "warn"'
+        default: hard
+        description: '"hard" or "warn"; defaults to "hard" when omitted'
         type: string
       monthly_token_limit:
         type: integer
     required:
-      - monthly_token_limit
+    - monthly_token_limit
     type: object
   server.StatusResponse:
     properties:
       status:
         type: string
     required:
-      - status
+    - status
     type: object
   server.StepSummary:
     properties:
       completed_at:
-        format: date-time
         type: string
       error:
         type: string
       name:
         type: string
       started_at:
-        format: date-time
         type: string
       status:
         type: string
     required:
-      - name
-      - status
+    - name
+    - status
     type: object
   server.UsageResponse:
     properties:
       completion_tokens:
         type: integer
       period_start:
-        format: date
         type: string
       prompt_tokens:
         type: integer
@@ -178,26 +171,25 @@ definitions:
       total_tokens:
         type: integer
     required:
-      - period_start
-      - provider
-      - prompt_tokens
-      - completion_tokens
-      - total_tokens
+    - completion_tokens
+    - period_start
+    - prompt_tokens
+    - provider
+    - total_tokens
     type: object
   server.WorkflowDetailResponse:
     properties:
       definition:
-        additionalProperties: true
-        description: Free-form workflow definition as stored (YAML parsed to JSON)
+        description: Free-form workflow definition as stored (YAML parsed to JSON).
         type: object
       name:
         type: string
       version:
         type: integer
     required:
-      - name
-      - version
-      - definition
+    - definition
+    - name
+    - version
     type: object
   server.WorkflowListResponse:
     properties:
@@ -206,7 +198,7 @@ definitions:
           $ref: '#/definitions/workflow.WorkflowSummary'
         type: array
     required:
-      - workflows
+    - workflows
     type: object
   server.WorkflowVersionListResponse:
     properties:
@@ -217,40 +209,37 @@ definitions:
           $ref: '#/definitions/workflow.VersionSummary'
         type: array
     required:
-      - name
-      - versions
+    - name
+    - versions
     type: object
   workflow.VersionSummary:
     properties:
       content_hash:
         type: string
       created_at:
-        format: date-time
         type: string
       version:
         type: integer
     required:
-      - version
-      - content_hash
-      - created_at
+    - content_hash
+    - created_at
+    - version
     type: object
   workflow.WorkflowSummary:
     properties:
       created_at:
-        format: date-time
         type: string
       latest_version:
         type: integer
       name:
         type: string
       updated_at:
-        format: date-time
         type: string
     required:
-      - name
-      - latest_version
-      - created_at
-      - updated_at
+    - created_at
+    - latest_version
+    - name
+    - updated_at
     type: object
 info:
   contact:
@@ -267,6 +256,8 @@ paths:
     get:
       description: Returns the token budget configuration for all providers configured
         by the authenticated team.
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -358,6 +349,8 @@ paths:
         in: query
         name: provider
         type: string
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -432,6 +425,8 @@ paths:
         in: query
         name: limit
         type: integer
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -460,6 +455,8 @@ paths:
         name: id
         required: true
         type: string
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -522,6 +519,8 @@ paths:
     get:
       description: Returns all workflow definitions ever applied by the authenticated
         team.
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -546,6 +545,8 @@ paths:
         name: name
         required: true
         type: string
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -575,6 +576,8 @@ paths:
         name: name
         required: true
         type: string
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -608,6 +611,8 @@ paths:
         name: version
         required: true
         type: integer
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -629,17 +634,20 @@ paths:
       - workflows
   /healthz:
     get:
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
           schema:
             $ref: '#/definitions/server.HealthResponse'
-      security: []
       summary: Liveness probe
       tags:
       - system
   /readyz:
     get:
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -649,13 +657,9 @@ paths:
           description: Service Unavailable
           schema:
             $ref: '#/definitions/server.ReadyzResponse'
-      security: []
       summary: Readiness probe
       tags:
       - system
-security:
-- ApiKeyAuth: []
-- OIDCAuth: []
 securityDefinitions:
   ApiKeyAuth:
     description: 'Bearer API key. Format: "Bearer mk_..."'

@@ -50,6 +50,7 @@ type StepSummary struct {
 //	@Summary      List executions
 //	@Description  Returns a list of workflow executions for the authenticated team, most recent first. Supports filtering by workflow name, status, and age. Use the limit parameter to cap results (default 20).
 //	@Tags         executions
+//	@Produce      json
 //	@Param    workflow  query  string   false  "Filter by workflow name"
 //	@Param    status    query  string   false  "Filter by status"   Enums(pending,running,completed,failed,cancelled)
 //	@Param    since     query  string   false  "Filter by age (e.g. 1h, 7d)"
@@ -174,6 +175,7 @@ func (s *Server) handleListExecutions(w http.ResponseWriter, r *http.Request) {
 //	@Summary      Get execution detail
 //	@Description  Returns full details of a single execution including all step results.
 //	@Tags         executions
+//	@Produce      json
 //	@Param    id  path  string  true  "Execution ID (UUID)"
 //	@Success  200  {object}  ExecutionDetail
 //	@Failure  400  {object}  ErrorResponse
@@ -317,8 +319,9 @@ type WorkflowListResponse struct {
 
 // WorkflowDetailResponse is returned for GET /api/v1/workflows/{name}.
 type WorkflowDetailResponse struct {
-	Name       string          `json:"name"`
-	Version    int             `json:"version"`
+	Name    string `json:"name"`
+	Version int    `json:"version"`
+	// Free-form workflow definition as stored (YAML parsed to JSON).
 	Definition json.RawMessage `json:"definition" swaggertype:"object"`
 }
 
@@ -345,7 +348,7 @@ type UsageResponse struct {
 // SetBudgetRequest is the request body for PUT /api/v1/budgets/{provider}.
 type SetBudgetRequest struct {
 	MonthlyTokenLimit int64  `json:"monthly_token_limit"`
-	Enforcement       string `json:"enforcement"` // "hard" or "warn"
+	Enforcement       string `json:"enforcement,omitempty" default:"hard"` // "hard" or "warn"; defaults to "hard" when omitted
 }
 
 // StatusResponse is returned for mutations that produce no data payload.
@@ -370,6 +373,7 @@ func writeJSONError(w http.ResponseWriter, message string, status int) {
 //	@Summary      List workflow definitions
 //	@Description  Returns all workflow definitions ever applied by the authenticated team.
 //	@Tags         workflows
+//	@Produce      json
 //	@Success  200  {object}  WorkflowListResponse
 //	@Failure  500  {object}  ErrorResponse
 //	@Security ApiKeyAuth
@@ -393,6 +397,7 @@ func (s *Server) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
 //	@Summary      Get latest workflow definition
 //	@Description  Returns the latest applied definition for a workflow.
 //	@Tags         workflows
+//	@Produce      json
 //	@Param    name  path  string  true  "Workflow name"
 //	@Success  200  {object}  WorkflowDetailResponse
 //	@Failure  404  {object}  ErrorResponse
@@ -430,6 +435,7 @@ func (s *Server) handleGetWorkflow(w http.ResponseWriter, r *http.Request) {
 //	@Summary      List versions of a workflow
 //	@Description  Returns all historical versions of a workflow in reverse chronological order.
 //	@Tags         workflows
+//	@Produce      json
 //	@Param    name  path  string  true  "Workflow name"
 //	@Success  200  {object}  WorkflowVersionListResponse
 //	@Failure  400  {object}  ErrorResponse
@@ -461,6 +467,7 @@ func (s *Server) handleListWorkflowVersions(w http.ResponseWriter, r *http.Reque
 //	@Summary      Get a specific workflow version
 //	@Description  Returns a specific historical version of a workflow definition.
 //	@Tags         workflows
+//	@Produce      json
 //	@Param    name     path  string   true  "Workflow name"
 //	@Param    version  path  integer  true  "Version number"
 //	@Success  200  {object}  WorkflowDetailResponse
@@ -501,6 +508,7 @@ func (s *Server) handleGetWorkflowVersion(w http.ResponseWriter, r *http.Request
 //	@Summary      List provider budgets
 //	@Description  Returns the token budget configuration for all providers configured by the authenticated team.
 //	@Tags         budgets
+//	@Produce      json
 //	@Success  200  {array}   budget.TeamBudget
 //	@Failure  500  {object}  ErrorResponse
 //	@Security ApiKeyAuth
@@ -522,6 +530,8 @@ func (s *Server) handleListBudgets(w http.ResponseWriter, r *http.Request) {
 //	@Summary      Set provider budget
 //	@Description  Creates or replaces the monthly token budget for a provider. Enforcement "hard" blocks execution when the limit is reached; "warn" logs a warning only.
 //	@Tags         budgets
+//	@Accept       json
+//	@Produce      json
 //	@Param        provider  path  string           true  "Provider name (e.g. openai, bedrock)"
 //	@Param        body      body  SetBudgetRequest  true  "Budget configuration"
 //	@Success      200  {object}  StatusResponse
@@ -579,6 +589,7 @@ func (s *Server) handleSetBudget(w http.ResponseWriter, r *http.Request) {
 //	@Summary      Delete provider budget
 //	@Description  Removes the budget configuration for a provider. Does not affect in-flight executions.
 //	@Tags         budgets
+//	@Produce      json
 //	@Param        provider  path  string  true  "Provider name"
 //	@Success      200  {object}  StatusResponse
 //	@Failure  500  {object}  ErrorResponse
@@ -619,6 +630,7 @@ func (s *Server) handleDeleteBudget(w http.ResponseWriter, r *http.Request) {
 //	@Summary      Get token usage
 //	@Description  Returns token usage aggregated by provider for the current billing period (calendar month UTC).
 //	@Tags         budgets
+//	@Produce      json
 //	@Param    provider  query  string  false  "Provider name; omit for total across all providers"
 //	@Success  200  {object}  UsageResponse
 //	@Failure  500  {object}  ErrorResponse
