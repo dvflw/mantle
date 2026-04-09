@@ -73,7 +73,7 @@ jobs:
           #   GO-2026-4870 (crypto/tls: TLS 1.3 key-update deadlock) — EmailSendConnector→crypto/tls
           #   GO-2026-4946 (crypto/x509: policy-validation DoS) — EmailSendConnector→crypto/tls→crypto/x509
           #   GO-2026-4947 (crypto/x509: certificate chain-building DoS) — EmailSendConnector→crypto/tls→crypto/x509
-          # Remove these five exclusions once CI upgrades to go >= 1.25.9.
+          # Remove these five exclusions once go-version in this workflow is >= 1.25.9.
           OUTPUT=$(govulncheck ./... 2>&1 || true)
           echo "$OUTPUT"
           # Emit each actionable vulnerability ID as a GHA error annotation for visibility.
