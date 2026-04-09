@@ -5,7 +5,7 @@ LDFLAGS := -X github.com/dvflw/mantle/internal/version.Version=$(VERSION) \
            -X github.com/dvflw/mantle/internal/version.Commit=$(COMMIT) \
            -X github.com/dvflw/mantle/internal/version.Date=$(DATE)
 
-.PHONY: build test lint clean migrate run dev spec
+.PHONY: build test lint clean migrate run dev spec spec-patch
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o mantle ./cmd/mantle
@@ -35,3 +35,15 @@ spec: ## Regenerate OpenAPI spec (requires: go install github.com/swaggo/swag/cm
 	  --output internal/server/docs \
 	  --outputTypes json,yaml \
 	  --parseInternal
+	$(MAKE) spec-patch
+
+spec-patch: ## Re-apply manual OpenAPI patches lost on swag regeneration
+	@# swag init does not emit global security declarations, per-operation security
+	@# overrides, or additionalProperties on free-form objects. Patch them back after
+	@# every regeneration run. Requires jq and yq (pip install yq).
+	jq '.security=[{"ApiKeyAuth":[]},{"OIDCAuth":[]}]|.paths["/healthz"].get.security=[]|.paths["/readyz"].get.security=[]|.definitions["server.WorkflowDetailResponse"].properties.definition.additionalProperties=true' \
+	  internal/server/docs/swagger.json > internal/server/docs/swagger.json.tmp && \
+	  mv internal/server/docs/swagger.json.tmp internal/server/docs/swagger.json
+	yq -y '.security=[{"ApiKeyAuth":[]},{"OIDCAuth":[]}]|.paths["/healthz"].get.security=[]|.paths["/readyz"].get.security=[]|.definitions["server.WorkflowDetailResponse"].properties.definition.additionalProperties=true' \
+	  internal/server/docs/swagger.yaml > internal/server/docs/swagger.yaml.tmp && \
+	  mv internal/server/docs/swagger.yaml.tmp internal/server/docs/swagger.yaml
