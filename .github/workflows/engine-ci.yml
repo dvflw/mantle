@@ -61,13 +61,18 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: Run govulncheck
         run: |
-          # GO-2026-4887 and GO-2026-4883 are in docker/docker (testcontainers test dep only).
+          # Known unfixable vulnerabilities in indirect test-only dependencies (docker/docker via testcontainers):
+          #   GO-2026-4887, GO-2026-4883
           # Fixed in: N/A — no upstream fix available. Remove exclusions when a patched release ships.
           OUTPUT=$(govulncheck ./... 2>&1 || true)
           echo "$OUTPUT"
+          # Extract and log all found IDs so failures are easy to diagnose.
+          ALL_IDS=$(echo "$OUTPUT" | grep -oE 'GO-[0-9]+-[0-9]+' | sort -u || true)
+          echo "--- govulncheck: all vulnerability IDs found: ${ALL_IDS:-none} ---"
           ACTIONABLE=$(echo "$OUTPUT" | grep -E '^Vulnerability #[0-9]+:' | grep -vE 'GO-2026-4887|GO-2026-4883' || true)
           if [ -n "$ACTIONABLE" ]; then
-            echo "FAIL: unfixed actionable vulnerabilities found"
+            echo "FAIL: unfixed actionable vulnerabilities found:"
+            echo "$ACTIONABLE"
             exit 1
           fi
 
