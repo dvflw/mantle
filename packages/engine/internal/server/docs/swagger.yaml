@@ -43,10 +43,12 @@ definitions:
     properties:
       completed_at:
         type: string
+        format: date-time
       id:
         type: string
       started_at:
         type: string
+        format: date-time
       status:
         type: string
       steps:
@@ -77,10 +79,12 @@ definitions:
     properties:
       completed_at:
         type: string
+        format: date-time
       id:
         type: string
       started_at:
         type: string
+        format: date-time
       status:
         type: string
       version:
@@ -146,12 +150,14 @@ definitions:
     properties:
       completed_at:
         type: string
+        format: date-time
       error:
         type: string
       name:
         type: string
       started_at:
         type: string
+        format: date-time
       status:
         type: string
     required:
@@ -164,6 +170,7 @@ definitions:
         type: integer
       period_start:
         type: string
+        format: date
       prompt_tokens:
         type: integer
       provider:
@@ -219,6 +226,7 @@ definitions:
         type: string
       created_at:
         type: string
+        format: date-time
       version:
         type: integer
     required:
@@ -230,12 +238,14 @@ definitions:
     properties:
       created_at:
         type: string
+        format: date-time
       latest_version:
         type: integer
       name:
         type: string
       updated_at:
         type: string
+        format: date-time
     required:
       - created_at
       - latest_version
