@@ -1,7 +1,7 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "Headless AI workflow automation — BYOK, IaC-first, enterprise-grade.",
+        "description": "Headless AI workflow automation \u2014 BYOK, IaC-first, enterprise-grade.",
         "title": "Mantle API",
         "contact": {
             "name": "Mantle",
@@ -632,7 +632,8 @@
                             "$ref": "#/definitions/server.HealthResponse"
                         }
                     }
-                }
+                },
+                "security": []
             }
         },
         "/readyz": {
@@ -657,7 +658,8 @@
                             "$ref": "#/definitions/server.ReadyzResponse"
                         }
                     }
-                }
+                },
+                "security": []
             }
         }
     },
@@ -932,7 +934,8 @@
             "properties": {
                 "definition": {
                     "description": "Free-form workflow definition as stored (YAML parsed to JSON).",
-                    "type": "object"
+                    "type": "object",
+                    "additionalProperties": true
                 },
                 "name": {
                     "type": "string"
@@ -1025,10 +1028,18 @@
             "in": "header"
         },
         "OIDCAuth": {
-            "description": "Bearer OIDC JWT. Format: \"Bearer \u003cjwt\u003e\"",
+            "description": "Bearer OIDC JWT. Format: \"Bearer <jwt>\"",
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"
         }
-    }
+    },
+    "security": [
+        {
+            "ApiKeyAuth": []
+        },
+        {
+            "OIDCAuth": []
+        }
+    ]
 }
