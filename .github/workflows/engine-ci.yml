@@ -67,21 +67,22 @@ jobs:
           #   GO-2026-4887, GO-2026-4883
           #
           # Go standard library vulnerabilities fixed in go1.25.9 / go1.26.2 (released 2026-04-07).
-          # Reachable via crypto/tls (EmailSendConnector TLS handshake) in go < 1.25.9:
+          # Reachable via docker/docker (archive/tar) or crypto/tls (EmailSendConnector) in go < 1.25.9:
+          #   GO-2026-4869 (archive/tar: unbounded memory in sparse GNU tar archives)
           #   GO-2026-4870 (crypto/tls: TLS 1.3 key-update deadlock)
           #   GO-2026-4946 (crypto/x509: policy-validation DoS)
           #   GO-2026-4947 (crypto/x509: certificate chain-building DoS)
-          # Remove these three exclusions once CI upgrades to go >= 1.25.9.
+          # Remove these four exclusions once CI upgrades to go >= 1.25.9.
           OUTPUT=$(govulncheck ./... 2>&1 || true)
           echo "$OUTPUT"
           # Emit each actionable vulnerability ID as a GHA error annotation for visibility.
           ALL_IDS=$(echo "$OUTPUT" | grep -oE 'GO-[0-9]+-[0-9]+' | sort -u || true)
           echo "govulncheck IDs found: ${ALL_IDS:-none}"
-          ACTIONABLE_IDS=$(echo "$ALL_IDS" | grep -vE '^(GO-2026-4887|GO-2026-4883|GO-2026-4870|GO-2026-4946|GO-2026-4947)$' || true)
+          ACTIONABLE_IDS=$(echo "$ALL_IDS" | grep -vE '^(GO-2026-4887|GO-2026-4883|GO-2026-4869|GO-2026-4870|GO-2026-4946|GO-2026-4947)$' || true)
           for ID in $ACTIONABLE_IDS; do
             echo "::error file=go.mod,line=1,title=Unfixed vulnerability::$ID — add to exclusion list or upgrade the affected dependency"
           done
-          ACTIONABLE=$(echo "$OUTPUT" | grep -E '^Vulnerability #[0-9]+:' | grep -vE 'GO-2026-4887|GO-2026-4883|GO-2026-4870|GO-2026-4946|GO-2026-4947' || true)
+          ACTIONABLE=$(echo "$OUTPUT" | grep -E '^Vulnerability #[0-9]+:' | grep -vE 'GO-2026-4887|GO-2026-4883|GO-2026-4869|GO-2026-4870|GO-2026-4946|GO-2026-4947' || true)
           if [ -n "$ACTIONABLE" ]; then
             exit 1
           fi
