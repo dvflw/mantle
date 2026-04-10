@@ -34,6 +34,7 @@ spec: ## Regenerate OpenAPI spec (requires: go install github.com/swaggo/swag/cm
 	  --dir internal/server,internal/workflow,internal/budget \
 	  --output internal/server/docs \
 	  --outputTypes json,yaml \
+	  --requiredByDefault \
 	  --parseInternal
 	$(MAKE) spec-patch
 

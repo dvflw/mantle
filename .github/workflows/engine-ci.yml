@@ -109,16 +109,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-      - name: Install swag
-        run: go install github.com/swaggo/swag/cmd/swag@v1.16.6
-      - name: Regenerate spec
+      - name: Install spec tooling
         run: |
-          swag init \
-            -g docs.go \
-            --dir internal/server,internal/workflow,internal/budget \
-            --output internal/server/docs \
-            --outputTypes json,yaml \
-            --parseInternal \
-            --requiredByDefault
+          go install github.com/swaggo/swag/cmd/swag@v1.16.6
+          python -m pip install yq
+      - name: Regenerate spec
+        run: make spec
       - name: Check for drift
         run: git diff --exit-code internal/server/docs/
