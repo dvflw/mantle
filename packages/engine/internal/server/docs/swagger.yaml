@@ -187,9 +187,9 @@ definitions:
   server.WorkflowDetailResponse:
     properties:
       definition:
-        additionalProperties: true
         description: Free-form workflow definition as stored (YAML parsed to JSON).
         type: object
+        additionalProperties: true
       name:
         type: string
       version:
@@ -652,10 +652,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/server.HealthResponse'
-      security: []
       summary: Liveness probe
       tags:
         - system
+      security: []
   /readyz:
     get:
       produces:
@@ -669,13 +669,10 @@ paths:
           description: Service Unavailable
           schema:
             $ref: '#/definitions/server.ReadyzResponse'
-      security: []
       summary: Readiness probe
       tags:
         - system
-security:
-  - ApiKeyAuth: []
-  - OIDCAuth: []
+      security: []
 securityDefinitions:
   ApiKeyAuth:
     description: 'Bearer API key. Format: "Bearer mk_..."'
@@ -688,3 +685,6 @@ securityDefinitions:
     name: Authorization
     type: apiKey
 swagger: '2.0'
+security:
+  - ApiKeyAuth: []
+  - OIDCAuth: []
