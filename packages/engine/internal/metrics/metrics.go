@@ -131,7 +131,8 @@ var (
 
 // Queue helper functions.
 
-func SetQueueDepth(n int)                { QueueDepth.Set(float64(n)) }
+// SetQueueDepth sets the Prometheus gauge to the current number of pending steps.
+func SetQueueDepth(n int) { QueueDepth.Set(float64(n)) }
 // RecordClaimDuration records the duration of a queue claim attempt.
 func RecordClaimDuration(d time.Duration) { ClaimDurationSeconds.Observe(d.Seconds()) }
 
@@ -207,6 +208,7 @@ var (
 
 // Tool-use helper functions.
 
+// RecordToolCall increments the tool call counter for the given step, tool name, and status.
 func RecordToolCall(step, tool, status string) {
 	ToolCallsTotal.WithLabelValues(step, tool, status).Inc()
 }

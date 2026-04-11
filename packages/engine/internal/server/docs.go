@@ -37,6 +37,7 @@ type ReadyzResponse struct {
 //
 //	@Summary  Liveness probe
 //	@Tags     system
+//	@Produce  json
 //	@Success  200  {object}  HealthResponse
 //	@Router   /healthz [get]
 func healthzDoc() {} //nolint:unused,deadcode
@@ -47,6 +48,7 @@ func healthzDoc() {} //nolint:unused,deadcode
 //
 //	@Summary  Readiness probe
 //	@Tags     system
+//	@Produce  json
 //	@Success  200  {object}  ReadyzResponse
 //	@Failure  503  {object}  ReadyzResponse
 //	@Router   /readyz [get]
