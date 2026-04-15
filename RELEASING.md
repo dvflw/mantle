@@ -28,7 +28,7 @@ The automated CI path (Version PR → merge) requires no local tooling beyond gi
 5b. release-helm.yml    → helm push OCI + GitHub Release
 ```
 
-> **Note on workflow naming:** `release-please.yml` is named after a tool we evaluated but didn't adopt — it actually runs the Changesets CLI. A rename to `changeset-version.yml` is tracked in [the relevant issue].
+> **Note on workflow naming:** `release-please.yml` is named after a tool we evaluated but didn't adopt — it actually runs the Changesets CLI. A rename to `changeset-version.yml` is tracked in [dvflw/mantle#123](https://github.com/dvflw/mantle/issues/123).
 
 ## Step 1: Add a Changeset (During Development)
 
@@ -90,7 +90,7 @@ Those tags trigger the package-specific release workflows:
 
 **Floating tags** (`major.minor`, `major`, `latest`) are only pushed for stable releases. For pre-release versions (e.g. `0.5.0-rc.1`) the versioned image is pushed but floating tags are skipped.
 
-**Platform-specific image tags:** the pipeline no longer publishes per-arch tags like `ghcr.io/dvflw/mantle:<version>-amd64`. Only the multi-arch manifest tag (`ghcr.io/dvflw/mantle:<version>`) is pushed. Update any CI or deploy configs that reference the old suffixed tags.
+**Platform-specific image tags:** per-arch tags like `ghcr.io/dvflw/mantle:<version>-amd64` and `ghcr.io/dvflw/mantle:<version>-arm64` exist in GHCR as internal references required by the multi-arch manifest, but are not intended for direct consumption. Always pull the multi-arch manifest tag (`ghcr.io/dvflw/mantle:<version>`), which selects the correct platform automatically. Update any CI or deploy configs that reference the old suffixed tags directly.
 
 **Trivy scan policy:** the `trivy` job runs after `release` with `exit-code: 1` on `CRITICAL` or `HIGH` CVEs. A failure marks the workflow run as failed but does not retract the already-published release. If a CVE scan fails post-release, open a patch release issue immediately.
 

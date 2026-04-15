@@ -15,6 +15,12 @@ definitions:
         type: string
       team_id:
         type: string
+    required:
+      - enforcement
+      - id
+      - monthly_token_limit
+      - provider
+      - team_id
     type: object
   server.CancelResponse:
     properties:
@@ -22,20 +28,27 @@ definitions:
         type: string
       status:
         type: string
+    required:
+      - execution_id
+      - status
     type: object
   server.ErrorResponse:
     properties:
       error:
         type: string
+    required:
+      - error
     type: object
   server.ExecutionDetail:
     properties:
       completed_at:
         type: string
+        format: date-time
       id:
         type: string
       started_at:
         type: string
+        format: date-time
       status:
         type: string
       steps:
@@ -46,6 +59,12 @@ definitions:
         type: integer
       workflow:
         type: string
+    required:
+      - id
+      - status
+      - steps
+      - version
+      - workflow
     type: object
   server.ExecutionListResponse:
     properties:
@@ -53,26 +72,37 @@ definitions:
         items:
           $ref: '#/definitions/server.ExecutionSummary'
         type: array
+    required:
+      - executions
     type: object
   server.ExecutionSummary:
     properties:
       completed_at:
         type: string
+        format: date-time
       id:
         type: string
       started_at:
         type: string
+        format: date-time
       status:
         type: string
       version:
         type: integer
       workflow:
         type: string
+    required:
+      - id
+      - status
+      - version
+      - workflow
     type: object
   server.HealthResponse:
     properties:
       status:
         type: string
+    required:
+      - status
     type: object
   server.ReadyzResponse:
     properties:
@@ -82,6 +112,8 @@ definitions:
         type: object
       status:
         type: string
+    required:
+      - status
     type: object
   server.RunResponse:
     properties:
@@ -91,32 +123,46 @@ definitions:
         type: integer
       workflow:
         type: string
+    required:
+      - execution_id
+      - version
+      - workflow
     type: object
   server.SetBudgetRequest:
     properties:
       enforcement:
-        description: '"hard" or "warn"'
+        default: hard
+        description: '"hard" or "warn"; defaults to "hard" when omitted'
         type: string
       monthly_token_limit:
         type: integer
+    required:
+      - monthly_token_limit
     type: object
   server.StatusResponse:
     properties:
       status:
         type: string
+    required:
+      - status
     type: object
   server.StepSummary:
     properties:
       completed_at:
         type: string
+        format: date-time
       error:
         type: string
       name:
         type: string
       started_at:
         type: string
+        format: date-time
       status:
         type: string
+    required:
+      - name
+      - status
     type: object
   server.UsageResponse:
     properties:
@@ -124,21 +170,34 @@ definitions:
         type: integer
       period_start:
         type: string
+        format: date
       prompt_tokens:
         type: integer
       provider:
         type: string
       total_tokens:
         type: integer
+    required:
+      - completion_tokens
+      - period_start
+      - prompt_tokens
+      - provider
+      - total_tokens
     type: object
   server.WorkflowDetailResponse:
     properties:
       definition:
+        description: Free-form workflow definition as stored (YAML parsed to JSON).
         type: object
+        additionalProperties: true
       name:
         type: string
       version:
         type: integer
+    required:
+      - definition
+      - name
+      - version
     type: object
   server.WorkflowListResponse:
     properties:
@@ -146,6 +205,8 @@ definitions:
         items:
           $ref: '#/definitions/workflow.WorkflowSummary'
         type: array
+    required:
+      - workflows
     type: object
   server.WorkflowVersionListResponse:
     properties:
@@ -155,6 +216,9 @@ definitions:
         items:
           $ref: '#/definitions/workflow.VersionSummary'
         type: array
+    required:
+      - name
+      - versions
     type: object
   workflow.VersionSummary:
     properties:
@@ -162,19 +226,31 @@ definitions:
         type: string
       created_at:
         type: string
+        format: date-time
       version:
         type: integer
+    required:
+      - content_hash
+      - created_at
+      - version
     type: object
   workflow.WorkflowSummary:
     properties:
       created_at:
         type: string
+        format: date-time
       latest_version:
         type: integer
       name:
         type: string
       updated_at:
         type: string
+        format: date-time
+    required:
+      - created_at
+      - latest_version
+      - name
+      - updated_at
     type: object
 info:
   contact:
@@ -185,385 +261,418 @@ info:
     name: BSL 1.1
     url: https://github.com/dvflw/mantle/blob/main/LICENSE
   title: Mantle API
-  version: "1.0"
+  version: '1.0'
 paths:
   /api/v1/budgets:
     get:
       description: Returns the token budget configuration for all providers configured
         by the authenticated team.
+      produces:
+        - application/json
       responses:
-        "200":
+        '200':
           description: OK
           schema:
             items:
               $ref: '#/definitions/budget.TeamBudget'
             type: array
-        "500":
+        '500':
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.ErrorResponse'
       security:
-      - ApiKeyAuth: []
-      - OIDCAuth: []
+        - ApiKeyAuth: []
+        - OIDCAuth: []
       summary: List provider budgets
       tags:
-      - budgets
+        - budgets
   /api/v1/budgets/{provider}:
     delete:
       description: Removes the budget configuration for a provider. Does not affect
         in-flight executions.
       parameters:
-      - description: Provider name
-        in: path
-        name: provider
-        required: true
-        type: string
+        - description: Provider name
+          in: path
+          name: provider
+          required: true
+          type: string
+      produces:
+        - application/json
       responses:
-        "200":
+        '200':
           description: OK
           schema:
             $ref: '#/definitions/server.StatusResponse'
-        "500":
+        '500':
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.ErrorResponse'
       security:
-      - ApiKeyAuth: []
-      - OIDCAuth: []
+        - ApiKeyAuth: []
+        - OIDCAuth: []
       summary: Delete provider budget
       tags:
-      - budgets
+        - budgets
     put:
+      consumes:
+        - application/json
       description: Creates or replaces the monthly token budget for a provider. Enforcement
         "hard" blocks execution when the limit is reached; "warn" logs a warning only.
       parameters:
-      - description: Provider name (e.g. openai, bedrock)
-        in: path
-        name: provider
-        required: true
-        type: string
-      - description: Budget configuration
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/server.SetBudgetRequest'
+        - description: Provider name (e.g. openai, bedrock)
+          in: path
+          name: provider
+          required: true
+          type: string
+        - description: Budget configuration
+          in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/server.SetBudgetRequest'
+      produces:
+        - application/json
       responses:
-        "200":
+        '200':
           description: OK
           schema:
             $ref: '#/definitions/server.StatusResponse'
-        "400":
+        '400':
           description: Bad Request
           schema:
             $ref: '#/definitions/server.ErrorResponse'
-        "500":
+        '500':
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.ErrorResponse'
       security:
-      - ApiKeyAuth: []
-      - OIDCAuth: []
+        - ApiKeyAuth: []
+        - OIDCAuth: []
       summary: Set provider budget
       tags:
-      - budgets
+        - budgets
   /api/v1/budgets/usage:
     get:
       description: Returns token usage aggregated by provider for the current billing
         period (calendar month UTC).
       parameters:
-      - description: Provider name; omit for total across all providers
-        in: query
-        name: provider
-        type: string
+        - description: Provider name; omit for total across all providers
+          in: query
+          name: provider
+          type: string
+      produces:
+        - application/json
       responses:
-        "200":
+        '200':
           description: OK
           schema:
             $ref: '#/definitions/server.UsageResponse'
-        "500":
+        '500':
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.ErrorResponse'
       security:
-      - ApiKeyAuth: []
-      - OIDCAuth: []
+        - ApiKeyAuth: []
+        - OIDCAuth: []
       summary: Get token usage
       tags:
-      - budgets
+        - budgets
   /api/v1/cancel/{execution}:
     post:
       description: Sends a cancellation signal to a running execution. The execution
         may not stop immediately; poll the status endpoint to confirm.
       parameters:
-      - description: Execution ID (UUID)
-        in: path
-        name: execution
-        required: true
-        type: string
+        - description: Execution ID (UUID)
+          in: path
+          name: execution
+          required: true
+          type: string
+      produces:
+        - application/json
       responses:
-        "200":
+        '200':
           description: OK
           schema:
             $ref: '#/definitions/server.CancelResponse'
-        "404":
+        '404':
           description: Not Found
           schema:
             $ref: '#/definitions/server.ErrorResponse'
-        "500":
+        '500':
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.ErrorResponse'
       security:
-      - ApiKeyAuth: []
-      - OIDCAuth: []
+        - ApiKeyAuth: []
+        - OIDCAuth: []
       summary: Cancel a running execution
       tags:
-      - executions
+        - executions
   /api/v1/executions:
     get:
-      description: Returns a paginated list of workflow executions for the authenticated
-        team. Supports filtering by workflow name, status, and age.
+      description: Returns a list of workflow executions for the authenticated team,
+        most recent first. Supports filtering by workflow name, status, and age. Use
+        the limit parameter to cap results (default 20).
       parameters:
-      - description: Filter by workflow name
-        in: query
-        name: workflow
-        type: string
-      - description: Filter by status
-        enum:
-        - pending
-        - running
-        - completed
-        - failed
-        - cancelled
-        in: query
-        name: status
-        type: string
-      - description: Filter by age (e.g. 1h, 7d)
-        in: query
-        name: since
-        type: string
-      - description: Max results (default 20)
-        in: query
-        name: limit
-        type: integer
+        - description: Filter by workflow name
+          in: query
+          name: workflow
+          type: string
+        - description: Filter by status
+          enum:
+            - pending
+            - running
+            - completed
+            - failed
+            - cancelled
+          in: query
+          name: status
+          type: string
+        - description: Filter by age (e.g. 1h, 7d)
+          in: query
+          name: since
+          type: string
+        - description: Max results (default 20)
+          in: query
+          name: limit
+          type: integer
+      produces:
+        - application/json
       responses:
-        "200":
+        '200':
           description: OK
           schema:
             $ref: '#/definitions/server.ExecutionListResponse'
-        "400":
+        '400':
           description: Bad Request
           schema:
             $ref: '#/definitions/server.ErrorResponse'
-        "500":
+        '500':
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.ErrorResponse'
       security:
-      - ApiKeyAuth: []
-      - OIDCAuth: []
+        - ApiKeyAuth: []
+        - OIDCAuth: []
       summary: List executions
       tags:
-      - executions
+        - executions
   /api/v1/executions/{id}:
     get:
       description: Returns full details of a single execution including all step results.
       parameters:
-      - description: Execution ID (UUID)
-        in: path
-        name: id
-        required: true
-        type: string
+        - description: Execution ID (UUID)
+          in: path
+          name: id
+          required: true
+          type: string
+      produces:
+        - application/json
       responses:
-        "200":
+        '200':
           description: OK
           schema:
             $ref: '#/definitions/server.ExecutionDetail'
-        "400":
+        '400':
           description: Bad Request
           schema:
             $ref: '#/definitions/server.ErrorResponse'
-        "404":
+        '404':
           description: Not Found
           schema:
             $ref: '#/definitions/server.ErrorResponse'
-        "500":
+        '500':
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.ErrorResponse'
       security:
-      - ApiKeyAuth: []
-      - OIDCAuth: []
+        - ApiKeyAuth: []
+        - OIDCAuth: []
       summary: Get execution detail
       tags:
-      - executions
+        - executions
   /api/v1/run/{workflow}:
     post:
       description: Triggers the latest applied version of the named workflow. Returns
         a 202 Accepted response with the new execution ID.
       parameters:
-      - description: Workflow name
-        in: path
-        name: workflow
-        required: true
-        type: string
+        - description: Workflow name
+          in: path
+          name: workflow
+          required: true
+          type: string
+      produces:
+        - application/json
       responses:
-        "202":
+        '202':
           description: Accepted
           schema:
             $ref: '#/definitions/server.RunResponse'
-        "400":
+        '400':
           description: Bad Request
           schema:
             $ref: '#/definitions/server.ErrorResponse'
-        "404":
+        '404':
           description: Not Found
           schema:
             $ref: '#/definitions/server.ErrorResponse'
-        "500":
+        '500':
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.ErrorResponse'
       security:
-      - ApiKeyAuth: []
-      - OIDCAuth: []
+        - ApiKeyAuth: []
+        - OIDCAuth: []
       summary: Trigger a workflow execution
       tags:
-      - executions
+        - executions
   /api/v1/workflows:
     get:
       description: Returns all workflow definitions ever applied by the authenticated
         team.
+      produces:
+        - application/json
       responses:
-        "200":
+        '200':
           description: OK
           schema:
             $ref: '#/definitions/server.WorkflowListResponse'
-        "500":
+        '500':
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.ErrorResponse'
       security:
-      - ApiKeyAuth: []
-      - OIDCAuth: []
+        - ApiKeyAuth: []
+        - OIDCAuth: []
       summary: List workflow definitions
       tags:
-      - workflows
+        - workflows
   /api/v1/workflows/{name}:
     get:
       description: Returns the latest applied definition for a workflow.
       parameters:
-      - description: Workflow name
-        in: path
-        name: name
-        required: true
-        type: string
+        - description: Workflow name
+          in: path
+          name: name
+          required: true
+          type: string
+      produces:
+        - application/json
       responses:
-        "200":
+        '200':
           description: OK
           schema:
             $ref: '#/definitions/server.WorkflowDetailResponse'
-        "404":
+        '404':
           description: Not Found
           schema:
             $ref: '#/definitions/server.ErrorResponse'
-        "500":
+        '500':
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.ErrorResponse'
       security:
-      - ApiKeyAuth: []
-      - OIDCAuth: []
+        - ApiKeyAuth: []
+        - OIDCAuth: []
       summary: Get latest workflow definition
       tags:
-      - workflows
+        - workflows
   /api/v1/workflows/{name}/versions:
     get:
       description: Returns all historical versions of a workflow in reverse chronological
         order.
       parameters:
-      - description: Workflow name
-        in: path
-        name: name
-        required: true
-        type: string
+        - description: Workflow name
+          in: path
+          name: name
+          required: true
+          type: string
+      produces:
+        - application/json
       responses:
-        "200":
+        '200':
           description: OK
           schema:
             $ref: '#/definitions/server.WorkflowVersionListResponse'
-        "400":
+        '400':
           description: Bad Request
           schema:
             $ref: '#/definitions/server.ErrorResponse'
-        "500":
+        '500':
           description: Internal Server Error
           schema:
             $ref: '#/definitions/server.ErrorResponse'
       security:
-      - ApiKeyAuth: []
-      - OIDCAuth: []
+        - ApiKeyAuth: []
+        - OIDCAuth: []
       summary: List versions of a workflow
       tags:
-      - workflows
+        - workflows
   /api/v1/workflows/{name}/versions/{version}:
     get:
       description: Returns a specific historical version of a workflow definition.
       parameters:
-      - description: Workflow name
-        in: path
-        name: name
-        required: true
-        type: string
-      - description: Version number
-        in: path
-        name: version
-        required: true
-        type: integer
+        - description: Workflow name
+          in: path
+          name: name
+          required: true
+          type: string
+        - description: Version number
+          in: path
+          name: version
+          required: true
+          type: integer
+      produces:
+        - application/json
       responses:
-        "200":
+        '200':
           description: OK
           schema:
             $ref: '#/definitions/server.WorkflowDetailResponse'
-        "400":
+        '400':
           description: Bad Request
           schema:
             $ref: '#/definitions/server.ErrorResponse'
-        "404":
+        '404':
           description: Not Found
           schema:
             $ref: '#/definitions/server.ErrorResponse'
       security:
-      - ApiKeyAuth: []
-      - OIDCAuth: []
+        - ApiKeyAuth: []
+        - OIDCAuth: []
       summary: Get a specific workflow version
       tags:
-      - workflows
+        - workflows
   /healthz:
     get:
+      produces:
+        - application/json
       responses:
-        "200":
+        '200':
           description: OK
           schema:
             $ref: '#/definitions/server.HealthResponse'
       summary: Liveness probe
       tags:
-      - system
+        - system
+      security: []
   /readyz:
     get:
+      produces:
+        - application/json
       responses:
-        "200":
+        '200':
           description: OK
           schema:
             $ref: '#/definitions/server.ReadyzResponse'
-        "503":
+        '503':
           description: Service Unavailable
           schema:
             $ref: '#/definitions/server.ReadyzResponse'
       summary: Readiness probe
       tags:
-      - system
+        - system
+      security: []
 securityDefinitions:
   ApiKeyAuth:
     description: 'Bearer API key. Format: "Bearer mk_..."'
@@ -575,4 +684,7 @@ securityDefinitions:
     in: header
     name: Authorization
     type: apiKey
-swagger: "2.0"
+swagger: '2.0'
+security:
+  - ApiKeyAuth: []
+  - OIDCAuth: []

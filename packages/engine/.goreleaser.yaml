@@ -48,18 +48,45 @@ changelog:
       order: 999
 
 dockers_v2:
-  - ids: [mantle]
+  - image_templates:
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
+    use: buildx
+    ids: [mantle]
+    goos: linux
+    goarch: amd64
     dockerfile: Dockerfile.goreleaser
-    images:
-      - "ghcr.io/dvflw/mantle"
-    tags:
-      - "{{ .Version }}"
-      # Floating tags (major.minor, major, latest) are only pushed for stable
-      # releases. Empty template results are skipped by goreleaser, so these
-      # evaluate to "" and are dropped for any pre-release version.
-      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}{{ end }}"
-      - "{{ if not .Prerelease }}{{ .Major }}{{ end }}"
-      - "{{ if not .Prerelease }}latest{{ end }}"
+    build_flag_templates:
+      - "--platform=linux/amd64"
+  - image_templates:
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
+    use: buildx
+    ids: [mantle]
+    goos: linux
+    goarch: arm64
+    dockerfile: Dockerfile.goreleaser
+    build_flag_templates:
+      - "--platform=linux/arm64"
+
+docker_manifests:
+  - name_template: "ghcr.io/dvflw/mantle:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/dvflw/mantle:{{ .Major }}.{{ .Minor }}"
+    image_templates:
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
+    skip_push: "{{ if or .IsSnapshot .Prerelease }}true{{ end }}"
+  - name_template: "ghcr.io/dvflw/mantle:{{ .Major }}"
+    image_templates:
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
+    skip_push: "{{ if or .IsSnapshot .Prerelease }}true{{ end }}"
+  - name_template: "ghcr.io/dvflw/mantle:latest"
+    image_templates:
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
+    skip_push: "{{ if or .IsSnapshot .Prerelease }}true{{ end }}"
 
 release:
   github:
