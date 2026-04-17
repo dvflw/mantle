@@ -150,16 +150,22 @@ func writeResolvedOverrides(
 
 	fmt.Fprintln(w, "\nResolved configuration:")
 
-	inputs := workflow.ResolveInputs(workflowInputs, envInputs, valuesInputs, nil)
-	if len(inputs) > 0 {
-		fmt.Fprintln(w, "  Inputs:")
-		keys := make([]string, 0, len(inputs))
-		for k := range inputs {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			fmt.Fprintf(w, "    %s = %v  (from: %s)\n", k, inputs[k].Value, inputs[k].Source)
+	// Only emit the Inputs block when the operator actually supplied input
+	// overrides. Otherwise ResolveInputs would seed the block with workflow
+	// defaults and pad CI logs with content that isn't a product of --env or
+	// --values.
+	if envInputs != nil || valuesInputs != nil {
+		inputs := workflow.ResolveInputs(workflowInputs, envInputs, valuesInputs, nil)
+		if len(inputs) > 0 {
+			fmt.Fprintln(w, "  Inputs:")
+			keys := make([]string, 0, len(inputs))
+			for k := range inputs {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				fmt.Fprintf(w, "    %s = %v  (from: %s)\n", k, inputs[k].Value, inputs[k].Source)
+			}
 		}
 	}
 

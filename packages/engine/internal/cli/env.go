@@ -121,6 +121,8 @@ func runEnvWrite(cmd *cobra.Command, name, fromFile string, mode envWriteMode) e
 	case writeModeUpdate:
 		e, err = store.Update(cmd.Context(), name, vals.Inputs, vals.Env)
 		verb = "Updated"
+	default:
+		return fmt.Errorf("unknown env write mode: %d", mode)
 	}
 	if err != nil {
 		return err

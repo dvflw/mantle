@@ -13,10 +13,16 @@ import (
 	"github.com/dvflw/mantle/internal/auth"
 )
 
+// maxEnvNameLength caps names at the DNS label limit (RFC 1035). Keeping
+// them short enough to use as metric labels and URL path segments without
+// truncation.
+const maxEnvNameLength = 63
+
 // validEnvNamePattern enforces DNS-label-like names (Kubernetes namespace
 // convention): lowercase alphanumerics, underscores, and hyphens, starting
 // with an alphanumeric. Chosen so names are safe to embed in URLs, log lines,
-// metric labels, and filesystem paths without escaping.
+// metric labels, and filesystem paths without escaping. Length is enforced
+// separately in validateName so the error message can cite the cap.
 var validEnvNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 
 // Environment represents a named set of input and env overrides.
@@ -283,6 +289,9 @@ func (s *Store) EmitReveal(ctx context.Context, e *Environment) error {
 func validateName(name string) error {
 	if name == "" {
 		return fmt.Errorf("environment name is required")
+	}
+	if len(name) > maxEnvNameLength {
+		return fmt.Errorf("invalid environment name %q: length %d exceeds %d-char cap", name, len(name), maxEnvNameLength)
 	}
 	if !validEnvNamePattern.MatchString(name) {
 		return fmt.Errorf("invalid environment name %q: must match %s", name, validEnvNamePattern.String())

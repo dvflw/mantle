@@ -60,3 +60,35 @@ func TestWriteResolvedOverrides_ValuesOnly(t *testing.T) {
 		t.Errorf("expected values source attribution, got: %s", out)
 	}
 }
+
+func TestWriteResolvedOverrides_EnvVarsOnlyOmitsInputsBlock(t *testing.T) {
+	wfInputs := map[string]workflow.Input{
+		"url": {Type: "string", Default: "https://default.example.com"},
+	}
+	envEnvVars := map[string]string{"REGION": "eu-west-1"}
+
+	var buf bytes.Buffer
+	writeResolvedOverrides(&buf, wfInputs, nil, nil, nil, envEnvVars, nil)
+	out := buf.String()
+
+	if strings.Contains(out, "Inputs:") {
+		t.Errorf("did not expect Inputs block when only env vars overridden, got:\n%s", out)
+	}
+	if !strings.Contains(out, "REGION = \"eu-west-1\"  (from: env)") {
+		t.Errorf("expected env vars block, got:\n%s", out)
+	}
+}
+
+func TestWriteResolvedOverrides_ConfigEnvUsesTypedSource(t *testing.T) {
+	configEnv := map[string]string{"LOG_LEVEL": "info"}
+	// At least one override layer so the block prints.
+	envEnvVars := map[string]string{"REGION": "us-east-1"}
+
+	var buf bytes.Buffer
+	writeResolvedOverrides(&buf, nil, nil, nil, configEnv, envEnvVars, nil)
+	out := buf.String()
+
+	if !strings.Contains(out, "LOG_LEVEL = \"info\"  (from: config)") {
+		t.Errorf("expected config source attribution for LOG_LEVEL, got:\n%s", out)
+	}
+}

@@ -86,8 +86,10 @@ mantle plan <wf> --env <name>     # Plan; appends resolved inputs/env with sourc
 mantle serve                  # Start persistent server
 ```
 
-**Override precedence (highest wins):**
-`MANTLE_ENV_*` OS vars > `--input` flags > `--values` file > `--env` named environment > workflow `default` values > config `env:` section
+**Override precedence (highest wins).** Inputs and env vars resolve in separate namespaces:
+
+- **Workflow inputs** (consumed by `inputs.<name>` in CEL): `--input` flags > `--values` file `inputs:` > `--env` named-environment `inputs` > workflow definition `default`
+- **Env vars** (consumed by `env.<KEY>` in CEL): `MANTLE_ENV_*` OS vars > `--values` file `env:` > `--env` named-environment `env` > config `env:` section in `mantle.yaml`
 
 ## License
 

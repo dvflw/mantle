@@ -68,6 +68,7 @@ type Source string
 
 const (
 	SourceDefault Source = "default"
+	SourceConfig  Source = "config"
 	SourceEnv     Source = "env"
 	SourceValues  Source = "values"
 	SourceInline  Source = "inline"
@@ -123,7 +124,7 @@ func ResolveInputs(workflowInputs map[string]Input, envInputs map[string]any, va
 func ResolveEnvVars(configEnv map[string]string, envEnv map[string]string, valuesEnv map[string]string) map[string]Resolved {
 	result := make(map[string]Resolved)
 	for k, v := range configEnv {
-		result[k] = Resolved{Value: v, Source: "config"}
+		result[k] = Resolved{Value: v, Source: SourceConfig}
 	}
 	for k, v := range envEnv {
 		result[k] = Resolved{Value: v, Source: SourceEnv}

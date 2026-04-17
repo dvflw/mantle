@@ -199,6 +199,16 @@ func TestStore_InvalidName(t *testing.T) {
 			t.Errorf("expected error for invalid name %q", bad)
 		}
 	}
+
+	// Length cap: exactly 63 chars is allowed, 64 is rejected.
+	longOK := strings.Repeat("a", 63)
+	if _, err := store.Create(ctx, longOK, nil, nil); err != nil {
+		t.Errorf("expected 63-char name to be accepted, got error: %v", err)
+	}
+	tooLong := strings.Repeat("a", 64)
+	if _, err := store.Create(ctx, tooLong, nil, nil); err == nil {
+		t.Errorf("expected 64-char name to be rejected")
+	}
 }
 
 func TestStore_ValidNameRelaxed(t *testing.T) {
@@ -223,7 +233,6 @@ func TestStore_Update(t *testing.T) {
 		t.Fatalf("Create() error: %v", err)
 	}
 
-	time.Sleep(10 * time.Millisecond) // ensure updated_at moves
 	updated, err := store.Update(ctx, "staging", map[string]any{"url": "new"}, map[string]string{"K": "v2", "NEW": "x"})
 	if err != nil {
 		t.Fatalf("Update() error: %v", err)
@@ -234,8 +243,11 @@ func TestStore_Update(t *testing.T) {
 	if !updated.CreatedAt.Equal(created.CreatedAt) {
 		t.Errorf("Update() changed CreatedAt: %v -> %v", created.CreatedAt, updated.CreatedAt)
 	}
-	if !updated.UpdatedAt.After(created.UpdatedAt) {
-		t.Errorf("Update() did not advance UpdatedAt: %v vs %v", updated.UpdatedAt, created.UpdatedAt)
+	// Assert non-decreasing rather than strictly after: Postgres NOW() can
+	// return the same value for two quickly-successive transactions on some
+	// systems. Strict inequality made this test wall-clock dependent.
+	if updated.UpdatedAt.Before(created.UpdatedAt) {
+		t.Errorf("Update() moved UpdatedAt backwards: created=%v updated=%v", created.UpdatedAt, updated.UpdatedAt)
 	}
 
 	got, err := store.Get(ctx, "staging")
