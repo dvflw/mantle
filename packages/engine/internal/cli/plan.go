@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"sort"
 
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
@@ -21,8 +23,12 @@ func newPlanCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "plan <file>",
 		Short: "Show what will change",
-		Long:  "Diffs a local workflow definition against the currently applied version and shows what will change.",
-		Args:  cobra.ExactArgs(1),
+		Long: `Diffs a local workflow definition against the currently applied version
+and shows what will change. When --values or --env is supplied, the resolved
+input values and env variables that the next run would use are appended to
+the output along with their source layer — useful for verifying promotion
+targets in CI before apply.`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			filename := args[0]
 
@@ -31,12 +37,15 @@ func newPlanCommand() *cobra.Command {
 				return fmt.Errorf("config not loaded")
 			}
 
-			// Load values file early so we fail fast on bad input.
+			var valuesInputs map[string]any
+			var valuesEnv map[string]string
 			if valuesFile != "" {
-				_, valErr := workflow.LoadValues(valuesFile)
+				vals, valErr := workflow.LoadValues(valuesFile)
 				if valErr != nil {
 					return fmt.Errorf("loading values file: %w", valErr)
 				}
+				valuesInputs = vals.Inputs
+				valuesEnv = vals.Env
 			}
 
 			database, err := db.Open(cfg.Database)
@@ -45,11 +54,16 @@ func newPlanCommand() *cobra.Command {
 			}
 			defer database.Close()
 
+			var envInputs map[string]any
+			var envEnvVars map[string]string
 			if envName != "" {
-				envStore := &environment.Store{DB: database}
-				if _, envErr := envStore.Get(cmd.Context(), envName); envErr != nil {
+				envStore := &environment.Store{DB: database, Actor: "cli"}
+				storedEnv, envErr := envStore.Get(cmd.Context(), envName)
+				if envErr != nil {
 					return fmt.Errorf("resolving environment %q: %w", envName, envErr)
 				}
+				envInputs = storedEnv.Inputs
+				envEnvVars = storedEnv.Env
 			}
 
 			rawContent, err := os.ReadFile(filename)
@@ -69,21 +83,21 @@ func newPlanCommand() *cobra.Command {
 
 			name := result.Workflow.Name
 
-			// Fetch latest stored version.
 			storedContent, storedVersion, err := workflow.GetLatestContent(cmd.Context(), database, name)
 			if err != nil {
 				return fmt.Errorf("fetching latest version: %w", err)
 			}
 
-			// New workflow — no prior version.
+			out := cmd.OutOrStdout()
+
 			if storedContent == nil {
 				diff := workflow.Diff(nil, result.Workflow)
-				fmt.Fprint(cmd.OutOrStdout(), diff)
-				fmt.Fprintf(cmd.OutOrStdout(), "\nPlan: 1 workflow to create\n")
+				fmt.Fprint(out, diff)
+				fmt.Fprintf(out, "\nPlan: 1 workflow to create\n")
+				writeResolvedOverrides(out, result.Workflow.Inputs, envInputs, valuesInputs, cfg.Env, envEnvVars, valuesEnv)
 				return nil
 			}
 
-			// Check if content is unchanged.
 			h := sha256.Sum256(rawContent)
 			newHash := hex.EncodeToString(h[:])
 			storedHash, err := workflow.GetLatestHash(cmd.Context(), database, name)
@@ -91,11 +105,11 @@ func newPlanCommand() *cobra.Command {
 				return fmt.Errorf("fetching hash: %w", err)
 			}
 			if newHash == storedHash {
-				fmt.Fprintf(cmd.OutOrStdout(), "No changes — %s is at version %d\n", name, storedVersion)
+				fmt.Fprintf(out, "No changes — %s is at version %d\n", name, storedVersion)
+				writeResolvedOverrides(out, result.Workflow.Inputs, envInputs, valuesInputs, cfg.Env, envEnvVars, valuesEnv)
 				return nil
 			}
 
-			// Diff against stored version.
 			var oldWorkflow workflow.Workflow
 			if err := json.Unmarshal(storedContent, &oldWorkflow); err != nil {
 				return fmt.Errorf("unmarshaling stored workflow: %w", err)
@@ -103,17 +117,76 @@ func newPlanCommand() *cobra.Command {
 
 			diff := workflow.Diff(&oldWorkflow, result.Workflow)
 			if diff == "" {
-				fmt.Fprintf(cmd.OutOrStdout(), "No changes — %s is at version %d\n", name, storedVersion)
+				fmt.Fprintf(out, "No changes — %s is at version %d\n", name, storedVersion)
+				writeResolvedOverrides(out, result.Workflow.Inputs, envInputs, valuesInputs, cfg.Env, envEnvVars, valuesEnv)
 				return nil
 			}
 
-			fmt.Fprint(cmd.OutOrStdout(), diff)
-			fmt.Fprintf(cmd.OutOrStdout(), "\nPlan: 1 workflow to update (version %d → %d)\n", storedVersion, storedVersion+1)
+			fmt.Fprint(out, diff)
+			fmt.Fprintf(out, "\nPlan: 1 workflow to update (version %d → %d)\n", storedVersion, storedVersion+1)
+			writeResolvedOverrides(out, result.Workflow.Inputs, envInputs, valuesInputs, cfg.Env, envEnvVars, valuesEnv)
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&valuesFile, "values", "", "Validate a values file (does not affect diff output)")
-	cmd.Flags().StringVar(&envName, "env", "", "Validate that a named environment exists (does not affect diff output)")
+	cmd.Flags().StringVar(&valuesFile, "values", "", "Values file with input and env overrides (YAML). When set, plan appends the resolved configuration.")
+	cmd.Flags().StringVar(&envName, "env", "", "Named environment to apply. When set, plan appends the resolved configuration and its source per value.")
 	return cmd
+}
+
+// writeResolvedOverrides appends a "Resolved configuration" block showing the
+// final inputs and env vars the next run would see. Only writes if at least
+// one override layer was provided.
+func writeResolvedOverrides(
+	w io.Writer,
+	workflowInputs map[string]workflow.Input,
+	envInputs map[string]any,
+	valuesInputs map[string]any,
+	configEnv, envEnvVars, valuesEnv map[string]string,
+) {
+	if envInputs == nil && valuesInputs == nil && envEnvVars == nil && valuesEnv == nil {
+		return
+	}
+
+	fmt.Fprintln(w, "\nResolved configuration:")
+
+	// Only emit the Inputs block when the operator actually supplied input
+	// overrides. Otherwise ResolveInputs would seed the block with workflow
+	// defaults and pad CI logs with content that isn't a product of --env or
+	// --values.
+	if envInputs != nil || valuesInputs != nil {
+		inputs := workflow.ResolveInputs(workflowInputs, envInputs, valuesInputs, nil)
+		if len(inputs) > 0 {
+			fmt.Fprintln(w, "  Inputs:")
+			keys := make([]string, 0, len(inputs))
+			for k := range inputs {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				fmt.Fprintf(w, "    %s = %v  (from: %s)\n", k, inputs[k].Value, inputs[k].Source)
+			}
+		}
+	}
+
+	// Mirror the Inputs gating: only emit the Env vars block when the operator
+	// actually supplied env overrides via --env or --values. Otherwise
+	// ResolveEnvVars would surface the config env: section alone, which isn't
+	// a product of the command being planned.
+	if envEnvVars != nil || valuesEnv != nil {
+		envs := workflow.ResolveEnvVars(configEnv, envEnvVars, valuesEnv)
+		if len(envs) > 0 {
+			fmt.Fprintln(w, "  Env vars:")
+			keys := make([]string, 0, len(envs))
+			for k := range envs {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				fmt.Fprintf(w, "    %s = %q  (from: %s)\n", k, envs[k].Value, envs[k].Source)
+			}
+		}
+	}
+
+	fmt.Fprintln(w, "  (Inline --input flags, if any, would override these at run time. MANTLE_ENV_* OS vars override at run time too.)")
 }

@@ -192,8 +192,138 @@ func TestStore_InvalidName(t *testing.T) {
 	store := &Store{DB: setupTestDB(t)}
 	ctx := context.Background()
 
-	_, err := store.Create(ctx, "Invalid Name!", nil, nil)
+	// Space, uppercase, symbols — still rejected.
+	for _, bad := range []string{"", "Invalid Name!", "has space", "UPPER", "-leading", "_trailing_"} {
+		_, err := store.Create(ctx, bad, nil, nil)
+		if err == nil {
+			t.Errorf("expected error for invalid name %q", bad)
+		}
+	}
+
+	// Length cap: exactly 63 chars is allowed, 64 is rejected.
+	longOK := strings.Repeat("a", 63)
+	if _, err := store.Create(ctx, longOK, nil, nil); err != nil {
+		t.Errorf("expected 63-char name to be accepted, got error: %v", err)
+	}
+	tooLong := strings.Repeat("a", 64)
+	if _, err := store.Create(ctx, tooLong, nil, nil); err == nil {
+		t.Errorf("expected 64-char name to be rejected")
+	}
+}
+
+func TestStore_ValidNameRelaxed(t *testing.T) {
+	store := &Store{DB: setupTestDB(t)}
+	ctx := context.Background()
+
+	// Relaxed regex allows digits first, underscores, hyphens.
+	for _, good := range []string{"prod_1", "env-v2", "123env", "a"} {
+		if _, err := store.Create(ctx, good, nil, nil); err != nil {
+			t.Errorf("expected %q to be valid, got error: %v", good, err)
+		}
+	}
+}
+
+func TestStore_Update(t *testing.T) {
+	database := setupTestDB(t)
+	store := &Store{DB: database}
+	ctx := context.Background()
+
+	created, err := store.Create(ctx, "staging", map[string]any{"url": "old"}, map[string]string{"K": "v1"})
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+
+	updated, err := store.Update(ctx, "staging", map[string]any{"url": "new"}, map[string]string{"K": "v2", "NEW": "x"})
+	if err != nil {
+		t.Fatalf("Update() error: %v", err)
+	}
+	if updated.ID != created.ID {
+		t.Errorf("Update() changed ID: %q -> %q", created.ID, updated.ID)
+	}
+	if !updated.CreatedAt.Equal(created.CreatedAt) {
+		t.Errorf("Update() changed CreatedAt: %v -> %v", created.CreatedAt, updated.CreatedAt)
+	}
+	// Assert non-decreasing rather than strictly after: Postgres NOW() can
+	// return the same value for two quickly-successive transactions on some
+	// systems. Strict inequality made this test wall-clock dependent.
+	if updated.UpdatedAt.Before(created.UpdatedAt) {
+		t.Errorf("Update() moved UpdatedAt backwards: created=%v updated=%v", created.UpdatedAt, updated.UpdatedAt)
+	}
+
+	got, err := store.Get(ctx, "staging")
+	if err != nil {
+		t.Fatalf("Get() error: %v", err)
+	}
+	if got.Inputs["url"] != "new" {
+		t.Errorf("Get() inputs[url] = %v, want %q", got.Inputs["url"], "new")
+	}
+	if got.Env["K"] != "v2" || got.Env["NEW"] != "x" {
+		t.Errorf("Get() env = %v, want K=v2 NEW=x", got.Env)
+	}
+}
+
+func TestStore_UpdateNotFound(t *testing.T) {
+	store := &Store{DB: setupTestDB(t)}
+	ctx := context.Background()
+
+	_, err := store.Update(ctx, "missing", nil, nil)
 	if err == nil {
-		t.Fatal("expected error for invalid name")
+		t.Fatal("Update() expected error for missing environment")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("Update() error = %q, want to contain 'not found'", err.Error())
+	}
+}
+
+func TestStore_EmitRevealNil(t *testing.T) {
+	store := &Store{DB: setupTestDB(t)}
+	ctx := context.Background()
+
+	err := store.EmitReveal(ctx, nil)
+	if err == nil {
+		t.Fatal("EmitReveal(nil) expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "nil") {
+		t.Errorf("EmitReveal(nil) error = %q, want to mention 'nil'", err.Error())
+	}
+}
+
+func TestStore_AuditEvents(t *testing.T) {
+	database := setupTestDB(t)
+	store := &Store{DB: database}
+	ctx := context.Background()
+
+	created, err := store.Create(ctx, "audited", map[string]any{"k": "v"}, nil)
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+	if _, err := store.Update(ctx, "audited", map[string]any{"k": "v2"}, nil); err != nil {
+		t.Fatalf("Update() error: %v", err)
+	}
+	if err := store.EmitReveal(ctx, created); err != nil {
+		t.Fatalf("EmitReveal() error: %v", err)
+	}
+	if err := store.Delete(ctx, "audited"); err != nil {
+		t.Fatalf("Delete() error: %v", err)
+	}
+
+	want := map[string]int{
+		"environment.created":  1,
+		"environment.updated":  1,
+		"environment.revealed": 1,
+		"environment.deleted":  1,
+	}
+	for action, n := range want {
+		var count int
+		row := database.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM audit_events WHERE action = $1 AND resource_type = 'environment' AND resource_id = $2`,
+			action, created.ID,
+		)
+		if err := row.Scan(&count); err != nil {
+			t.Fatalf("query audit count for %s: %v", action, err)
+		}
+		if count != n {
+			t.Errorf("audit events for %s = %d, want %d", action, count, n)
+		}
 	}
 }

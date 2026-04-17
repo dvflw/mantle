@@ -233,9 +233,10 @@ func (e *Evaluator) SetConfigEnv(configEnv map[string]string) {
 	e.envCache = mergeEnvVars(configEnv, e.valuesEnv)
 }
 
-// SetValuesEnv sets the values-file env overrides and rebuilds the env cache.
-// Values-file env sits between config env and MANTLE_ENV_* OS variables in
-// the precedence stack: config < values < MANTLE_ENV_*.
+// SetValuesEnv sets the values-file and named-environment env overrides
+// and rebuilds the env cache. Overlays them on top of config env; MANTLE_ENV_*
+// OS vars still win. The layered precedence is config < values/named-env <
+// MANTLE_ENV_*.
 func (e *Evaluator) SetValuesEnv(valuesEnv map[string]string) {
 	e.valuesEnv = valuesEnv
 	e.envCache = mergeEnvVars(e.configEnv, e.valuesEnv)

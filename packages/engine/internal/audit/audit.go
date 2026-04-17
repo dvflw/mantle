@@ -55,6 +55,12 @@ const (
 
 	// Rollback operations.
 	ActionWorkflowRolledBack Action = "workflow.rolled_back"
+
+	// Environment operations.
+	ActionEnvironmentCreated  Action = "environment.created"
+	ActionEnvironmentUpdated  Action = "environment.updated"
+	ActionEnvironmentDeleted  Action = "environment.deleted"
+	ActionEnvironmentRevealed Action = "environment.revealed"
 )
 
 // Resource identifies the target of an audit event.
