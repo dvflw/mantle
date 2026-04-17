@@ -192,8 +192,113 @@ func TestStore_InvalidName(t *testing.T) {
 	store := &Store{DB: setupTestDB(t)}
 	ctx := context.Background()
 
-	_, err := store.Create(ctx, "Invalid Name!", nil, nil)
+	// Space, uppercase, symbols — still rejected.
+	for _, bad := range []string{"", "Invalid Name!", "has space", "UPPER", "-leading", "_trailing_"} {
+		_, err := store.Create(ctx, bad, nil, nil)
+		if err == nil {
+			t.Errorf("expected error for invalid name %q", bad)
+		}
+	}
+}
+
+func TestStore_ValidNameRelaxed(t *testing.T) {
+	store := &Store{DB: setupTestDB(t)}
+	ctx := context.Background()
+
+	// Relaxed regex allows digits first, underscores, hyphens.
+	for _, good := range []string{"prod_1", "env-v2", "123env", "a"} {
+		if _, err := store.Create(ctx, good, nil, nil); err != nil {
+			t.Errorf("expected %q to be valid, got error: %v", good, err)
+		}
+	}
+}
+
+func TestStore_Update(t *testing.T) {
+	database := setupTestDB(t)
+	store := &Store{DB: database}
+	ctx := context.Background()
+
+	created, err := store.Create(ctx, "staging", map[string]any{"url": "old"}, map[string]string{"K": "v1"})
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+
+	time.Sleep(10 * time.Millisecond) // ensure updated_at moves
+	updated, err := store.Update(ctx, "staging", map[string]any{"url": "new"}, map[string]string{"K": "v2", "NEW": "x"})
+	if err != nil {
+		t.Fatalf("Update() error: %v", err)
+	}
+	if updated.ID != created.ID {
+		t.Errorf("Update() changed ID: %q -> %q", created.ID, updated.ID)
+	}
+	if !updated.CreatedAt.Equal(created.CreatedAt) {
+		t.Errorf("Update() changed CreatedAt: %v -> %v", created.CreatedAt, updated.CreatedAt)
+	}
+	if !updated.UpdatedAt.After(created.UpdatedAt) {
+		t.Errorf("Update() did not advance UpdatedAt: %v vs %v", updated.UpdatedAt, created.UpdatedAt)
+	}
+
+	got, err := store.Get(ctx, "staging")
+	if err != nil {
+		t.Fatalf("Get() error: %v", err)
+	}
+	if got.Inputs["url"] != "new" {
+		t.Errorf("Get() inputs[url] = %v, want %q", got.Inputs["url"], "new")
+	}
+	if got.Env["K"] != "v2" || got.Env["NEW"] != "x" {
+		t.Errorf("Get() env = %v, want K=v2 NEW=x", got.Env)
+	}
+}
+
+func TestStore_UpdateNotFound(t *testing.T) {
+	store := &Store{DB: setupTestDB(t)}
+	ctx := context.Background()
+
+	_, err := store.Update(ctx, "missing", nil, nil)
 	if err == nil {
-		t.Fatal("expected error for invalid name")
+		t.Fatal("Update() expected error for missing environment")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("Update() error = %q, want to contain 'not found'", err.Error())
+	}
+}
+
+func TestStore_AuditEvents(t *testing.T) {
+	database := setupTestDB(t)
+	store := &Store{DB: database}
+	ctx := context.Background()
+
+	created, err := store.Create(ctx, "audited", map[string]any{"k": "v"}, nil)
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+	if _, err := store.Update(ctx, "audited", map[string]any{"k": "v2"}, nil); err != nil {
+		t.Fatalf("Update() error: %v", err)
+	}
+	if err := store.EmitReveal(ctx, created); err != nil {
+		t.Fatalf("EmitReveal() error: %v", err)
+	}
+	if err := store.Delete(ctx, "audited"); err != nil {
+		t.Fatalf("Delete() error: %v", err)
+	}
+
+	want := map[string]int{
+		"environment.created":  1,
+		"environment.updated":  1,
+		"environment.revealed": 1,
+		"environment.deleted":  1,
+	}
+	for action, n := range want {
+		var count int
+		row := database.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM audit_events WHERE action = $1 AND resource_type = 'environment' AND resource_id = $2`,
+			action, created.ID,
+		)
+		if err := row.Scan(&count); err != nil {
+			t.Fatalf("query audit count for %s: %v", action, err)
+		}
+		if count != n {
+			t.Errorf("audit events for %s = %d, want %d", action, count, n)
+		}
 	}
 }

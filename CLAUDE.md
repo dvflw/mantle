@@ -75,8 +75,19 @@ mantle logs <execution-id>    # View execution logs
 mantle status <execution-id>  # View execution state
 mantle secrets create         # Create typed credential
 mantle secrets rotate-key     # Re-encrypt credentials with new key
+mantle env create <name>      # Create a named environment from a values file
+mantle env update <name>      # Replace inputs/env on an existing environment
+mantle env list               # List named environments
+mantle env get <name>         # Show environment details (env values redacted; --reveal to unredact, audited)
+mantle env delete <name> -y   # Delete a named environment (requires --yes)
+mantle run <wf> --values f.yaml   # Run with a values file (inputs + env overrides)
+mantle run <wf> --env <name>      # Run against a stored named environment
+mantle plan <wf> --env <name>     # Plan; appends resolved inputs/env with source
 mantle serve                  # Start persistent server
 ```
+
+**Override precedence (highest wins):**
+`MANTLE_ENV_*` OS vars > `--input` flags > `--values` file > `--env` named environment > workflow `default` values > config `env:` section
 
 ## License
 
