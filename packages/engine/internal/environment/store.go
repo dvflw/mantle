@@ -264,6 +264,9 @@ func (s *Store) Delete(ctx context.Context, name string) error {
 // Callers MUST invoke this before printing sensitive values so that reveals
 // are captured in the audit log. Opens its own short-lived transaction.
 func (s *Store) EmitReveal(ctx context.Context, e *Environment) error {
+	if e == nil {
+		return fmt.Errorf("cannot emit reveal audit event: environment is nil")
+	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("starting audit transaction: %w", err)

@@ -92,3 +92,20 @@ func TestWriteResolvedOverrides_ConfigEnvUsesTypedSource(t *testing.T) {
 		t.Errorf("expected config source attribution for LOG_LEVEL, got:\n%s", out)
 	}
 }
+
+func TestWriteResolvedOverrides_InputsOnlyOmitsEnvBlock(t *testing.T) {
+	valuesInputs := map[string]any{"url": "https://example.com"}
+	// Config env is present but operator only supplied input overrides.
+	configEnv := map[string]string{"LOG_LEVEL": "info"}
+
+	var buf bytes.Buffer
+	writeResolvedOverrides(&buf, nil, nil, valuesInputs, configEnv, nil, nil)
+	out := buf.String()
+
+	if strings.Contains(out, "Env vars:") {
+		t.Errorf("did not expect Env vars block when only inputs overridden, got:\n%s", out)
+	}
+	if !strings.Contains(out, "url = https://example.com  (from: values)") {
+		t.Errorf("expected inputs block, got:\n%s", out)
+	}
+}

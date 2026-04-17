@@ -275,6 +275,19 @@ func TestStore_UpdateNotFound(t *testing.T) {
 	}
 }
 
+func TestStore_EmitRevealNil(t *testing.T) {
+	store := &Store{DB: setupTestDB(t)}
+	ctx := context.Background()
+
+	err := store.EmitReveal(ctx, nil)
+	if err == nil {
+		t.Fatal("EmitReveal(nil) expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "nil") {
+		t.Errorf("EmitReveal(nil) error = %q, want to mention 'nil'", err.Error())
+	}
+}
+
 func TestStore_AuditEvents(t *testing.T) {
 	database := setupTestDB(t)
 	store := &Store{DB: database}

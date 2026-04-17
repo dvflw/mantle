@@ -169,16 +169,22 @@ func writeResolvedOverrides(
 		}
 	}
 
-	envs := workflow.ResolveEnvVars(configEnv, envEnvVars, valuesEnv)
-	if len(envs) > 0 {
-		fmt.Fprintln(w, "  Env vars:")
-		keys := make([]string, 0, len(envs))
-		for k := range envs {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			fmt.Fprintf(w, "    %s = %q  (from: %s)\n", k, envs[k].Value, envs[k].Source)
+	// Mirror the Inputs gating: only emit the Env vars block when the operator
+	// actually supplied env overrides via --env or --values. Otherwise
+	// ResolveEnvVars would surface the config env: section alone, which isn't
+	// a product of the command being planned.
+	if envEnvVars != nil || valuesEnv != nil {
+		envs := workflow.ResolveEnvVars(configEnv, envEnvVars, valuesEnv)
+		if len(envs) > 0 {
+			fmt.Fprintln(w, "  Env vars:")
+			keys := make([]string, 0, len(envs))
+			for k := range envs {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				fmt.Fprintf(w, "    %s = %q  (from: %s)\n", k, envs[k].Value, envs[k].Source)
+			}
 		}
 	}
 
