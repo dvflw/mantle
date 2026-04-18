@@ -144,6 +144,73 @@ func (s *Store) List(ctx context.Context) ([]Repo, error) {
 	return repos, rows.Err()
 }
 
+// UpdateParams captures the mutable fields of a repo. Name and URL are
+// intentionally omitted — changing either requires delete + recreate so
+// that audit history clearly reflects the identity change.
+type UpdateParams struct {
+	Branch       string
+	Path         string
+	PollInterval string
+	Credential   string
+	AutoApply    bool
+	Prune        bool
+	Enabled      bool
+}
+
+// Update replaces the mutable fields of a repo by name and emits a
+// repo.updated audit event in the same transaction.
+func (s *Store) Update(ctx context.Context, name string, p UpdateParams) (*Repo, error) {
+	if err := ValidatePollInterval(p.PollInterval); err != nil {
+		return nil, err
+	}
+	if p.Credential == "" {
+		return nil, fmt.Errorf("credential is required")
+	}
+
+	teamID := auth.TeamIDFromContext(ctx)
+
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("starting transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	var r Repo
+	err = tx.QueryRowContext(ctx,
+		`UPDATE git_repos
+		 SET branch = $3, path = $4, poll_interval = $5, credential = $6,
+		     auto_apply = $7, prune = $8, enabled = $9, updated_at = NOW()
+		 WHERE name = $1 AND team_id = $2
+		 RETURNING id, name, url, branch, path, poll_interval, credential,
+		           auto_apply, prune, enabled, created_at, updated_at`,
+		name, teamID, p.Branch, p.Path, p.PollInterval, p.Credential,
+		p.AutoApply, p.Prune, p.Enabled,
+	).Scan(&r.ID, &r.Name, &r.URL, &r.Branch, &r.Path, &r.PollInterval,
+		&r.Credential, &r.AutoApply, &r.Prune, &r.Enabled,
+		&r.CreatedAt, &r.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("%w: %q", ErrNotFound, name)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("updating repo %q: %w", name, err)
+	}
+
+	if err := audit.EmitTx(ctx, tx, audit.Event{
+		Timestamp: time.Now(),
+		Actor:     s.actor(),
+		Action:    audit.ActionRepoUpdated,
+		Resource:  audit.Resource{Type: "git_repo", ID: r.ID},
+		TeamID:    teamID,
+		Metadata:  map[string]string{"name": name},
+	}); err != nil {
+		return nil, fmt.Errorf("emitting audit event: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("committing repo update: %w", err)
+	}
+	return &r, nil
+}
+
 // Get retrieves a repo by name within the current team scope. Returns
 // ErrNotFound when no row matches.
 func (s *Store) Get(ctx context.Context, name string) (*Repo, error) {

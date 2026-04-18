@@ -208,3 +208,37 @@ func TestStore_List_ReturnsAllReposForTeam(t *testing.T) {
 		}
 	}
 }
+
+func TestStore_Update_ReplacesMutableFields(t *testing.T) {
+	store := newTestStore(t)
+	ctx := defaultCtx()
+	if _, err := store.Create(ctx, CreateParams{
+		Name: "acme", URL: "https://example.com/a.git", Branch: "main",
+		Path: "/", PollInterval: "60s", Credential: "pat", AutoApply: true, Prune: true,
+	}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	updated, err := store.Update(ctx, "acme", UpdateParams{
+		Branch: "release", Path: "/workflows", PollInterval: "120s",
+		Credential: "pat-v2", AutoApply: false, Prune: false, Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if updated.Branch != "release" || updated.Path != "/workflows" ||
+		updated.PollInterval != "120s" || updated.Credential != "pat-v2" ||
+		updated.AutoApply || updated.Prune {
+		t.Errorf("Update did not persist fields: %+v", updated)
+	}
+}
+
+func TestStore_Update_NotFound(t *testing.T) {
+	store := newTestStore(t)
+	ctx := defaultCtx()
+	_, err := store.Update(ctx, "nope", UpdateParams{
+		Branch: "main", Path: "/", PollInterval: "60s", Credential: "pat",
+	})
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
