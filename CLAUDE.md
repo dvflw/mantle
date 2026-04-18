@@ -84,6 +84,7 @@ mantle repos add <name> --url <url> --credential <cred>  # Register a GitOps sou
 mantle repos list              # List registered repos with last-sync status
 mantle repos status <name>     # Show detailed repo status
 mantle repos remove <name> -y  # Unregister a repo (requires --yes)
+mantle repos sync <name>       # Force an immediate sync of a registered repo
 mantle run <wf> --values f.yaml   # Run with a values file (inputs + env overrides)
 mantle run <wf> --env <name>      # Run against a stored named environment
 mantle plan <wf> --env <name>     # Plan; appends resolved inputs/env with source
@@ -114,7 +115,7 @@ git_sync:
 
 Credentials of type `git` accept `token` (for HTTPS), `ssh_key` (for SSH), and optional `username`. At least one of `token` or `ssh_key` is required.
 
-> Plan A ships the repo registry and CLI only. The sync engine that consumes this block — pulling from the sidecar, validating, and applying workflow YAML — ships in the next milestone. Registering a repo today has no runtime effect yet beyond persistence.
+> Plan A shipped the repo registry and CLI. Plan B ships the sync engine — when `mantle serve` runs, it reconciles this block into `git_repos` rows and then polls each enabled `auto_apply: true` repo every `poll_interval`, applying any changed workflow YAML. Force an immediate sync with `mantle repos sync <name>`.
 
 ## License
 
