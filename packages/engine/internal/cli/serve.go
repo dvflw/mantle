@@ -155,11 +155,22 @@ func newServeCommand() *cobra.Command {
 			if artifactBase == "" {
 				artifactBase = filepath.Join(os.TempDir(), "mantle-artifacts")
 			}
+			var secretResolver *secret.Resolver
+			if cfg.Encryption.Key != "" {
+				encryptor, encErr := secret.NewEncryptor(cfg.Encryption.Key)
+				if encErr != nil {
+					return fmt.Errorf("configuring encryption for git sync: %w", encErr)
+				}
+				secretResolver = &secret.Resolver{
+					Store: &secret.Store{DB: database, Encryptor: encryptor},
+				}
+			}
 			poller := &reposync.Poller{
 				DB:    database,
 				Store: repoStore,
 				Driver: &reposync.GoGitDriver{
 					BasePath: filepath.Join(artifactBase, "git"),
+					Auth:     reposync.NewAuthResolver(ctx, secretResolver),
 				},
 			}
 			go poller.Run(ctx)

@@ -32,6 +32,11 @@ type Poller struct {
 // the repo's poll_interval and calls SyncRepo. Returns when ctx is
 // cancelled — all child goroutines exit within one tick.
 func (p *Poller) Run(ctx context.Context) {
+	// Run snapshots the repo list once at startup and launches one goroutine
+	// per enabled auto-apply repo. Repos added or reconfigured after Run
+	// begins will NOT be picked up until the server restarts. Live
+	// reconfiguration is Plan C scope — the simpler snapshot design
+	// keeps Plan B focused on proving the sync loop works.
 	repos, err := p.Store.List(ctx)
 	if err != nil {
 		slog.ErrorContext(ctx, "poller: list repos failed", "err", err)

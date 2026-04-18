@@ -83,7 +83,7 @@ func SyncRepo(ctx context.Context, database *sql.DB, store *repo.Store, r *repo.
 			emit(ctx, database, audit.Event{
 				Timestamp: time.Now(),
 				Actor:     "sync",
-				Action:    audit.ActionGitSyncValidationError,
+				Action:    audit.ActionGitSyncValidationFailed,
 				Resource:  audit.Resource{Type: "git_repo", ID: r.ID},
 				TeamID:    teamID,
 				Metadata:  map[string]string{"name": r.Name, "file": f.RelPath, "error": parseErr.Error()},
@@ -96,7 +96,7 @@ func SyncRepo(ctx context.Context, database *sql.DB, store *repo.Store, r *repo.
 			emit(ctx, database, audit.Event{
 				Timestamp: time.Now(),
 				Actor:     "sync",
-				Action:    audit.ActionGitSyncValidationError,
+				Action:    audit.ActionGitSyncApplyFailed,
 				Resource:  audit.Resource{Type: "git_repo", ID: r.ID},
 				TeamID:    teamID,
 				Metadata:  map[string]string{"name": r.Name, "file": f.RelPath, "error": saveErr.Error()},
