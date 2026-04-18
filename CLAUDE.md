@@ -80,6 +80,10 @@ mantle env update <name>      # Replace inputs/env on an existing environment
 mantle env list               # List named environments
 mantle env get <name>         # Show environment details (env values redacted; --reveal to unredact, audited)
 mantle env delete <name> -y   # Delete a named environment (requires --yes)
+mantle repos add <name> --url <url> --credential <cred>  # Register a GitOps source repo
+mantle repos list              # List registered repos with last-sync status
+mantle repos status <name>     # Show detailed repo status
+mantle repos remove <name> -y  # Unregister a repo (requires --yes)
 mantle run <wf> --values f.yaml   # Run with a values file (inputs + env overrides)
 mantle run <wf> --env <name>      # Run against a stored named environment
 mantle plan <wf> --env <name>     # Plan; appends resolved inputs/env with source
@@ -90,6 +94,25 @@ mantle serve                  # Start persistent server
 
 - **Workflow inputs** (consumed by `inputs.<name>` in CEL): `--input` flags > `--values` file `inputs:` > `--env` named-environment `inputs` > workflow definition `default`
 - **Env vars** (consumed by `env.<KEY>` in CEL): `MANTLE_ENV_*` OS vars > `--values` file `env:` > `--env` named-environment `env` > config `env:` section in `mantle.yaml`
+
+## GitOps Config
+
+Register repos in `mantle.yaml` under `git_sync.repos`:
+
+```yaml
+git_sync:
+  repos:
+    - name: acme
+      url: https://github.com/acme/workflows.git
+      branch: main
+      path: /
+      poll_interval: 60s
+      credential: github-pat   # must reference a secret of type: git
+      auto_apply: true
+      prune: true
+```
+
+Credentials of type `git` accept `token` (for HTTPS), `ssh_key` (for SSH), and optional `username`. At least one of `token` or `ssh_key` is required.
 
 ## License
 
