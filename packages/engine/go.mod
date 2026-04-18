@@ -15,6 +15,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
+	github.com/go-git/go-git/v5 v5.18.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/cel-go v0.27.0
 	github.com/googleapis/gax-go/v2 v2.15.0
@@ -84,7 +85,6 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.8.0 // indirect
-	github.com/go-git/go-git/v5 v5.18.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
