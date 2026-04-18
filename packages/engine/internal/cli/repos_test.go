@@ -120,3 +120,34 @@ func TestReposList_EmptyState(t *testing.T) {
 		t.Errorf("empty list output: %q", stdout.String())
 	}
 }
+
+func TestReposStatus_ShowsDetails(t *testing.T) {
+	_, cfg := reposCtx(t)
+	{
+		root := NewRootCommand()
+		var seedStderr bytes.Buffer
+		root.SetErr(&seedStderr)
+		root.SetArgs([]string{"repos", "add", "acme",
+			"--url", "https://example.com/a.git",
+			"--credential", "pat",
+			"--database-url", cfg.Database.URL,
+		})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("seed add: %v\nstderr: %s", err, seedStderr.String())
+		}
+	}
+	root := NewRootCommand()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"repos", "status", "acme", "--database-url", cfg.Database.URL})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("status: %v\nstderr: %s", err, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{"Name:", "URL:", "Branch:", "Credential:", "Auto-Apply:"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("status output missing %q: %s", want, out)
+		}
+	}
+}

@@ -25,6 +25,7 @@ and referenced here by name.`,
 	}
 	cmd.AddCommand(newReposAddCommand())
 	cmd.AddCommand(newReposListCommand())
+	cmd.AddCommand(newReposStatusCommand())
 	return cmd
 }
 
@@ -91,6 +92,47 @@ credential must already exist and be of type "git".`,
 	_ = cmd.MarkFlagRequired("credential")
 
 	return cmd
+}
+
+func newReposStatusCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "status <name>",
+		Short: "Show detailed status for a registered repo",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, cleanup, err := newRepoStore(cmd)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			r, err := store.Get(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			out := cmd.OutOrStdout()
+			fmt.Fprintf(out, "Name:         %s\n", r.Name)
+			fmt.Fprintf(out, "ID:           %s\n", r.ID)
+			fmt.Fprintf(out, "URL:          %s\n", r.URL)
+			fmt.Fprintf(out, "Branch:       %s\n", r.Branch)
+			fmt.Fprintf(out, "Path:         %s\n", r.Path)
+			fmt.Fprintf(out, "Poll:         %s\n", r.PollInterval)
+			fmt.Fprintf(out, "Credential:   %s\n", r.Credential)
+			fmt.Fprintf(out, "Auto-Apply:   %t\n", r.AutoApply)
+			fmt.Fprintf(out, "Prune:        %t\n", r.Prune)
+			fmt.Fprintf(out, "Enabled:      %t\n", r.Enabled)
+			if r.LastSyncAt != nil {
+				fmt.Fprintf(out, "Last Sync:    %s (SHA %s)\n",
+					r.LastSyncAt.UTC().Format("2006-01-02 15:04:05 UTC"), r.LastSyncSHA)
+			} else {
+				fmt.Fprintln(out, "Last Sync:    (never)")
+			}
+			if r.LastSyncError != "" {
+				fmt.Fprintf(out, "Last Error:   %s\n", r.LastSyncError)
+			}
+			return nil
+		},
+	}
 }
 
 func newReposListCommand() *cobra.Command {
