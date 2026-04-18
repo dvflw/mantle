@@ -14,8 +14,9 @@ type FieldDef struct {
 
 // CredentialType defines the schema for a credential type.
 type CredentialType struct {
-	Name   string
-	Fields []FieldDef
+	Name              string
+	Fields            []FieldDef
+	RequireAtLeastOne []string // at least one of these field names must be non-empty
 }
 
 // Validate checks that all required fields are present in the data map.
@@ -26,6 +27,19 @@ func (ct *CredentialType) Validate(data map[string]string) error {
 			if !ok || v == "" {
 				return fmt.Errorf("field %q is required for credential type %q", f.Name, ct.Name)
 			}
+		}
+	}
+	if len(ct.RequireAtLeastOne) > 0 {
+		anySet := false
+		for _, name := range ct.RequireAtLeastOne {
+			if v, ok := data[name]; ok && v != "" {
+				anySet = true
+				break
+			}
+		}
+		if !anySet {
+			return fmt.Errorf("credential type %q requires at least one of: %s",
+				ct.Name, strings.Join(ct.RequireAtLeastOne, ", "))
 		}
 	}
 	return nil
@@ -85,6 +99,16 @@ var builtinTypes = map[string]*CredentialType{
 			{Name: "client_cert", Required: false},
 			{Name: "client_key", Required: false},
 		},
+	},
+	"git": {
+		Name: "git",
+		Fields: []FieldDef{
+			{Name: "token", Required: false},
+			{Name: "ssh_key", Required: false},
+			{Name: "username", Required: false},
+		},
+		// At-least-one validator below guarantees we have auth material.
+		RequireAtLeastOne: []string{"token", "ssh_key"},
 	},
 }
 
