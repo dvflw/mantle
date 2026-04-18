@@ -100,6 +100,50 @@ func (s *Store) Create(ctx context.Context, p CreateParams) (*Repo, error) {
 	return &r, nil
 }
 
+// List returns all repos in the current team scope, ordered by name.
+// Last-sync fields are populated when non-null. The credential name is
+// returned but raw secret material is never loaded here.
+func (s *Store) List(ctx context.Context) ([]Repo, error) {
+	teamID := auth.TeamIDFromContext(ctx)
+
+	rows, err := s.DB.QueryContext(ctx,
+		`SELECT id, name, url, branch, path, poll_interval, credential,
+		        auto_apply, prune, enabled, last_sync_sha, last_sync_at,
+		        last_sync_error, created_at, updated_at
+		 FROM git_repos WHERE team_id = $1 ORDER BY name`,
+		teamID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("listing repos: %w", err)
+	}
+	defer rows.Close()
+
+	var repos []Repo
+	for rows.Next() {
+		var r Repo
+		var lastSyncAt sql.NullTime
+		var lastSyncSHA, lastSyncError sql.NullString
+		if err := rows.Scan(&r.ID, &r.Name, &r.URL, &r.Branch, &r.Path,
+			&r.PollInterval, &r.Credential, &r.AutoApply, &r.Prune, &r.Enabled,
+			&lastSyncSHA, &lastSyncAt, &lastSyncError,
+			&r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scanning repo: %w", err)
+		}
+		if lastSyncSHA.Valid {
+			r.LastSyncSHA = lastSyncSHA.String
+		}
+		if lastSyncAt.Valid {
+			t := lastSyncAt.Time
+			r.LastSyncAt = &t
+		}
+		if lastSyncError.Valid {
+			r.LastSyncError = lastSyncError.String
+		}
+		repos = append(repos, r)
+	}
+	return repos, rows.Err()
+}
+
 // Get retrieves a repo by name within the current team scope. Returns
 // ErrNotFound when no row matches.
 func (s *Store) Get(ctx context.Context, name string) (*Repo, error) {

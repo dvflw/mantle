@@ -177,3 +177,34 @@ func TestStore_Get_NotFound(t *testing.T) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
+
+func TestStore_List_ReturnsAllReposForTeam(t *testing.T) {
+	store := newTestStore(t)
+	ctx := defaultCtx()
+	for _, name := range []string{"zeta", "alpha", "mike"} {
+		if _, err := store.Create(ctx, CreateParams{
+			Name:         name,
+			URL:          "https://example.com/" + name + ".git",
+			Branch:       "main",
+			Path:         "/",
+			PollInterval: "60s",
+			Credential:   "pat",
+		}); err != nil {
+			t.Fatalf("Create %s: %v", name, err)
+		}
+	}
+	repos, err := store.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(repos) != 3 {
+		t.Fatalf("len: got %d, want 3", len(repos))
+	}
+	// ORDER BY name — alpha, mike, zeta.
+	want := []string{"alpha", "mike", "zeta"}
+	for i, r := range repos {
+		if r.Name != want[i] {
+			t.Errorf("index %d: got %q, want %q", i, r.Name, want[i])
+		}
+	}
+}
