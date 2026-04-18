@@ -17,11 +17,11 @@ func newReposCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "repos",
 		Short: "Manage GitOps workflow source repositories",
-		Long: `Registered repos are periodically pulled by the git-sync sidecar and
-their .yaml workflow definitions are applied to this Mantle instance.
-
-Auth material is stored in a "git" credential type (` + "`mantle secrets create --type git`" + `)
-and referenced here by name.`,
+		Long: `Registers GitOps source repositories whose workflow YAML definitions will be
+synced into this Mantle instance. This command manages the registry; the sync
+engine itself (sidecar, file discovery, validate/plan/apply) ships in a later
+milestone. Auth material is stored in a "git" credential type
+(` + "`mantle secrets create --type git`" + `) and referenced here by name.`,
 	}
 	cmd.AddCommand(newReposAddCommand())
 	cmd.AddCommand(newReposListCommand())
@@ -88,7 +88,7 @@ credential must already exist and be of type "git".`,
 	cmd.Flags().StringVar(&pollInterval, "poll-interval", "60s", "Interval between syncs (Go duration, min 10s)")
 	cmd.Flags().StringVar(&credential, "credential", "", "Git credential name (required)")
 	cmd.Flags().BoolVar(&autoApply, "auto-apply", true, "Automatically apply changes (false = plan-only)")
-	cmd.Flags().BoolVar(&prune, "prune", true, "Disable workflows removed from the repo")
+	cmd.Flags().BoolVar(&prune, "prune", true, "When true, workflows deleted from the repo are disabled in Mantle")
 	_ = cmd.MarkFlagRequired("url")
 	_ = cmd.MarkFlagRequired("credential")
 

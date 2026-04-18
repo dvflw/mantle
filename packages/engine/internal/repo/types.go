@@ -36,6 +36,10 @@ type Repo struct {
 	LastSyncSHA   string
 	LastSyncAt    *time.Time
 	LastSyncError string
+	// WebhookSecret is the HMAC shared secret used to verify inbound push
+	// webhooks from the git provider. SECURITY: this value is sensitive and
+	// MUST NOT be printed to terminal or logs. The CLI intentionally never
+	// renders it; any new caller must follow the same discipline.
 	WebhookSecret string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time

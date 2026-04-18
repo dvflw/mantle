@@ -68,9 +68,11 @@ type StorageConfig struct {
 	Retention string `mapstructure:"retention"` // Duration string, e.g. "24h". Empty = no auto-cleanup.
 }
 
-// GitSyncConfig configures GitOps-style workflow sync (issue #16). Each
-// entry under Repos is materialized into a git_repos row at startup so
-// the registry stays consistent with mantle.yaml.
+// GitSyncConfig configures GitOps-style workflow sync (issue #16). Plan A
+// parses and exposes this block so operators can version their repo
+// registry in mantle.yaml; the startup reconciliation that materializes
+// entries into git_repos rows ships with the sync engine in a later
+// milestone.
 type GitSyncConfig struct {
 	Repos []GitSyncRepo `mapstructure:"repos"`
 }

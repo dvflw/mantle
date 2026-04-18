@@ -114,6 +114,8 @@ git_sync:
 
 Credentials of type `git` accept `token` (for HTTPS), `ssh_key` (for SSH), and optional `username`. At least one of `token` or `ssh_key` is required.
 
+> Plan A ships the repo registry and CLI only. The sync engine that consumes this block — pulling from the sidecar, validating, and applying workflow YAML — ships in the next milestone. Registering a repo today has no runtime effect yet beyond persistence.
+
 ## License
 
 BSL/SSPL-style — source available, no commercial resale of forks.

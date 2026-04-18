@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/dvflw/mantle/internal/audit"
@@ -57,6 +58,9 @@ func (s *Store) Create(ctx context.Context, p CreateParams) (*Repo, error) {
 	}
 	if p.Credential == "" {
 		return nil, fmt.Errorf("credential is required")
+	}
+	if err := validateURL(p.URL); err != nil {
+		return nil, err
 	}
 
 	teamID := auth.TeamIDFromContext(ctx)
@@ -246,6 +250,23 @@ func (s *Store) Delete(ctx context.Context, name string) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("committing repo delete: %w", err)
+	}
+	return nil
+}
+
+// validateURL rejects URLs that embed credentials inline (the `user:pass@host`
+// form). Operators must put credential material in a "git" secret and
+// reference it via the Credential field, never inline in the URL, so we
+// don't risk persisting or displaying tokens that live in git_repos.url.
+func validateURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid url %q: %w", raw, err)
+	}
+	if u.User != nil {
+		if _, hasPassword := u.User.Password(); hasPassword {
+			return fmt.Errorf("repo url must not embed credentials — use the --credential flag instead")
+		}
 	}
 	return nil
 }

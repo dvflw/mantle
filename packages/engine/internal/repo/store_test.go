@@ -267,3 +267,27 @@ func TestStore_Delete_NotFound(t *testing.T) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
+
+func TestStore_Create_RejectsURLWithPassword(t *testing.T) {
+	store := newTestStore(t)
+	ctx := defaultCtx()
+	_, err := store.Create(ctx, CreateParams{
+		Name: "leaky", URL: "https://user:secret@github.com/acme/wf.git",
+		Branch: "main", Path: "/", PollInterval: "60s", Credential: "pat",
+	})
+	if err == nil {
+		t.Error("expected url-credential rejection")
+	}
+}
+
+func TestStore_Create_AllowsURLWithUsernameOnly(t *testing.T) {
+	store := newTestStore(t)
+	ctx := defaultCtx()
+	// GitHub HTTPS URLs often contain a username hint but no password — fine.
+	if _, err := store.Create(ctx, CreateParams{
+		Name: "ok", URL: "https://acme@github.com/acme/wf.git",
+		Branch: "main", Path: "/", PollInterval: "60s", Credential: "pat",
+	}); err != nil {
+		t.Errorf("username-only URL should be allowed: %v", err)
+	}
+}
