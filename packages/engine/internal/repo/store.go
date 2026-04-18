@@ -211,6 +211,45 @@ func (s *Store) Update(ctx context.Context, name string, p UpdateParams) (*Repo,
 	return &r, nil
 }
 
+// Delete removes a repo by name and emits a repo.removed audit event in
+// the same transaction. Returns ErrNotFound when no row matches.
+func (s *Store) Delete(ctx context.Context, name string) error {
+	teamID := auth.TeamIDFromContext(ctx)
+
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("starting transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	var deletedID string
+	err = tx.QueryRowContext(ctx,
+		`DELETE FROM git_repos WHERE name = $1 AND team_id = $2 RETURNING id`,
+		name, teamID,
+	).Scan(&deletedID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: %q", ErrNotFound, name)
+	}
+	if err != nil {
+		return fmt.Errorf("deleting repo %q: %w", name, err)
+	}
+
+	if err := audit.EmitTx(ctx, tx, audit.Event{
+		Timestamp: time.Now(),
+		Actor:     s.actor(),
+		Action:    audit.ActionRepoRemoved,
+		Resource:  audit.Resource{Type: "git_repo", ID: deletedID},
+		TeamID:    teamID,
+		Metadata:  map[string]string{"name": name},
+	}); err != nil {
+		return fmt.Errorf("emitting audit event: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing repo delete: %w", err)
+	}
+	return nil
+}
+
 // Get retrieves a repo by name within the current team scope. Returns
 // ErrNotFound when no row matches.
 func (s *Store) Get(ctx context.Context, name string) (*Repo, error) {

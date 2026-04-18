@@ -242,3 +242,28 @@ func TestStore_Update_NotFound(t *testing.T) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
+
+func TestStore_Delete_RemovesRow(t *testing.T) {
+	store := newTestStore(t)
+	ctx := defaultCtx()
+	if _, err := store.Create(ctx, CreateParams{
+		Name: "acme", URL: "https://example.com/a.git", Branch: "main",
+		Path: "/", PollInterval: "60s", Credential: "pat",
+	}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := store.Delete(ctx, "acme"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, err := store.Get(ctx, "acme"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound after delete, got %v", err)
+	}
+}
+
+func TestStore_Delete_NotFound(t *testing.T) {
+	store := newTestStore(t)
+	ctx := defaultCtx()
+	if err := store.Delete(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
