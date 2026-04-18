@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"text/tabwriter"
 
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
@@ -23,6 +24,7 @@ Auth material is stored in a "git" credential type (` + "`mantle secrets create 
 and referenced here by name.`,
 	}
 	cmd.AddCommand(newReposAddCommand())
+	cmd.AddCommand(newReposListCommand())
 	return cmd
 }
 
@@ -89,4 +91,39 @@ credential must already exist and be of type "git".`,
 	_ = cmd.MarkFlagRequired("credential")
 
 	return cmd
+}
+
+func newReposListCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List all registered GitOps repos",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, cleanup, err := newRepoStore(cmd)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			repos, err := store.List(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if len(repos) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "(no repos)")
+				return nil
+			}
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+			fmt.Fprintln(w, "NAME\tURL\tBRANCH\tAUTO-APPLY\tENABLED\tLAST SYNC")
+			for _, r := range repos {
+				last := "(never)"
+				if r.LastSyncAt != nil {
+					last = r.LastSyncAt.UTC().Format("2006-01-02 15:04:05 UTC")
+				}
+				fmt.Fprintf(w, "%s\t%s\t%s\t%t\t%t\t%s\n",
+					r.Name, r.URL, r.Branch, r.AutoApply, r.Enabled, last)
+			}
+			return w.Flush()
+		},
+	}
 }

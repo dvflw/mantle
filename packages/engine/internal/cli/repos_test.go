@@ -75,3 +75,48 @@ func TestReposAdd_PersistsRepo(t *testing.T) {
 		t.Errorf("unexpected stdout: %q", stdout.String())
 	}
 }
+
+func TestReposList_ShowsRegisteredRepos(t *testing.T) {
+	_, cfg := reposCtx(t)
+	// Seed one row by calling the add command.
+	{
+		root := NewRootCommand()
+		var seedStderr bytes.Buffer
+		root.SetErr(&seedStderr)
+		root.SetArgs([]string{"repos", "add", "acme",
+			"--url", "https://example.com/a.git",
+			"--credential", "pat",
+			"--database-url", cfg.Database.URL,
+		})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("seed add: %v\nstderr: %s", err, seedStderr.String())
+		}
+	}
+	root := NewRootCommand()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"repos", "list", "--database-url", cfg.Database.URL})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("list: %v\nstderr: %s", err, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "acme") || !strings.Contains(out, "NAME") {
+		t.Errorf("list output missing expected fields: %q", out)
+	}
+}
+
+func TestReposList_EmptyState(t *testing.T) {
+	_, cfg := reposCtx(t)
+	root := NewRootCommand()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"repos", "list", "--database-url", cfg.Database.URL})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("list: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "(no repos)") {
+		t.Errorf("empty list output: %q", stdout.String())
+	}
+}
