@@ -26,6 +26,7 @@ and referenced here by name.`,
 	cmd.AddCommand(newReposAddCommand())
 	cmd.AddCommand(newReposListCommand())
 	cmd.AddCommand(newReposStatusCommand())
+	cmd.AddCommand(newReposRemoveCommand())
 	return cmd
 }
 
@@ -133,6 +134,35 @@ func newReposStatusCommand() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func newReposRemoveCommand() *cobra.Command {
+	var yes bool
+	cmd := &cobra.Command{
+		Use:   "remove <name>",
+		Short: "Unregister a GitOps source repo",
+		Long: `Unregisters a repo. Any previously applied workflows remain in place — this
+command only stops future syncs. Requires --yes to confirm.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !yes {
+				return fmt.Errorf("refusing to remove %q without --yes", args[0])
+			}
+			store, cleanup, err := newRepoStore(cmd)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			if err := store.Delete(cmd.Context(), args[0]); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Removed repo %q\n", args[0])
+			return nil
+		},
+	}
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Confirm deletion (required)")
+	return cmd
 }
 
 func newReposListCommand() *cobra.Command {

@@ -151,3 +151,56 @@ func TestReposStatus_ShowsDetails(t *testing.T) {
 		}
 	}
 }
+
+func TestReposRemove_RequiresYesFlag(t *testing.T) {
+	_, cfg := reposCtx(t)
+	{
+		root := NewRootCommand()
+		var seedStderr bytes.Buffer
+		root.SetErr(&seedStderr)
+		root.SetArgs([]string{"repos", "add", "acme",
+			"--url", "https://example.com/a.git",
+			"--credential", "pat",
+			"--database-url", cfg.Database.URL,
+		})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("seed add: %v\nstderr: %s", err, seedStderr.String())
+		}
+	}
+	root := NewRootCommand()
+	var stderr bytes.Buffer
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"repos", "remove", "acme", "--database-url", cfg.Database.URL})
+	err := root.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--yes") {
+		t.Errorf("expected --yes error, got %v", err)
+	}
+}
+
+func TestReposRemove_DeletesRow(t *testing.T) {
+	_, cfg := reposCtx(t)
+	{
+		root := NewRootCommand()
+		var seedStderr bytes.Buffer
+		root.SetErr(&seedStderr)
+		root.SetArgs([]string{"repos", "add", "acme",
+			"--url", "https://example.com/a.git",
+			"--credential", "pat",
+			"--database-url", cfg.Database.URL,
+		})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("seed add: %v\nstderr: %s", err, seedStderr.String())
+		}
+	}
+	root := NewRootCommand()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"repos", "remove", "acme", "--yes", "--database-url", cfg.Database.URL})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("remove: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Removed repo \"acme\"") {
+		t.Errorf("unexpected stdout: %q", stdout.String())
+	}
+}
