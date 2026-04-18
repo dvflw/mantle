@@ -204,3 +204,41 @@ func TestReposRemove_DeletesRow(t *testing.T) {
 		t.Errorf("unexpected stdout: %q", stdout.String())
 	}
 }
+
+func TestReposSync_UsesNoopDriverWithFromDir(t *testing.T) {
+	_, cfg := reposCtx(t)
+	// Seed a repo.
+	{
+		root := NewRootCommand()
+		var seedStderr bytes.Buffer
+		root.SetErr(&seedStderr)
+		root.SetArgs([]string{"repos", "add", "acme",
+			"--url", "https://example.com/a.git",
+			"--credential", "pat",
+			"--database-url", cfg.Database.URL,
+		})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("seed add: %v\nstderr: %s", err, seedStderr.String())
+		}
+	}
+
+	// Pre-populate a fixture dir. NoopDriver creates BasePath/<repo.ID>/
+	// and the sync engine walks r.Path (default "/") inside that dir.
+	// An empty dir yields Applied=0 Unchanged=0 — valid outcome.
+	fixture := t.TempDir()
+
+	root := NewRootCommand()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"repos", "sync", "acme",
+		"--from-dir", fixture,
+		"--database-url", cfg.Database.URL,
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("sync: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Synced acme") {
+		t.Errorf("expected 'Synced acme' in stdout, got %q", stdout.String())
+	}
+}

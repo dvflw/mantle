@@ -2,11 +2,14 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"text/tabwriter"
 
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
 	"github.com/dvflw/mantle/internal/repo"
+	"github.com/dvflw/mantle/internal/repo/sync"
 	"github.com/spf13/cobra"
 )
 
@@ -27,6 +30,7 @@ milestone. Auth material is stored in a "git" credential type
 	cmd.AddCommand(newReposListCommand())
 	cmd.AddCommand(newReposStatusCommand())
 	cmd.AddCommand(newReposRemoveCommand())
+	cmd.AddCommand(newReposSyncCommand())
 	return cmd
 }
 
@@ -198,4 +202,49 @@ func newReposListCommand() *cobra.Command {
 			return w.Flush()
 		},
 	}
+}
+
+func newReposSyncCommand() *cobra.Command {
+	var fromDir string
+	cmd := &cobra.Command{
+		Use:   "sync <name>",
+		Short: "Force an immediate sync of a registered repo",
+		Long: `Runs one sync pass for the named repo: pulls the remote, walks the
+configured path, and applies each workflow YAML. Returns after the sync
+completes. Use --from-dir to point at a pre-populated directory instead
+of cloning (useful for tests and CI-driven deployments).`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, cleanup, err := newRepoStore(cmd)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			r, err := store.Get(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			var driver sync.Driver
+			if fromDir != "" {
+				driver = &sync.NoopDriver{BasePath: fromDir}
+			} else {
+				driver = &sync.GoGitDriver{BasePath: filepath.Join(os.TempDir(), "mantle-repos")}
+			}
+			report, err := sync.SyncRepo(cmd.Context(), store.DB, store, r, driver)
+			if err != nil {
+				return fmt.Errorf("sync %q: %w", r.Name, err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Synced %s — applied=%d unchanged=%d failures=%d (SHA %s)\n",
+				r.Name, report.Applied, report.Unchanged, len(report.Failures), report.SHA)
+			if len(report.Failures) > 0 {
+				for _, f := range report.Failures {
+					fmt.Fprintf(cmd.ErrOrStderr(), "  FAIL %s: %s\n", f.RelPath, f.Err)
+				}
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&fromDir, "from-dir", "", "Use a pre-populated directory instead of cloning (testing / CI)")
+	return cmd
 }
