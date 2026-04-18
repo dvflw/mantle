@@ -291,3 +291,51 @@ func TestStore_Create_AllowsURLWithUsernameOnly(t *testing.T) {
 		t.Errorf("username-only URL should be allowed: %v", err)
 	}
 }
+
+func TestStore_UpdateSyncState_WritesFields(t *testing.T) {
+	store := newTestStore(t)
+	ctx := defaultCtx()
+	r, err := store.Create(ctx, CreateParams{
+		Name: "acme", URL: "https://example.com/a.git", Branch: "main",
+		Path: "/", PollInterval: "60s", Credential: "pat",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := store.UpdateSyncState(ctx, r.ID, "deadbeef", "pull failed"); err != nil {
+		t.Fatalf("UpdateSyncState: %v", err)
+	}
+	got, err := store.Get(ctx, "acme")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.LastSyncSHA != "deadbeef" {
+		t.Errorf("LastSyncSHA: got %q, want deadbeef", got.LastSyncSHA)
+	}
+	if got.LastSyncAt == nil {
+		t.Error("LastSyncAt should be set")
+	}
+	if got.LastSyncError != "pull failed" {
+		t.Errorf("LastSyncError: got %q, want %q", got.LastSyncError, "pull failed")
+	}
+}
+
+func TestStore_UpdateSyncState_ClearsErrorWhenEmpty(t *testing.T) {
+	store := newTestStore(t)
+	ctx := defaultCtx()
+	r, err := store.Create(ctx, CreateParams{
+		Name: "clean", URL: "https://example.com/b.git", Branch: "main",
+		Path: "/", PollInterval: "60s", Credential: "pat",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	_ = store.UpdateSyncState(ctx, r.ID, "abc", "earlier error")
+	if err := store.UpdateSyncState(ctx, r.ID, "def", ""); err != nil {
+		t.Fatalf("UpdateSyncState: %v", err)
+	}
+	got, _ := store.Get(ctx, "clean")
+	if got.LastSyncError != "" {
+		t.Errorf("LastSyncError should clear to empty, got %q", got.LastSyncError)
+	}
+}
