@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -145,3 +146,34 @@ func TestStore_Create_ValidatesPollInterval(t *testing.T) {
 	}
 }
 
+func TestStore_Get_ReturnsRow(t *testing.T) {
+	store := newTestStore(t)
+	ctx := defaultCtx()
+	created, err := store.Create(ctx, CreateParams{
+		Name:         "acme",
+		URL:          "https://github.com/acme/workflows.git",
+		Branch:       "main",
+		Path:         "/",
+		PollInterval: "60s",
+		Credential:   "pat",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := store.Get(ctx, "acme")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.ID != created.ID {
+		t.Errorf("ID: got %q, want %q", got.ID, created.ID)
+	}
+}
+
+func TestStore_Get_NotFound(t *testing.T) {
+	store := newTestStore(t)
+	ctx := defaultCtx()
+	_, err := store.Get(ctx, "nope")
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
