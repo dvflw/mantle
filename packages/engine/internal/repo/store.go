@@ -272,12 +272,33 @@ func (s *Store) Delete(ctx context.Context, name string) error {
 	return nil
 }
 
-// validateURL rejects URLs that embed any userinfo (user or user:pass).
-// GitHub PATs are valid as a username in HTTPS URLs, so even a bare
-// "user@host" form must be rejected. Operators must store credential
-// material in a "git" secret and reference it via the Credential field,
-// never inline in the URL, so we don't risk persisting or displaying
-// tokens that live in git_repos.url.
+// UpdateSyncState records the outcome of a sync attempt. syncErr should
+// be the empty string on success — it is stored as NULL so the
+// LastSyncError field on Repo stays empty after a clean sync, even if
+// an earlier attempt had failed.
+func (s *Store) UpdateSyncState(ctx context.Context, id, sha, syncErr string) error {
+	var errVal interface{}
+	if syncErr == "" {
+		errVal = nil
+	} else {
+		errVal = syncErr
+	}
+	_, err := s.DB.ExecContext(ctx,
+		`UPDATE git_repos
+		 SET last_sync_sha = $2, last_sync_at = NOW(), last_sync_error = $3
+		 WHERE id = $1`,
+		id, sha, errVal,
+	)
+	if err != nil {
+		return fmt.Errorf("updating sync state for %s: %w", id, err)
+	}
+	return nil
+}
+
+// validateURL rejects URLs that embed credentials inline (the `user:pass@host`
+// form). Operators must put credential material in a "git" secret and
+// reference it via the Credential field, never inline in the URL, so we
+// don't risk persisting or displaying tokens that live in git_repos.url.
 func validateURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil {
