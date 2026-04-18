@@ -10,6 +10,7 @@ import (
 	"github.com/dvflw/mantle/internal/db"
 	"github.com/dvflw/mantle/internal/repo"
 	"github.com/dvflw/mantle/internal/repo/sync"
+	"github.com/dvflw/mantle/internal/secret"
 	"github.com/spf13/cobra"
 )
 
@@ -20,10 +21,10 @@ func newReposCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "repos",
 		Short: "Manage GitOps workflow source repositories",
-		Long: `Registers GitOps source repositories whose workflow YAML definitions will be
-synced into this Mantle instance. This command manages the registry; the sync
-engine itself (sidecar, file discovery, validate/plan/apply) ships in a later
-milestone. Auth material is stored in a "git" credential type
+		Long: `Registers GitOps source repositories whose workflow YAML definitions are
+synced into this Mantle instance. This command manages the registry; use
+` + "`mantle repos sync`" + ` for on-demand syncs, or start ` + "`mantle serve`" + ` to let the
+background poller run. Auth material is stored in a "git" credential type
 (` + "`mantle secrets create --type git`" + `) and referenced here by name.`,
 	}
 	cmd.AddCommand(newReposAddCommand())
@@ -123,7 +124,11 @@ func newReposStatusCommand() *cobra.Command {
 			fmt.Fprintf(out, "Path:         %s\n", r.Path)
 			fmt.Fprintf(out, "Poll:         %s\n", r.PollInterval)
 			fmt.Fprintf(out, "Credential:   %s\n", r.Credential)
-			fmt.Fprintf(out, "Auto-Apply:   %t\n", r.AutoApply)
+			if r.AutoApply {
+				fmt.Fprintln(out, "Auto-Apply:   true")
+			} else {
+				fmt.Fprintln(out, "Auto-Apply:   false (manual sync only — background poller does not run this repo)")
+			}
 			fmt.Fprintf(out, "Prune:        %t\n", r.Prune)
 			fmt.Fprintf(out, "Enabled:      %t\n", r.Enabled)
 			if r.LastSyncAt != nil {
@@ -229,7 +234,20 @@ of cloning (useful for tests and CI-driven deployments).`,
 			if fromDir != "" {
 				driver = &sync.NoopDriver{BasePath: fromDir}
 			} else {
-				driver = &sync.GoGitDriver{BasePath: filepath.Join(os.TempDir(), "mantle-repos")}
+				var secretResolver *secret.Resolver
+				if cfg := config.FromContext(cmd.Context()); cfg != nil && cfg.Encryption.Key != "" {
+					encryptor, encErr := secret.NewEncryptor(cfg.Encryption.Key)
+					if encErr != nil {
+						return fmt.Errorf("configuring encryption for git sync: %w", encErr)
+					}
+					secretResolver = &secret.Resolver{
+						Store: &secret.Store{DB: store.DB, Encryptor: encryptor},
+					}
+				}
+				driver = &sync.GoGitDriver{
+					BasePath: filepath.Join(os.TempDir(), "mantle-repos"),
+					Auth:     sync.NewAuthResolver(cmd.Context(), secretResolver),
+				}
 			}
 			report, err := sync.SyncRepo(cmd.Context(), store.DB, store, r, driver)
 			if err != nil {
@@ -245,6 +263,6 @@ of cloning (useful for tests and CI-driven deployments).`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&fromDir, "from-dir", "", "Use a pre-populated directory instead of cloning (testing / CI)")
+	cmd.Flags().StringVar(&fromDir, "from-dir", "", "Path to an already-cloned repo directory (skips git pull; useful for CI pipelines or local testing)")
 	return cmd
 }

@@ -67,10 +67,11 @@ const (
 	ActionRepoUpdated Action = "repo.updated"
 	ActionRepoRemoved Action = "repo.removed"
 
-	ActionGitSyncStarted         Action = "git.sync.started"
-	ActionGitSyncCompleted       Action = "git.sync.completed"
-	ActionGitSyncFailed          Action = "git.sync.failed"
-	ActionGitSyncValidationError Action = "git.sync.validation_failed"
+	ActionGitSyncStarted          Action = "git.sync.started"
+	ActionGitSyncCompleted        Action = "git.sync.completed"
+	ActionGitSyncFailed           Action = "git.sync.failed"
+	ActionGitSyncValidationFailed Action = "git.sync.validation_failed"
+	ActionGitSyncApplyFailed      Action = "git.sync.apply_failed"
 )
 
 // Resource identifies the target of an audit event.
