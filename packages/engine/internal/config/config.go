@@ -33,6 +33,7 @@ type Config struct {
 	GCP        GCPConfig        `mapstructure:"gcp"`
 	Azure      AzureConfig      `mapstructure:"azure"`
 	Storage    StorageConfig    `mapstructure:"storage"`
+	GitSync    GitSyncConfig    `mapstructure:"git_sync"`
 	Env        map[string]string `mapstructure:"env"`
 }
 
@@ -65,6 +66,27 @@ type StorageConfig struct {
 	Prefix    string `mapstructure:"prefix"`    // Key prefix (for type: s3)
 	Path      string `mapstructure:"path"`      // Local directory (for type: filesystem)
 	Retention string `mapstructure:"retention"` // Duration string, e.g. "24h". Empty = no auto-cleanup.
+}
+
+// GitSyncConfig configures GitOps-style workflow sync (issue #16). Each
+// entry under Repos is materialized into a git_repos row at startup so
+// the registry stays consistent with mantle.yaml.
+type GitSyncConfig struct {
+	Repos []GitSyncRepo `mapstructure:"repos"`
+}
+
+// GitSyncRepo mirrors the relevant fields of the git_repos table for
+// config-driven registration. Fields default to the same values as the
+// DB when omitted.
+type GitSyncRepo struct {
+	Name         string `mapstructure:"name"`
+	URL          string `mapstructure:"url"`
+	Branch       string `mapstructure:"branch"`
+	Path         string `mapstructure:"path"`
+	PollInterval string `mapstructure:"poll_interval"`
+	Credential   string `mapstructure:"credential"`
+	AutoApply    bool   `mapstructure:"auto_apply"`
+	Prune        bool   `mapstructure:"prune"`
 }
 
 // AuthConfig holds authentication configuration.

@@ -467,3 +467,39 @@ log:
 
 	assert.Empty(t, cfg.Env)
 }
+
+func TestLoadConfig_GitSyncRepos(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mantle.yaml")
+	yaml := `version: 1
+database:
+  url: postgres://localhost/mantle
+git_sync:
+  repos:
+    - name: acme
+      url: https://github.com/acme/workflows.git
+      branch: main
+      path: /
+      poll_interval: 60s
+      credential: github-pat
+      auto_apply: true
+      prune: true
+`
+	if err := os.WriteFile(path, []byte(yaml), 0600); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+	cmd := newTestCommand()
+	_ = cmd.Flags().Set("config", path)
+	cfg, err := Load(cmd)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.GitSync.Repos) != 1 {
+		t.Fatalf("got %d repos, want 1", len(cfg.GitSync.Repos))
+	}
+	r := cfg.GitSync.Repos[0]
+	if r.Name != "acme" || r.URL != "https://github.com/acme/workflows.git" ||
+		r.Branch != "main" || r.Credential != "github-pat" || !r.AutoApply {
+		t.Errorf("parsed repo: %+v", r)
+	}
+}
