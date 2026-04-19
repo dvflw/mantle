@@ -33,6 +33,8 @@ background poller run. Auth material is stored in a "git" credential type
 	cmd.AddCommand(newReposStatusCommand())
 	cmd.AddCommand(newReposRemoveCommand())
 	cmd.AddCommand(newReposSyncCommand())
+	cmd.AddCommand(newReposPlanCommand())
+	cmd.AddCommand(newReposApplyCommand())
 	return cmd
 }
 
@@ -280,25 +282,7 @@ of cloning (useful for tests and CI-driven deployments).`,
 			if err != nil {
 				return err
 			}
-			var driver sync.Driver
-			if fromDir != "" {
-				driver = &sync.NoopDriver{BasePath: fromDir}
-			} else {
-				var secretResolver *secret.Resolver
-				if cfg := config.FromContext(cmd.Context()); cfg != nil && cfg.Encryption.Key != "" {
-					encryptor, encErr := secret.NewEncryptor(cfg.Encryption.Key)
-					if encErr != nil {
-						return fmt.Errorf("configuring encryption for git sync: %w", encErr)
-					}
-					secretResolver = &secret.Resolver{
-						Store: &secret.Store{DB: store.DB, Encryptor: encryptor},
-					}
-				}
-				driver = &sync.GoGitDriver{
-					BasePath: filepath.Join(os.TempDir(), "mantle-repos"),
-					Auth:     sync.NewAuthResolver(cmd.Context(), secretResolver),
-				}
-			}
+			driver := buildSyncDriver(cmd, store, fromDir)
 			report, err := sync.SyncRepo(cmd.Context(), store.DB, store, r, driver)
 			if err != nil {
 				return fmt.Errorf("sync %q: %w", r.Name, err)
@@ -315,4 +299,102 @@ of cloning (useful for tests and CI-driven deployments).`,
 	}
 	cmd.Flags().StringVar(&fromDir, "from-dir", "", "Path to an already-cloned repo directory (skips git pull; useful for CI pipelines or local testing)")
 	return cmd
+}
+
+func newReposPlanCommand() *cobra.Command {
+	var fromDir string
+	cmd := &cobra.Command{
+		Use:   "plan <name>",
+		Short: "Dry-run: show what a sync would change",
+		Long: `Plans a sync without writing anything: pulls the repo, discovers files,
+and classifies each as "would apply" (new or changed) or "unchanged". Use
+before mantle repos apply to verify pending changes on auto_apply:false repos.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, cleanup, err := newRepoStore(cmd)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			r, err := store.Get(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			driver := buildSyncDriver(cmd, store, fromDir)
+			report, err := sync.PlanRepo(cmd.Context(), store.DB, r, driver)
+			if err != nil {
+				return fmt.Errorf("plan %q: %w", r.Name, err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(),
+				"Plan for %s — would apply=%d unchanged=%d failures=%d (SHA %s)\n",
+				r.Name, report.Applied, report.Unchanged, len(report.Failures), report.SHA)
+			for _, f := range report.Failures {
+				fmt.Fprintf(cmd.ErrOrStderr(), "  FAIL %s: %s\n", f.RelPath, f.Err)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&fromDir, "from-dir", "", "Path to an already-cloned repo directory (skips git pull; useful for CI pipelines or local testing)")
+	return cmd
+}
+
+func newReposApplyCommand() *cobra.Command {
+	var fromDir string
+	cmd := &cobra.Command{
+		Use:   "apply <name>",
+		Short: "Manually sync a repo (for auto_apply:false)",
+		Long: `Runs one sync pass for the named repo. Works regardless of auto_apply
+setting — useful when auto_apply is false and you want explicit control
+over when workflow YAML lands in Mantle.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, cleanup, err := newRepoStore(cmd)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			r, err := store.Get(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			driver := buildSyncDriver(cmd, store, fromDir)
+			report, err := sync.SyncRepo(cmd.Context(), store.DB, store, r, driver)
+			if err != nil {
+				return fmt.Errorf("apply %q: %w", r.Name, err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(),
+				"Applied %s — applied=%d unchanged=%d failures=%d (SHA %s)\n",
+				r.Name, report.Applied, report.Unchanged, len(report.Failures), report.SHA)
+			for _, f := range report.Failures {
+				fmt.Fprintf(cmd.ErrOrStderr(), "  FAIL %s: %s\n", f.RelPath, f.Err)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&fromDir, "from-dir", "", "Path to an already-cloned repo directory (skips git pull; useful for CI pipelines or local testing)")
+	return cmd
+}
+
+// buildSyncDriver picks NoopDriver when --from-dir is set, otherwise a
+// GoGitDriver rooted at a temp path. Extracted from newReposSyncCommand so
+// plan and apply don't duplicate the branching logic.
+func buildSyncDriver(cmd *cobra.Command, store *repo.Store, fromDir string) sync.Driver {
+	if fromDir != "" {
+		return &sync.NoopDriver{BasePath: fromDir}
+	}
+	var secretResolver *secret.Resolver
+	if cfg := config.FromContext(cmd.Context()); cfg != nil && cfg.Encryption.Key != "" {
+		encryptor, encErr := secret.NewEncryptor(cfg.Encryption.Key)
+		if encErr == nil {
+			secretResolver = &secret.Resolver{
+				Store: &secret.Store{DB: store.DB, Encryptor: encryptor},
+			}
+		}
+	}
+	return &sync.GoGitDriver{
+		BasePath: filepath.Join(os.TempDir(), "mantle-repos"),
+		Auth:     sync.NewAuthResolver(cmd.Context(), secretResolver),
+	}
 }

@@ -185,6 +185,41 @@ func emit(ctx context.Context, database *sql.DB, e audit.Event) {
 	_ = tx.Commit()
 }
 
+// PlanRepo runs a dry-run sync: pulls the repo, discovers files, and
+// classifies each as "would apply" (new or changed) or "unchanged"
+// without writing to the DB. Returns a Report with the same shape as
+// SyncRepo's, so CLI output and tests stay consistent. No audit
+// events fire — planning is a read-only operation.
+func PlanRepo(ctx context.Context, database *sql.DB, r *repo.Repo, driver Driver) (*Report, error) {
+	pull, err := driver.Pull(ctx, r)
+	if err != nil {
+		return nil, fmt.Errorf("driver pull: %w", err)
+	}
+	files, err := Discover(pull.LocalPath, r.Path)
+	if err != nil {
+		return nil, fmt.Errorf("discover: %w", err)
+	}
+	report := &Report{SHA: pull.SHA}
+	for _, f := range files {
+		parsed, parseErr := workflow.ParseBytes(f.Bytes)
+		if parseErr != nil {
+			report.Failures = append(report.Failures, FileResult{RelPath: f.RelPath, Err: parseErr.Error()})
+			continue
+		}
+		existingHash, hashErr := workflow.GetLatestHash(ctx, database, parsed.Workflow.Name)
+		if hashErr != nil {
+			report.Failures = append(report.Failures, FileResult{RelPath: f.RelPath, Err: hashErr.Error()})
+			continue
+		}
+		if existingHash == f.Hash {
+			report.Unchanged++
+		} else {
+			report.Applied++ // semantically "would apply"
+		}
+	}
+	return report, nil
+}
+
 // summarizeFailures joins up to three failure messages into a single
 // string suitable for last_sync_error. Audit events carry the full
 // detail; this column is for at-a-glance CLI output.

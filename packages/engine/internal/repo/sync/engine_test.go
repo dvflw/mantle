@@ -179,6 +179,51 @@ func TestSyncRepo_PrunesRemovedFiles(t *testing.T) {
 	}
 }
 
+func TestPlanRepo_ClassifiesFiles(t *testing.T) {
+	database, store := setupEngineTest(t)
+	ctx := context.Background()
+	r, _ := store.Create(ctx, repo.CreateParams{
+		Name: "plan", URL: "https://example.com/a.git", Branch: "main",
+		Path: "/", PollInterval: "60s", Credential: "pat",
+	})
+	base := t.TempDir()
+	repoDir := filepath.Join(base, r.ID)
+	_ = os.MkdirAll(repoDir, 0o755)
+
+	// Set up two workflows: both get applied in the priming sync.
+	existingYAML := validWorkflowYAML("existing")
+	_ = os.WriteFile(filepath.Join(repoDir, "existing.yaml"), []byte(existingYAML), 0o644)
+	_ = os.WriteFile(filepath.Join(repoDir, "new.yaml"), []byte(validWorkflowYAML("new")), 0o644)
+
+	// Prime the DB: apply both files so their hashes are recorded.
+	driver := &NoopDriver{BasePath: base, SHA: "sha-before"}
+	if _, err := SyncRepo(ctx, database, store, r, driver); err != nil {
+		t.Fatalf("priming sync: %v", err)
+	}
+
+	// Now modify existing.yaml so its hash differs from what is in the DB.
+	_ = os.WriteFile(filepath.Join(repoDir, "existing.yaml"),
+		[]byte(existingYAML+"# changed\n"), 0o644)
+
+	// Plan should see: existing changed → would apply (1), new unchanged (1).
+	report, err := PlanRepo(ctx, database, r, driver)
+	if err != nil {
+		t.Fatalf("PlanRepo: %v", err)
+	}
+	if report.Applied != 1 || report.Unchanged != 1 {
+		t.Errorf("PlanRepo: applied=%d unchanged=%d, want 1/1", report.Applied, report.Unchanged)
+	}
+
+	// Crucially: plan must NOT have written a new version of "existing".
+	var count int
+	_ = database.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM workflow_definitions WHERE name = 'existing'`,
+	).Scan(&count)
+	if count != 1 {
+		t.Errorf("plan should not write: got %d versions of 'existing', want 1", count)
+	}
+}
+
 func TestSyncRepo_InvalidFileDoesNotAbortOthers(t *testing.T) {
 	database, store := setupEngineTest(t)
 	ctx := context.Background()

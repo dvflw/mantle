@@ -240,6 +240,70 @@ func TestReposUpdate_ReplacesMutableFields(t *testing.T) {
 	}
 }
 
+func TestReposPlan_PrintsSummary(t *testing.T) {
+	_, cfg := reposCtx(t)
+	{
+		root := NewRootCommand()
+		var seedStderr bytes.Buffer
+		root.SetErr(&seedStderr)
+		root.SetArgs([]string{"repos", "add", "acme",
+			"--url", "https://example.com/a.git",
+			"--credential", "pat",
+			"--database-url", cfg.Database.URL,
+		})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("seed add: %v", err)
+		}
+	}
+	fixture := t.TempDir()
+	root := NewRootCommand()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"repos", "plan", "acme",
+		"--from-dir", fixture,
+		"--database-url", cfg.Database.URL,
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("plan: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Plan for acme") {
+		t.Errorf("expected 'Plan for acme' in stdout, got %q", stdout.String())
+	}
+}
+
+func TestReposApply_PrintsSummary(t *testing.T) {
+	_, cfg := reposCtx(t)
+	{
+		root := NewRootCommand()
+		var seedStderr bytes.Buffer
+		root.SetErr(&seedStderr)
+		root.SetArgs([]string{"repos", "add", "acme",
+			"--url", "https://example.com/a.git",
+			"--credential", "pat",
+			"--database-url", cfg.Database.URL,
+		})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("seed add: %v", err)
+		}
+	}
+	fixture := t.TempDir()
+	root := NewRootCommand()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"repos", "apply", "acme",
+		"--from-dir", fixture,
+		"--database-url", cfg.Database.URL,
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("apply: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Applied acme") {
+		t.Errorf("expected 'Applied acme' in stdout, got %q", stdout.String())
+	}
+}
+
 func TestReposSync_UsesNoopDriverWithFromDir(t *testing.T) {
 	_, cfg := reposCtx(t)
 	// Seed a repo.
