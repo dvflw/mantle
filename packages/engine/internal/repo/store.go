@@ -5,7 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/dvflw/mantle/internal/audit"
@@ -217,7 +220,13 @@ func (s *Store) Update(ctx context.Context, name string, p UpdateParams) (*Repo,
 
 // Delete removes a repo by name and emits a repo.removed audit event in
 // the same transaction. Returns ErrNotFound when no row matches.
-func (s *Store) Delete(ctx context.Context, name string) error {
+//
+// If cloneBasePath is non-empty, Delete also removes the cloned working
+// tree at filepath.Join(cloneBasePath, repoID) after the DB transaction
+// commits. Filesystem failures are logged but do not fail the call — the
+// DB row is already gone, and an orphan directory is better than an orphan
+// row.
+func (s *Store) Delete(ctx context.Context, name, cloneBasePath string) error {
 	teamID := auth.TeamIDFromContext(ctx)
 
 	tx, err := s.DB.BeginTx(ctx, nil)
@@ -250,6 +259,14 @@ func (s *Store) Delete(ctx context.Context, name string) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("committing repo delete: %w", err)
+	}
+
+	if cloneBasePath != "" {
+		cloneDir := filepath.Join(cloneBasePath, deletedID)
+		if err := os.RemoveAll(cloneDir); err != nil {
+			slog.Warn("repo delete: failed to remove cloned working tree",
+				"clone_dir", cloneDir, "err", err)
+		}
 	}
 	return nil
 }

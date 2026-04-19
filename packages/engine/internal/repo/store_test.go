@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -252,7 +253,7 @@ func TestStore_Delete_RemovesRow(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := store.Delete(ctx, "acme"); err != nil {
+	if err := store.Delete(ctx, "acme", ""); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	if _, err := store.Get(ctx, "acme"); !errors.Is(err, ErrNotFound) {
@@ -263,7 +264,7 @@ func TestStore_Delete_RemovesRow(t *testing.T) {
 func TestStore_Delete_NotFound(t *testing.T) {
 	store := newTestStore(t)
 	ctx := defaultCtx()
-	if err := store.Delete(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+	if err := store.Delete(ctx, "nope", ""); !errors.Is(err, ErrNotFound) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -342,6 +343,50 @@ func TestStore_GetByID_NotFound(t *testing.T) {
 	_, err := store.GetByID(ctx, "00000000-0000-0000-0000-000000000000")
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestStore_Delete_RemovesClonedDirectory(t *testing.T) {
+	store := newTestStore(t)
+	ctx := defaultCtx()
+	r, err := store.Create(ctx, CreateParams{
+		Name: "acme", URL: "https://example.com/a.git", Branch: "main",
+		Path: "/", PollInterval: "60s", Credential: "pat",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	base := t.TempDir()
+	repoDir := filepath.Join(base, r.ID)
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "wf.yaml"), []byte("name: wf\n"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	if err := store.Delete(ctx, "acme", base); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, err := os.Stat(repoDir); !os.IsNotExist(err) {
+		t.Errorf("clone dir should be gone: stat err = %v", err)
+	}
+}
+
+func TestStore_Delete_IgnoresMissingCloneDir(t *testing.T) {
+	store := newTestStore(t)
+	ctx := defaultCtx()
+	_, err := store.Create(ctx, CreateParams{
+		Name: "gone", URL: "https://example.com/a.git", Branch: "main",
+		Path: "/", PollInterval: "60s", Credential: "pat",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	base := t.TempDir()
+	// NOTE: don't create the subdir — Delete should still succeed.
+	if err := store.Delete(ctx, "gone", base); err != nil {
+		t.Fatalf("Delete: missing clone dir caused failure: %v", err)
 	}
 }
 

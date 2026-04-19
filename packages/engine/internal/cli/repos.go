@@ -163,7 +163,16 @@ command only stops future syncs. Requires --yes to confirm.`,
 			}
 			defer cleanup()
 
-			if err := store.Delete(cmd.Context(), args[0]); err != nil {
+			cfg := config.FromContext(cmd.Context())
+			cloneBase := ""
+			if cfg != nil {
+				artifactBase := cfg.Storage.Path
+				if artifactBase == "" {
+					artifactBase = filepath.Join(os.TempDir(), "mantle-artifacts")
+				}
+				cloneBase = filepath.Join(artifactBase, "git")
+			}
+			if err := store.Delete(cmd.Context(), args[0], cloneBase); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Removed repo %q\n", args[0])
