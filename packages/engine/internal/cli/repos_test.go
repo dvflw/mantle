@@ -205,6 +205,41 @@ func TestReposRemove_DeletesRow(t *testing.T) {
 	}
 }
 
+func TestReposUpdate_ReplacesMutableFields(t *testing.T) {
+	_, cfg := reposCtx(t)
+	// Seed.
+	{
+		root := NewRootCommand()
+		var seedStderr bytes.Buffer
+		root.SetErr(&seedStderr)
+		root.SetArgs([]string{"repos", "add", "acme",
+			"--url", "https://example.com/a.git",
+			"--credential", "pat-v1",
+			"--database-url", cfg.Database.URL,
+		})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("seed add: %v\nstderr: %s", err, seedStderr.String())
+		}
+	}
+
+	root := NewRootCommand()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"repos", "update", "acme",
+		"--branch", "release",
+		"--credential", "pat-v2",
+		"--auto-apply=false",
+		"--database-url", cfg.Database.URL,
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("update: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Updated repo \"acme\"") {
+		t.Errorf("unexpected stdout: %q", stdout.String())
+	}
+}
+
 func TestReposSync_UsesNoopDriverWithFromDir(t *testing.T) {
 	_, cfg := reposCtx(t)
 	// Seed a repo.

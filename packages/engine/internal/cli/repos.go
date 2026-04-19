@@ -28,6 +28,7 @@ background poller run. Auth material is stored in a "git" credential type
 (` + "`mantle secrets create --type git`" + `) and referenced here by name.`,
 	}
 	cmd.AddCommand(newReposAddCommand())
+	cmd.AddCommand(newReposUpdateCommand())
 	cmd.AddCommand(newReposListCommand())
 	cmd.AddCommand(newReposStatusCommand())
 	cmd.AddCommand(newReposRemoveCommand())
@@ -216,6 +217,46 @@ func newReposListCommand() *cobra.Command {
 			return w.Flush()
 		},
 	}
+}
+
+func newReposUpdateCommand() *cobra.Command {
+	var branch, path, pollInterval, credential string
+	var autoApply, prune, enabled bool
+
+	cmd := &cobra.Command{
+		Use:   "update <name>",
+		Short: "Update a registered repo's mutable fields",
+		Long: `Replaces the branch, path, poll-interval, credential, auto-apply, prune,
+and enabled flags on an existing repo. URL and name are immutable — to
+change them, delete and recreate.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, cleanup, err := newRepoStore(cmd)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			r, err := store.Update(cmd.Context(), args[0], repo.UpdateParams{
+				Branch: branch, Path: path, PollInterval: pollInterval,
+				Credential: credential, AutoApply: autoApply, Prune: prune, Enabled: enabled,
+			})
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Updated repo %q\n", r.Name)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&branch, "branch", "main", "Branch to sync")
+	cmd.Flags().StringVar(&path, "path", "/", "Subdirectory inside the repo to scan")
+	cmd.Flags().StringVar(&pollInterval, "poll-interval", "60s", "Interval between syncs")
+	cmd.Flags().StringVar(&credential, "credential", "", "Git credential name (required)")
+	cmd.Flags().BoolVar(&autoApply, "auto-apply", true, "Automatically apply changes")
+	cmd.Flags().BoolVar(&prune, "prune", true, "Disable workflows deleted from the repo")
+	cmd.Flags().BoolVar(&enabled, "enabled", true, "Whether the repo is active")
+	_ = cmd.MarkFlagRequired("credential")
+	return cmd
 }
 
 func newReposSyncCommand() *cobra.Command {
