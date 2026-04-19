@@ -180,23 +180,40 @@ func (s *Store) Update(ctx context.Context, name string, p UpdateParams) (*Repo,
 	defer tx.Rollback() //nolint:errcheck
 
 	var r Repo
+	var lastSyncAt sql.NullTime
+	var lastSyncSHA, lastSyncError, webhookSecret sql.NullString
 	err = tx.QueryRowContext(ctx,
 		`UPDATE git_repos
 		 SET branch = $3, path = $4, poll_interval = $5, credential = $6,
 		     auto_apply = $7, prune = $8, enabled = $9, updated_at = NOW()
 		 WHERE name = $1 AND team_id = $2
 		 RETURNING id, name, url, branch, path, poll_interval, credential,
-		           auto_apply, prune, enabled, created_at, updated_at`,
+		           auto_apply, prune, enabled, last_sync_sha, last_sync_at,
+		           last_sync_error, webhook_secret, created_at, updated_at`,
 		name, teamID, p.Branch, p.Path, p.PollInterval, p.Credential,
 		p.AutoApply, p.Prune, p.Enabled,
 	).Scan(&r.ID, &r.Name, &r.URL, &r.Branch, &r.Path, &r.PollInterval,
 		&r.Credential, &r.AutoApply, &r.Prune, &r.Enabled,
+		&lastSyncSHA, &lastSyncAt, &lastSyncError, &webhookSecret,
 		&r.CreatedAt, &r.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("%w: %q", ErrNotFound, name)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("updating repo %q: %w", name, err)
+	}
+	if lastSyncSHA.Valid {
+		r.LastSyncSHA = lastSyncSHA.String
+	}
+	if lastSyncAt.Valid {
+		t := lastSyncAt.Time
+		r.LastSyncAt = &t
+	}
+	if lastSyncError.Valid {
+		r.LastSyncError = lastSyncError.String
+	}
+	if webhookSecret.Valid {
+		r.WebhookSecret = webhookSecret.String
 	}
 
 	if err := audit.EmitTx(ctx, tx, audit.Event{
