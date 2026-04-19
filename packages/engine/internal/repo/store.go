@@ -294,6 +294,46 @@ func validateURL(raw string) error {
 	return nil
 }
 
+// GetByID retrieves a repo by its UUID. Unlike Get, it does NOT filter
+// by team_id — the webhook receiver at /hooks/git/<id> must be able to
+// look up repos across any team because the URL carries the UUID and
+// no auth context. Returns ErrNotFound when no row matches.
+func (s *Store) GetByID(ctx context.Context, id string) (*Repo, error) {
+	var r Repo
+	var lastSyncAt sql.NullTime
+	var lastSyncSHA, lastSyncError, webhookSecret sql.NullString
+	err := s.DB.QueryRowContext(ctx,
+		`SELECT id, name, url, branch, path, poll_interval, credential,
+		        auto_apply, prune, enabled, last_sync_sha, last_sync_at,
+		        last_sync_error, webhook_secret, created_at, updated_at
+		 FROM git_repos WHERE id = $1`,
+		id,
+	).Scan(&r.ID, &r.Name, &r.URL, &r.Branch, &r.Path, &r.PollInterval,
+		&r.Credential, &r.AutoApply, &r.Prune, &r.Enabled,
+		&lastSyncSHA, &lastSyncAt, &lastSyncError, &webhookSecret,
+		&r.CreatedAt, &r.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("%w: %q", ErrNotFound, id)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("querying repo by id: %w", err)
+	}
+	if lastSyncSHA.Valid {
+		r.LastSyncSHA = lastSyncSHA.String
+	}
+	if lastSyncAt.Valid {
+		t := lastSyncAt.Time
+		r.LastSyncAt = &t
+	}
+	if lastSyncError.Valid {
+		r.LastSyncError = lastSyncError.String
+	}
+	if webhookSecret.Valid {
+		r.WebhookSecret = webhookSecret.String
+	}
+	return &r, nil
+}
+
 // Get retrieves a repo by name within the current team scope. Returns
 // ErrNotFound when no row matches.
 func (s *Store) Get(ctx context.Context, name string) (*Repo, error) {

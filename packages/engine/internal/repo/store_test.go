@@ -320,6 +320,31 @@ func TestStore_UpdateSyncState_WritesFields(t *testing.T) {
 	}
 }
 
+func TestStore_GetByID_ReturnsRow(t *testing.T) {
+	store := newTestStore(t)
+	ctx := defaultCtx()
+	created, _ := store.Create(ctx, CreateParams{
+		Name: "acme", URL: "https://example.com/a.git", Branch: "main",
+		Path: "/", PollInterval: "60s", Credential: "pat",
+	})
+	got, err := store.GetByID(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.Name != "acme" {
+		t.Errorf("Name: got %q, want acme", got.Name)
+	}
+}
+
+func TestStore_GetByID_NotFound(t *testing.T) {
+	store := newTestStore(t)
+	ctx := defaultCtx()
+	_, err := store.GetByID(ctx, "00000000-0000-0000-0000-000000000000")
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
 func TestStore_UpdateSyncState_ClearsErrorWhenEmpty(t *testing.T) {
 	store := newTestStore(t)
 	ctx := defaultCtx()
