@@ -195,3 +195,49 @@ func TestGetLatestVersion_NoVersions(t *testing.T) {
 		t.Errorf("GetLatestVersion() = %d, want 0", version)
 	}
 }
+
+func TestDisable_MarksLatestVersion(t *testing.T) {
+	database := setupTestDB(t)
+	ctx := context.Background()
+	raw := []byte("name: wf\nsteps:\n  - name: s\n    action: http/request\n")
+	result, err := ParseBytes(raw)
+	if err != nil {
+		t.Fatalf("ParseBytes: %v", err)
+	}
+	if _, err := Save(ctx, database, result, raw); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if err := Disable(ctx, database, "wf"); err != nil {
+		t.Fatalf("Disable: %v", err)
+	}
+	var disabled sql.NullTime
+	if err := database.QueryRowContext(ctx,
+		`SELECT disabled_at FROM workflow_definitions WHERE name = 'wf' ORDER BY version DESC LIMIT 1`,
+	).Scan(&disabled); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if !disabled.Valid {
+		t.Error("disabled_at should be non-null after Disable")
+	}
+}
+
+func TestReenable_ClearsDisabledAt(t *testing.T) {
+	database := setupTestDB(t)
+	ctx := context.Background()
+	raw := []byte("name: wf2\nsteps:\n  - name: s\n    action: http/request\n")
+	result, _ := ParseBytes(raw)
+	if _, err := Save(ctx, database, result, raw); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	_ = Disable(ctx, database, "wf2")
+	if err := Reenable(ctx, database, "wf2"); err != nil {
+		t.Fatalf("Reenable: %v", err)
+	}
+	var disabled sql.NullTime
+	_ = database.QueryRowContext(ctx,
+		`SELECT disabled_at FROM workflow_definitions WHERE name = 'wf2' ORDER BY version DESC LIMIT 1`,
+	).Scan(&disabled)
+	if disabled.Valid {
+		t.Error("disabled_at should be null after Reenable")
+	}
+}
