@@ -50,7 +50,7 @@ func SyncRepo(ctx context.Context, database *sql.DB, store *repo.Store, r *repo.
 
 	pull, err := driver.Pull(ctx, r)
 	if err != nil {
-		_ = store.UpdateSyncState(ctx, r.ID, "", fmt.Sprintf("pull failed: %v", err))
+		_ = store.UpdateSyncState(ctx, r.ID, "", sanitizeURL(fmt.Sprintf("pull failed: %v", err)))
 		emit(ctx, database, audit.Event{
 			Timestamp: time.Now(),
 			Actor:     "sync",
@@ -64,7 +64,7 @@ func SyncRepo(ctx context.Context, database *sql.DB, store *repo.Store, r *repo.
 
 	files, err := Discover(pull.LocalPath, r.Path)
 	if err != nil {
-		_ = store.UpdateSyncState(ctx, r.ID, pull.SHA, fmt.Sprintf("discover failed: %v", err))
+		_ = store.UpdateSyncState(ctx, r.ID, pull.SHA, sanitizeURL(fmt.Sprintf("discover failed: %v", err)))
 		emit(ctx, database, audit.Event{
 			Timestamp: time.Now(),
 			Actor:     "sync",
@@ -149,7 +149,7 @@ func SyncRepo(ctx context.Context, database *sql.DB, store *repo.Store, r *repo.
 
 	errSummary := ""
 	if len(report.Failures) > 0 {
-		errSummary = summarizeFailures(report.Failures)
+		errSummary = sanitizeURL(summarizeFailures(report.Failures))
 	}
 	_ = store.UpdateSyncState(ctx, r.ID, pull.SHA, errSummary)
 
