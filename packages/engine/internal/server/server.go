@@ -19,6 +19,8 @@ import (
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/engine"
 	"github.com/dvflw/mantle/internal/metrics"
+	"github.com/dvflw/mantle/internal/repo"
+	reposync "github.com/dvflw/mantle/internal/repo/sync"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -35,6 +37,11 @@ type Server struct {
 	TLSCertFile   string
 	TLSKeyFile    string
 	Logger        *slog.Logger
+
+	// GitOps webhook support — set by the caller (e.g. serve.go) after New().
+	// Both fields may be nil in test contexts that don't exercise /hooks/git/.
+	RepoStore *repo.Store
+	GitDriver reposync.Driver
 
 	httpServer   *http.Server
 	cron         *CronScheduler
@@ -126,6 +133,15 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Prometheus metrics endpoint.
 	mux.Handle("/metrics", promhttp.Handler())
+
+	// Git push webhook endpoint — registered before the generic /hooks/ prefix
+	// so the more-specific path is explicit (Go's ServeMux uses longest-prefix
+	// match regardless of registration order, but explicit ordering is clearer).
+	mux.Handle("/hooks/git/", &GitWebhookHandler{
+		DB:     s.DB,
+		Store:  s.RepoStore,
+		Driver: s.GitDriver,
+	})
 
 	// Webhook endpoints.
 	mux.HandleFunc("/hooks/", s.webhooks.ServeHTTP)
