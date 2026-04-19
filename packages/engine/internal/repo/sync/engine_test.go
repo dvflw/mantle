@@ -129,6 +129,56 @@ func TestSyncRepo_UnchangedYieldsNoApply(t *testing.T) {
 	}
 }
 
+func TestSyncRepo_PrunesRemovedFiles(t *testing.T) {
+	database, store := setupEngineTest(t)
+	ctx := context.Background()
+	r, _ := store.Create(ctx, repo.CreateParams{
+		Name: "pru", URL: "https://example.com/a.git", Branch: "main",
+		Path: "/", PollInterval: "60s", Credential: "pat",
+		AutoApply: true, Prune: true,
+	})
+	base := t.TempDir()
+	repoDir := filepath.Join(base, r.ID)
+	_ = os.MkdirAll(repoDir, 0o755)
+
+	// First sync: two workflows present.
+	_ = os.WriteFile(filepath.Join(repoDir, "a.yaml"), []byte(validWorkflowYAML("a")), 0o644)
+	_ = os.WriteFile(filepath.Join(repoDir, "b.yaml"), []byte(validWorkflowYAML("b")), 0o644)
+	driver := &NoopDriver{BasePath: base, SHA: "first"}
+	if _, err := SyncRepo(ctx, database, store, r, driver); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+
+	// Second sync: b.yaml is gone.
+	_ = os.Remove(filepath.Join(repoDir, "b.yaml"))
+	driver.SHA = "second"
+	report, err := SyncRepo(ctx, database, store, r, driver)
+	if err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+	if report.Pruned != 1 {
+		t.Errorf("Pruned: got %d, want 1", report.Pruned)
+	}
+
+	// b should now be disabled (latest version has disabled_at IS NOT NULL).
+	var disabledB sql.NullTime
+	_ = database.QueryRowContext(ctx,
+		`SELECT disabled_at FROM workflow_definitions WHERE name = 'b' ORDER BY version DESC LIMIT 1`,
+	).Scan(&disabledB)
+	if !disabledB.Valid {
+		t.Error("workflow b should be disabled after prune")
+	}
+
+	// a should still be enabled.
+	var disabledA sql.NullTime
+	_ = database.QueryRowContext(ctx,
+		`SELECT disabled_at FROM workflow_definitions WHERE name = 'a' ORDER BY version DESC LIMIT 1`,
+	).Scan(&disabledA)
+	if disabledA.Valid {
+		t.Error("workflow a should stay enabled")
+	}
+}
+
 func TestSyncRepo_InvalidFileDoesNotAbortOthers(t *testing.T) {
 	database, store := setupEngineTest(t)
 	ctx := context.Background()

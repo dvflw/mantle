@@ -19,6 +19,7 @@ type Report struct {
 	Applied   int
 	Unchanged int
 	Failures  []FileResult
+	Pruned    int
 }
 
 // FileResult captures a per-file failure so operators can trace which
@@ -75,6 +76,14 @@ func SyncRepo(ctx context.Context, database *sql.DB, store *repo.Store, r *repo.
 		return nil, fmt.Errorf("discover: %w", err)
 	}
 
+	// Capture syncStart from the DB clock so it's in the same domain as
+	// the last_seen_at timestamps written by RecordSeen. Using Go's
+	// time.Now() risks a mismatch if the DB clock drifts relative to the
+	// host, which would cause either over-pruning or under-pruning.
+	var syncStart time.Time
+	if err := database.QueryRowContext(ctx, `SELECT NOW()`).Scan(&syncStart); err != nil {
+		syncStart = time.Now() // fall back to host clock if the query fails
+	}
 	report := &Report{SHA: pull.SHA}
 	for _, f := range files {
 		parseResult, parseErr := workflow.ParseBytes(f.Bytes)
@@ -103,10 +112,38 @@ func SyncRepo(ctx context.Context, database *sql.DB, store *repo.Store, r *repo.
 			})
 			continue
 		}
+		if recordErr := RecordSeen(ctx, database, r.ID, parseResult.Workflow.Name); recordErr != nil {
+			report.Failures = append(report.Failures, FileResult{RelPath: f.RelPath, Err: recordErr.Error()})
+			continue
+		}
+		// Re-enable if this workflow was previously pruned. Errors are
+		// non-fatal — surfacing them would require restructuring the loop;
+		// they are visible via the workflow.* audit events if re-enable
+		// itself fails.
+		_ = workflow.Reenable(ctx, database, parseResult.Workflow.Name)
 		if version == 0 {
 			report.Unchanged++
 		} else {
 			report.Applied++
+		}
+	}
+
+	if r.Prune {
+		stale, listErr := ListStale(ctx, database, r.ID, syncStart)
+		if listErr == nil {
+			for _, name := range stale {
+				_ = workflow.Disable(ctx, database, name)
+				emit(ctx, database, audit.Event{
+					Timestamp: time.Now(),
+					Actor:     "sync",
+					Action:    audit.ActionGitSyncPruned,
+					Resource:  audit.Resource{Type: "git_repo", ID: r.ID},
+					TeamID:    teamID,
+					Metadata:  map[string]string{"name": r.Name, "workflow": name},
+				})
+			}
+			_ = RemoveSeenRecords(ctx, database, r.ID, stale)
+			report.Pruned = len(stale)
 		}
 	}
 
@@ -128,6 +165,7 @@ func SyncRepo(ctx context.Context, database *sql.DB, store *repo.Store, r *repo.
 			"applied":   fmt.Sprintf("%d", report.Applied),
 			"unchanged": fmt.Sprintf("%d", report.Unchanged),
 			"failures":  fmt.Sprintf("%d", len(report.Failures)),
+			"pruned":    fmt.Sprintf("%d", report.Pruned),
 		},
 	})
 	return report, nil
