@@ -162,7 +162,9 @@ type UpdateParams struct {
 }
 
 // Update replaces the mutable fields of a repo by name and emits a
-// repo.updated audit event in the same transaction.
+// repo.updated audit event in the same transaction. Empty Branch/Path
+// are treated as "keep existing" — the SQL preserves the stored value
+// rather than overwriting it with an empty string.
 func (s *Store) Update(ctx context.Context, name string, p UpdateParams) (*Repo, error) {
 	if err := ValidatePollInterval(p.PollInterval); err != nil {
 		return nil, err
@@ -184,7 +186,9 @@ func (s *Store) Update(ctx context.Context, name string, p UpdateParams) (*Repo,
 	var lastSyncSHA, lastSyncError, webhookSecret sql.NullString
 	err = tx.QueryRowContext(ctx,
 		`UPDATE git_repos
-		 SET branch = $3, path = $4, poll_interval = $5, credential = $6,
+		 SET branch       = CASE WHEN $3 = '' THEN branch ELSE $3 END,
+		     path         = CASE WHEN $4 = '' THEN path   ELSE $4 END,
+		     poll_interval = $5, credential = $6,
 		     auto_apply = $7, prune = $8, enabled = $9, updated_at = NOW()
 		 WHERE name = $1 AND team_id = $2
 		 RETURNING id, name, url, branch, path, poll_interval, credential,
