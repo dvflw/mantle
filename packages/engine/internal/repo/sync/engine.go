@@ -57,7 +57,7 @@ func SyncRepo(ctx context.Context, database *sql.DB, store *repo.Store, r *repo.
 			Action:    audit.ActionGitSyncFailed,
 			Resource:  audit.Resource{Type: "git_repo", ID: r.ID},
 			TeamID:    teamID,
-			Metadata:  map[string]string{"name": r.Name, "error": err.Error()},
+			Metadata:  map[string]string{"name": r.Name, "error": sanitizeURL(err.Error())},
 		})
 		return nil, fmt.Errorf("driver pull: %w", err)
 	}
@@ -71,7 +71,7 @@ func SyncRepo(ctx context.Context, database *sql.DB, store *repo.Store, r *repo.
 			Action:    audit.ActionGitSyncFailed,
 			Resource:  audit.Resource{Type: "git_repo", ID: r.ID},
 			TeamID:    teamID,
-			Metadata:  map[string]string{"name": r.Name, "error": err.Error()},
+			Metadata:  map[string]string{"name": r.Name, "error": sanitizeURL(err.Error())},
 		})
 		return nil, fmt.Errorf("discover: %w", err)
 	}
@@ -95,7 +95,7 @@ func SyncRepo(ctx context.Context, database *sql.DB, store *repo.Store, r *repo.
 				Action:    audit.ActionGitSyncValidationFailed,
 				Resource:  audit.Resource{Type: "git_repo", ID: r.ID},
 				TeamID:    teamID,
-				Metadata:  map[string]string{"name": r.Name, "file": f.RelPath, "error": parseErr.Error()},
+				Metadata:  map[string]string{"name": r.Name, "file": f.RelPath, "error": sanitizeURL(parseErr.Error())},
 			})
 			continue
 		}
@@ -108,7 +108,7 @@ func SyncRepo(ctx context.Context, database *sql.DB, store *repo.Store, r *repo.
 				Action:    audit.ActionGitSyncApplyFailed,
 				Resource:  audit.Resource{Type: "git_repo", ID: r.ID},
 				TeamID:    teamID,
-				Metadata:  map[string]string{"name": r.Name, "file": f.RelPath, "error": saveErr.Error()},
+				Metadata:  map[string]string{"name": r.Name, "file": f.RelPath, "error": sanitizeURL(saveErr.Error())},
 			})
 			continue
 		}
