@@ -254,19 +254,19 @@ func (s *Store) Delete(ctx context.Context, name string) error {
 	return nil
 }
 
-// validateURL rejects URLs that embed credentials inline (the `user:pass@host`
-// form). Operators must put credential material in a "git" secret and
-// reference it via the Credential field, never inline in the URL, so we
-// don't risk persisting or displaying tokens that live in git_repos.url.
+// validateURL rejects URLs that embed any userinfo (user or user:pass).
+// GitHub PATs are valid as a username in HTTPS URLs, so even a bare
+// "user@host" form must be rejected. Operators must store credential
+// material in a "git" secret and reference it via the Credential field,
+// never inline in the URL, so we don't risk persisting or displaying
+// tokens that live in git_repos.url.
 func validateURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil {
 		return fmt.Errorf("invalid url %q: %w", raw, err)
 	}
 	if u.User != nil {
-		if _, hasPassword := u.User.Password(); hasPassword {
-			return fmt.Errorf("repo url must not embed credentials — use the --credential flag instead")
-		}
+		return fmt.Errorf("repo url must not embed credentials — use the --credential flag instead")
 	}
 	return nil
 }

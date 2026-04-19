@@ -280,14 +280,16 @@ func TestStore_Create_RejectsURLWithPassword(t *testing.T) {
 	}
 }
 
-func TestStore_Create_AllowsURLWithUsernameOnly(t *testing.T) {
+func TestStore_Create_RejectsURLWithUsernameOnly(t *testing.T) {
 	store := newTestStore(t)
 	ctx := defaultCtx()
-	// GitHub HTTPS URLs often contain a username hint but no password — fine.
-	if _, err := store.Create(ctx, CreateParams{
-		Name: "ok", URL: "https://acme@github.com/acme/wf.git",
+	// GitHub PATs are valid in the username position for HTTPS — we still reject
+	// them so no credential material ever lives in git_repos.url.
+	_, err := store.Create(ctx, CreateParams{
+		Name: "leaky2", URL: "https://acme@github.com/acme/wf.git",
 		Branch: "main", Path: "/", PollInterval: "60s", Credential: "pat",
-	}); err != nil {
-		t.Errorf("username-only URL should be allowed: %v", err)
+	})
+	if err == nil {
+		t.Error("expected url-credential rejection for username-only URL")
 	}
 }
