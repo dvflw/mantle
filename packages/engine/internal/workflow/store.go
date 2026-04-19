@@ -188,6 +188,48 @@ func GetVersion(ctx context.Context, database *sql.DB, name string, version int)
 	return content, nil
 }
 
+// Disable marks the latest version of the named workflow as disabled.
+// Older versions are untouched — history is preserved. Returns nil
+// with no error if the workflow does not exist (callers may disable
+// speculatively during a GitOps prune pass).
+func Disable(ctx context.Context, database *sql.DB, name string) error {
+	teamID := auth.TeamIDFromContext(ctx)
+	_, err := database.ExecContext(ctx,
+		`UPDATE workflow_definitions
+		 SET disabled_at = NOW()
+		 WHERE id = (
+		   SELECT id FROM workflow_definitions
+		   WHERE name = $1 AND team_id = $2
+		   ORDER BY version DESC LIMIT 1
+		 )`,
+		name, teamID,
+	)
+	if err != nil {
+		return fmt.Errorf("disabling workflow %q: %w", name, err)
+	}
+	return nil
+}
+
+// Reenable clears disabled_at on the latest version of the named
+// workflow. Safe to call when already enabled — becomes a no-op.
+func Reenable(ctx context.Context, database *sql.DB, name string) error {
+	teamID := auth.TeamIDFromContext(ctx)
+	_, err := database.ExecContext(ctx,
+		`UPDATE workflow_definitions
+		 SET disabled_at = NULL
+		 WHERE id = (
+		   SELECT id FROM workflow_definitions
+		   WHERE name = $1 AND team_id = $2
+		   ORDER BY version DESC LIMIT 1
+		 )`,
+		name, teamID,
+	)
+	if err != nil {
+		return fmt.Errorf("reenabling workflow %q: %w", name, err)
+	}
+	return nil
+}
+
 func sha256Hash(data []byte) string {
 	h := sha256.Sum256(data)
 	return hex.EncodeToString(h[:])

@@ -11,6 +11,7 @@ import (
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
 	"github.com/dvflw/mantle/internal/dbdefaults"
+	"github.com/dvflw/mantle/internal/repo"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -73,6 +74,45 @@ func TestReposAdd_PersistsRepo(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Added repo \"acme\"") {
 		t.Errorf("unexpected stdout: %q", stdout.String())
+	}
+}
+
+func TestReposAdd_WebhookSecretStoredNotPrinted(t *testing.T) {
+	ctx, cfg := reposCtx(t)
+	root := NewRootCommand()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"repos", "add", "acme-webhook",
+		"--url", "https://github.com/acme/workflows.git",
+		"--credential", "github-pat",
+		"--webhook-secret", "topsecret",
+		"--database-url", cfg.Database.URL,
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	out := stdout.String()
+	// Secret must NOT appear in CLI output.
+	if strings.Contains(out, "topsecret") {
+		t.Errorf("webhook secret leaked to stdout: %q", out)
+	}
+	if !strings.Contains(out, "Added repo \"acme-webhook\"") {
+		t.Errorf("unexpected stdout: %q", out)
+	}
+	// Verify the secret was actually stored by reading it back via store.
+	conn, err := db.Open(cfg.Database)
+	if err != nil {
+		t.Fatalf("db.Open: %v", err)
+	}
+	defer conn.Close()
+	store := &repo.Store{DB: conn, Actor: "test"}
+	got, err := store.Get(ctx, "acme-webhook")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.WebhookSecret != "topsecret" {
+		t.Errorf("WebhookSecret: got %q, want %q", got.WebhookSecret, "topsecret")
 	}
 }
 
@@ -202,6 +242,105 @@ func TestReposRemove_DeletesRow(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Removed repo \"acme\"") {
 		t.Errorf("unexpected stdout: %q", stdout.String())
+	}
+}
+
+func TestReposUpdate_ReplacesMutableFields(t *testing.T) {
+	_, cfg := reposCtx(t)
+	// Seed.
+	{
+		root := NewRootCommand()
+		var seedStderr bytes.Buffer
+		root.SetErr(&seedStderr)
+		root.SetArgs([]string{"repos", "add", "acme",
+			"--url", "https://example.com/a.git",
+			"--credential", "pat-v1",
+			"--database-url", cfg.Database.URL,
+		})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("seed add: %v\nstderr: %s", err, seedStderr.String())
+		}
+	}
+
+	root := NewRootCommand()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"repos", "update", "acme",
+		"--branch", "release",
+		"--credential", "pat-v2",
+		"--auto-apply=false",
+		"--database-url", cfg.Database.URL,
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("update: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Updated repo \"acme\"") {
+		t.Errorf("unexpected stdout: %q", stdout.String())
+	}
+}
+
+func TestReposPlan_PrintsSummary(t *testing.T) {
+	_, cfg := reposCtx(t)
+	{
+		root := NewRootCommand()
+		var seedStderr bytes.Buffer
+		root.SetErr(&seedStderr)
+		root.SetArgs([]string{"repos", "add", "acme",
+			"--url", "https://example.com/a.git",
+			"--credential", "pat",
+			"--database-url", cfg.Database.URL,
+		})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("seed add: %v", err)
+		}
+	}
+	fixture := t.TempDir()
+	root := NewRootCommand()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"repos", "plan", "acme",
+		"--from-dir", fixture,
+		"--database-url", cfg.Database.URL,
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("plan: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Plan for acme") {
+		t.Errorf("expected 'Plan for acme' in stdout, got %q", stdout.String())
+	}
+}
+
+func TestReposApply_PrintsSummary(t *testing.T) {
+	_, cfg := reposCtx(t)
+	{
+		root := NewRootCommand()
+		var seedStderr bytes.Buffer
+		root.SetErr(&seedStderr)
+		root.SetArgs([]string{"repos", "add", "acme",
+			"--url", "https://example.com/a.git",
+			"--credential", "pat",
+			"--database-url", cfg.Database.URL,
+		})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("seed add: %v", err)
+		}
+	}
+	fixture := t.TempDir()
+	root := NewRootCommand()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"repos", "apply", "acme",
+		"--from-dir", fixture,
+		"--database-url", cfg.Database.URL,
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("apply: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Applied acme") {
+		t.Errorf("expected 'Applied acme' in stdout, got %q", stdout.String())
 	}
 }
 

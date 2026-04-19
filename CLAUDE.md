@@ -85,6 +85,9 @@ mantle repos list              # List registered repos with last-sync status
 mantle repos status <name>     # Show detailed repo status
 mantle repos remove <name> -y  # Unregister a repo (requires --yes)
 mantle repos sync <name>       # Force an immediate sync of a registered repo
+mantle repos plan <name>       # Dry-run: show what a sync would change
+mantle repos apply <name>      # Manual sync (for auto_apply:false repos)
+mantle repos update <name> --credential <cred>  # Update a repo's mutable fields
 mantle run <wf> --values f.yaml   # Run with a values file (inputs + env overrides)
 mantle run <wf> --env <name>      # Run against a stored named environment
 mantle plan <wf> --env <name>     # Plan; appends resolved inputs/env with source
@@ -115,7 +118,7 @@ git_sync:
 
 Credentials of type `git` accept `token` (for HTTPS), `ssh_key` (for SSH), and optional `username`. At least one of `token` or `ssh_key` is required.
 
-> Plan A shipped the repo registry and CLI. Plan B ships the sync engine — when `mantle serve` runs, it reconciles this block into `git_repos` rows and then polls each enabled `auto_apply: true` repo every `poll_interval`, applying any changed workflow YAML. Force an immediate sync with `mantle repos sync <name>`.
+> **GitOps is fully shipped.** `mantle serve` reconciles this block into `git_repos` rows, then polls each enabled `auto_apply: true` repo every `poll_interval`. Workflows removed from the repo are disabled automatically when `prune: true`. Force an on-demand sync via `mantle repos sync <name>`, preview with `mantle repos plan <name>`, or manually apply via `mantle repos apply <name>`. Register push webhooks from GitHub / GitLab / Gitea pointing at `POST /hooks/git/<repo-id>` with `webhook_secret` set on the repo to trigger immediate syncs — Mantle verifies the HMAC signature via `X-Hub-Signature-256`.
 
 ## License
 
