@@ -390,6 +390,45 @@ func TestStore_Delete_IgnoresMissingCloneDir(t *testing.T) {
 	}
 }
 
+func TestStore_Create_StoresWebhookSecret(t *testing.T) {
+	store := newTestStore(t)
+	ctx := defaultCtx()
+	r, err := store.Create(ctx, CreateParams{
+		Name: "with-secret", URL: "https://example.com/a.git", Branch: "main",
+		Path: "/", PollInterval: "60s", Credential: "pat",
+		WebhookSecret: "s3cr3t",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := store.GetByID(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.WebhookSecret != "s3cr3t" {
+		t.Errorf("WebhookSecret: got %q, want %q", got.WebhookSecret, "s3cr3t")
+	}
+}
+
+func TestStore_Create_NullWebhookSecretByDefault(t *testing.T) {
+	store := newTestStore(t)
+	ctx := defaultCtx()
+	r, err := store.Create(ctx, CreateParams{
+		Name: "no-secret", URL: "https://example.com/b.git", Branch: "main",
+		Path: "/", PollInterval: "60s", Credential: "pat",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := store.GetByID(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.WebhookSecret != "" {
+		t.Errorf("WebhookSecret should be empty, got %q", got.WebhookSecret)
+	}
+}
+
 func TestStore_UpdateSyncState_ClearsErrorWhenEmpty(t *testing.T) {
 	store := newTestStore(t)
 	ctx := defaultCtx()

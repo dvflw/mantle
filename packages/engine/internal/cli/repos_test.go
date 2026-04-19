@@ -11,6 +11,7 @@ import (
 	"github.com/dvflw/mantle/internal/config"
 	"github.com/dvflw/mantle/internal/db"
 	"github.com/dvflw/mantle/internal/dbdefaults"
+	"github.com/dvflw/mantle/internal/repo"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -73,6 +74,45 @@ func TestReposAdd_PersistsRepo(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Added repo \"acme\"") {
 		t.Errorf("unexpected stdout: %q", stdout.String())
+	}
+}
+
+func TestReposAdd_WebhookSecretStoredNotPrinted(t *testing.T) {
+	ctx, cfg := reposCtx(t)
+	root := NewRootCommand()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"repos", "add", "acme-webhook",
+		"--url", "https://github.com/acme/workflows.git",
+		"--credential", "github-pat",
+		"--webhook-secret", "topsecret",
+		"--database-url", cfg.Database.URL,
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	out := stdout.String()
+	// Secret must NOT appear in CLI output.
+	if strings.Contains(out, "topsecret") {
+		t.Errorf("webhook secret leaked to stdout: %q", out)
+	}
+	if !strings.Contains(out, "Added repo \"acme-webhook\"") {
+		t.Errorf("unexpected stdout: %q", out)
+	}
+	// Verify the secret was actually stored by reading it back via store.
+	conn, err := db.Open(cfg.Database)
+	if err != nil {
+		t.Fatalf("db.Open: %v", err)
+	}
+	defer conn.Close()
+	store := &repo.Store{DB: conn, Actor: "test"}
+	got, err := store.Get(ctx, "acme-webhook")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.WebhookSecret != "topsecret" {
+		t.Errorf("WebhookSecret: got %q, want %q", got.WebhookSecret, "topsecret")
 	}
 }
 

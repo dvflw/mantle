@@ -38,14 +38,15 @@ var ErrNotFound = errors.New("repo not found")
 // Fields with empty defaults (Branch, Path, PollInterval) are filled
 // in by the caller using the same defaults the `git_repos` table uses.
 type CreateParams struct {
-	Name         string
-	URL          string
-	Branch       string
-	Path         string
-	PollInterval string
-	Credential   string
-	AutoApply    bool
-	Prune        bool
+	Name          string
+	URL           string
+	Branch        string
+	Path          string
+	PollInterval  string
+	Credential    string
+	AutoApply     bool
+	Prune         bool
+	WebhookSecret string // empty → NULL (no HMAC verification)
 }
 
 // Create inserts a new repo row and emits a repo.added audit event.
@@ -68,6 +69,13 @@ func (s *Store) Create(ctx context.Context, p CreateParams) (*Repo, error) {
 
 	teamID := auth.TeamIDFromContext(ctx)
 
+	var webhookSecret any
+	if p.WebhookSecret != "" {
+		webhookSecret = p.WebhookSecret
+	} else {
+		webhookSecret = nil
+	}
+
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("starting transaction: %w", err)
@@ -75,19 +83,23 @@ func (s *Store) Create(ctx context.Context, p CreateParams) (*Repo, error) {
 	defer tx.Rollback() //nolint:errcheck
 
 	var r Repo
+	var returnedWebhookSecret sql.NullString
 	err = tx.QueryRowContext(ctx,
 		`INSERT INTO git_repos
-		 (team_id, name, url, branch, path, poll_interval, credential, auto_apply, prune)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		 (team_id, name, url, branch, path, poll_interval, credential, auto_apply, prune, webhook_secret)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		 RETURNING id, name, url, branch, path, poll_interval, credential,
-		           auto_apply, prune, enabled, created_at, updated_at`,
+		           auto_apply, prune, enabled, webhook_secret, created_at, updated_at`,
 		teamID, p.Name, p.URL, p.Branch, p.Path, p.PollInterval, p.Credential,
-		p.AutoApply, p.Prune,
+		p.AutoApply, p.Prune, webhookSecret,
 	).Scan(&r.ID, &r.Name, &r.URL, &r.Branch, &r.Path, &r.PollInterval,
-		&r.Credential, &r.AutoApply, &r.Prune, &r.Enabled,
+		&r.Credential, &r.AutoApply, &r.Prune, &r.Enabled, &returnedWebhookSecret,
 		&r.CreatedAt, &r.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("creating repo %q: %w", p.Name, err)
+	}
+	if returnedWebhookSecret.Valid {
+		r.WebhookSecret = returnedWebhookSecret.String
 	}
 
 	if err := audit.EmitTx(ctx, tx, audit.Event{
@@ -155,13 +167,14 @@ func (s *Store) List(ctx context.Context) ([]Repo, error) {
 // intentionally omitted — changing either requires delete + recreate so
 // that audit history clearly reflects the identity change.
 type UpdateParams struct {
-	Branch       string
-	Path         string
-	PollInterval string
-	Credential   string
-	AutoApply    bool
-	Prune        bool
-	Enabled      bool
+	Branch        string
+	Path          string
+	PollInterval  string
+	Credential    string
+	AutoApply     bool
+	Prune         bool
+	Enabled       bool
+	WebhookSecret string // empty → NULL (no HMAC verification)
 }
 
 // Update replaces the mutable fields of a repo by name and emits a
@@ -176,6 +189,13 @@ func (s *Store) Update(ctx context.Context, name string, p UpdateParams) (*Repo,
 
 	teamID := auth.TeamIDFromContext(ctx)
 
+	var updateWebhookSecret any
+	if p.WebhookSecret != "" {
+		updateWebhookSecret = p.WebhookSecret
+	} else {
+		updateWebhookSecret = nil
+	}
+
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("starting transaction: %w", err)
@@ -183,23 +203,28 @@ func (s *Store) Update(ctx context.Context, name string, p UpdateParams) (*Repo,
 	defer tx.Rollback() //nolint:errcheck
 
 	var r Repo
+	var updatedWebhookSecret sql.NullString
 	err = tx.QueryRowContext(ctx,
 		`UPDATE git_repos
 		 SET branch = $3, path = $4, poll_interval = $5, credential = $6,
-		     auto_apply = $7, prune = $8, enabled = $9, updated_at = NOW()
+		     auto_apply = $7, prune = $8, enabled = $9, webhook_secret = $10,
+		     updated_at = NOW()
 		 WHERE name = $1 AND team_id = $2
 		 RETURNING id, name, url, branch, path, poll_interval, credential,
-		           auto_apply, prune, enabled, created_at, updated_at`,
+		           auto_apply, prune, enabled, webhook_secret, created_at, updated_at`,
 		name, teamID, p.Branch, p.Path, p.PollInterval, p.Credential,
-		p.AutoApply, p.Prune, p.Enabled,
+		p.AutoApply, p.Prune, p.Enabled, updateWebhookSecret,
 	).Scan(&r.ID, &r.Name, &r.URL, &r.Branch, &r.Path, &r.PollInterval,
-		&r.Credential, &r.AutoApply, &r.Prune, &r.Enabled,
+		&r.Credential, &r.AutoApply, &r.Prune, &r.Enabled, &updatedWebhookSecret,
 		&r.CreatedAt, &r.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("%w: %q", ErrNotFound, name)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("updating repo %q: %w", name, err)
+	}
+	if updatedWebhookSecret.Valid {
+		r.WebhookSecret = updatedWebhookSecret.String
 	}
 
 	if err := audit.EmitTx(ctx, tx, audit.Event{

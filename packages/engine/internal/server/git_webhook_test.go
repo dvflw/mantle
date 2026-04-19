@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -132,5 +131,4 @@ func TestGitWebhook_UnknownRepo_404(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status: got %d, want 404", rec.Code)
 	}
-	fmt.Println("ok")
 }

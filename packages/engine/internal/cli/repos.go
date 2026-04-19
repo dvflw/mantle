@@ -23,9 +23,11 @@ func newReposCommand() *cobra.Command {
 		Short: "Manage GitOps workflow source repositories",
 		Long: `Registers GitOps source repositories whose workflow YAML definitions are
 synced into this Mantle instance. This command manages the registry; use
-` + "`mantle repos sync`" + ` for on-demand syncs, or start ` + "`mantle serve`" + ` to let the
-background poller run. Auth material is stored in a "git" credential type
-(` + "`mantle secrets create --type git`" + `) and referenced here by name.`,
+` + "`mantle repos sync`" + ` for ad-hoc syncs, ` + "`mantle repos plan`" + ` to preview changes
+without writing, ` + "`mantle repos apply`" + ` for manual control over auto_apply:false
+repos, or start ` + "`mantle serve`" + ` to let the background poller run. Auth material
+is stored in a "git" credential type (` + "`mantle secrets create --type git`" + `) and
+referenced here by name.`,
 	}
 	cmd.AddCommand(newReposAddCommand())
 	cmd.AddCommand(newReposUpdateCommand())
@@ -54,7 +56,7 @@ func newRepoStore(cmd *cobra.Command) (*repo.Store, func(), error) {
 }
 
 func newReposAddCommand() *cobra.Command {
-	var url, branch, path, pollInterval, credential string
+	var url, branch, path, pollInterval, credential, webhookSecret string
 	var autoApply, prune bool
 
 	cmd := &cobra.Command{
@@ -73,14 +75,15 @@ credential must already exist and be of type "git".`,
 			defer cleanup()
 
 			r, err := store.Create(cmd.Context(), repo.CreateParams{
-				Name:         args[0],
-				URL:          url,
-				Branch:       branch,
-				Path:         path,
-				PollInterval: pollInterval,
-				Credential:   credential,
-				AutoApply:    autoApply,
-				Prune:        prune,
+				Name:          args[0],
+				URL:           url,
+				Branch:        branch,
+				Path:          path,
+				PollInterval:  pollInterval,
+				Credential:    credential,
+				AutoApply:     autoApply,
+				Prune:         prune,
+				WebhookSecret: webhookSecret,
 			})
 			if err != nil {
 				return err
@@ -97,6 +100,8 @@ credential must already exist and be of type "git".`,
 	cmd.Flags().StringVar(&credential, "credential", "", "Git credential name (required)")
 	cmd.Flags().BoolVar(&autoApply, "auto-apply", true, "Automatically apply changes (false = plan-only)")
 	cmd.Flags().BoolVar(&prune, "prune", true, "When true, workflows deleted from the repo are disabled in Mantle")
+	cmd.Flags().StringVar(&webhookSecret, "webhook-secret", "",
+		"HMAC secret for push webhook verification (empty = no verification)")
 	_ = cmd.MarkFlagRequired("url")
 	_ = cmd.MarkFlagRequired("credential")
 
@@ -222,7 +227,7 @@ func newReposListCommand() *cobra.Command {
 }
 
 func newReposUpdateCommand() *cobra.Command {
-	var branch, path, pollInterval, credential string
+	var branch, path, pollInterval, credential, webhookSecret string
 	var autoApply, prune, enabled bool
 
 	cmd := &cobra.Command{
@@ -230,7 +235,9 @@ func newReposUpdateCommand() *cobra.Command {
 		Short: "Update a registered repo's mutable fields",
 		Long: `Replaces the branch, path, poll-interval, credential, auto-apply, prune,
 and enabled flags on an existing repo. URL and name are immutable — to
-change them, delete and recreate.`,
+change them, delete and recreate.
+All flags must be provided — update replaces the full set of mutable fields.
+Omitting a flag resets that field to its default value.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, cleanup, err := newRepoStore(cmd)
@@ -242,6 +249,7 @@ change them, delete and recreate.`,
 			r, err := store.Update(cmd.Context(), args[0], repo.UpdateParams{
 				Branch: branch, Path: path, PollInterval: pollInterval,
 				Credential: credential, AutoApply: autoApply, Prune: prune, Enabled: enabled,
+				WebhookSecret: webhookSecret,
 			})
 			if err != nil {
 				return err
@@ -257,6 +265,8 @@ change them, delete and recreate.`,
 	cmd.Flags().BoolVar(&autoApply, "auto-apply", true, "Automatically apply changes")
 	cmd.Flags().BoolVar(&prune, "prune", true, "Disable workflows deleted from the repo")
 	cmd.Flags().BoolVar(&enabled, "enabled", true, "Whether the repo is active")
+	cmd.Flags().StringVar(&webhookSecret, "webhook-secret", "",
+		"HMAC secret for push webhook verification (empty = no verification)")
 	_ = cmd.MarkFlagRequired("credential")
 	return cmd
 }
@@ -308,7 +318,7 @@ func newReposPlanCommand() *cobra.Command {
 		Short: "Dry-run: show what a sync would change",
 		Long: `Plans a sync without writing anything: pulls the repo, discovers files,
 and classifies each as "would apply" (new or changed) or "unchanged". Use
-before mantle repos apply to verify pending changes on auto_apply:false repos.`,
+before mantle repos apply to preview pending changes before they land.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, cleanup, err := newRepoStore(cmd)
@@ -343,10 +353,11 @@ func newReposApplyCommand() *cobra.Command {
 	var fromDir string
 	cmd := &cobra.Command{
 		Use:   "apply <name>",
-		Short: "Manually sync a repo (for auto_apply:false)",
-		Long: `Runs one sync pass for the named repo. Works regardless of auto_apply
-setting — useful when auto_apply is false and you want explicit control
-over when workflow YAML lands in Mantle.`,
+		Short: "Apply pending workflow changes from a repo",
+		Long: `Runs one sync pass for the named repo. Useful when auto_apply is false and you
+want explicit control over when workflow YAML lands in Mantle. Also works for
+auto_apply:true repos when you want to apply immediately without waiting for
+the next poll.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, cleanup, err := newRepoStore(cmd)
