@@ -10,7 +10,7 @@
 -- from the repo URL because multiple teams may share the same upstream.
 CREATE TABLE git_repos (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    team_id UUID NOT NULL REFERENCES teams(id) DEFAULT '00000000-0000-0000-0000-000000000001',
+    team_id UUID NOT NULL REFERENCES teams(id) ON DELETE RESTRICT DEFAULT '00000000-0000-0000-0000-000000000001',
     name TEXT NOT NULL,
     url TEXT NOT NULL,
     branch TEXT NOT NULL DEFAULT 'main',
