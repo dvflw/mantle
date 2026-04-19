@@ -165,15 +165,20 @@ func newServeCommand() *cobra.Command {
 					Store: &secret.Store{DB: database, Encryptor: encryptor},
 				}
 			}
+			gitDriver := &reposync.GoGitDriver{
+				BasePath: filepath.Join(artifactBase, "git"),
+				Auth:     reposync.NewAuthResolver(ctx, secretResolver),
+			}
 			poller := &reposync.Poller{
-				DB:    database,
-				Store: repoStore,
-				Driver: &reposync.GoGitDriver{
-					BasePath: filepath.Join(artifactBase, "git"),
-					Auth:     reposync.NewAuthResolver(ctx, secretResolver),
-				},
+				DB:     database,
+				Store:  repoStore,
+				Driver: gitDriver,
 			}
 			go poller.Run(ctx)
+
+			// Wire git webhook handler into the server.
+			srv.RepoStore = repoStore
+			srv.GitDriver = gitDriver
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Mantle server starting on %s\n", cfg.API.Address)
 			return srv.Start(ctx)
