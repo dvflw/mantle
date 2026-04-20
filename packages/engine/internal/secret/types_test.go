@@ -112,6 +112,10 @@ func TestGitCredentialType_ValidateRequiresTokenOrSSHKey(t *testing.T) {
 	if err := ct.Validate(map[string]string{"username": "git"}); err == nil {
 		t.Error("expected error when both token and ssh_key are empty")
 	}
+	// Explicitly empty strings for both — should also fail.
+	if err := ct.Validate(map[string]string{"token": "", "ssh_key": ""}); err == nil {
+		t.Error("expected error when token and ssh_key are both present but empty")
+	}
 	// token-only — should succeed.
 	if err := ct.Validate(map[string]string{"token": "ghp_xxx"}); err != nil {
 		t.Errorf("token-only: unexpected error %v", err)

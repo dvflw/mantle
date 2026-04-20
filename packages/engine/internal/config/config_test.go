@@ -502,4 +502,13 @@ git_sync:
 		r.Branch != "main" || r.Credential != "github-pat" || !r.AutoApply {
 		t.Errorf("parsed repo: %+v", r)
 	}
+	if r.Path != "/" {
+		t.Errorf("Path: got %q, want %q", r.Path, "/")
+	}
+	if r.PollInterval != "60s" {
+		t.Errorf("PollInterval: got %q, want %q", r.PollInterval, "60s")
+	}
+	if !r.Prune {
+		t.Errorf("Prune: got false, want true")
+	}
 }
