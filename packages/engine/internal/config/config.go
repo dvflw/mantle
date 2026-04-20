@@ -75,6 +75,9 @@ type StorageConfig struct {
 // entries into git_repos rows ships with the sync engine in a later
 // milestone.
 type GitSyncConfig struct {
+	// Repos is list-valued; Viper cannot bind individual list elements to env
+	// vars, so no BindEnv calls are present for git_sync.repos — this is
+	// intentional. Repos are configured exclusively via the config file.
 	Repos []GitSyncRepo `mapstructure:"repos"`
 }
 

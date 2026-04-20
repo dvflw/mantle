@@ -99,7 +99,12 @@ func newReposStatusCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status <name>",
 		Short: "Show detailed status for a registered repo",
-		Args:  cobra.ExactArgs(1),
+		Long: `Displays all persisted fields for a registered repository, including the
+URL, branch, polling interval, credential reference, enable state, and the
+outcome of the most recent sync attempt (SHA, timestamp, and any error).`,
+		Example: `  mantle repos status acme
+  mantle repos status staging --database-url postgres://localhost/mantle`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, cleanup, err := newRepoStore(cmd)
 			if err != nil {
@@ -169,7 +174,12 @@ func newReposListCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List all registered GitOps repos",
-		Args:  cobra.NoArgs,
+		Long: `Prints a table of all repositories registered for the current team, ordered
+by name. Columns include the repo URL, target branch, auto-apply flag, enable
+state, and timestamp of the last successful sync.`,
+		Example: `  mantle repos list
+  mantle repos list --database-url postgres://localhost/mantle`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, cleanup, err := newRepoStore(cmd)
 			if err != nil {
