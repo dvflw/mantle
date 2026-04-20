@@ -9,13 +9,13 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/dvflw/mantle/internal/budget"
 	"github.com/dvflw/mantle/internal/dbdefaults"
 	"github.com/dvflw/mantle/internal/netutil"
-	"github.com/dvflw/mantle/internal/repo"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -363,19 +363,17 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	// it only needs to catch the "user@host" form that people may put in a
 	// config file. Full store-level validation runs again at registration time.
 	for i, r := range cfg.GitSync.Repos {
-		if err := repo.ValidateName(r.Name); err != nil {
+		if err := validateGitSyncName(r.Name); err != nil {
 			return nil, fmt.Errorf("git_sync.repos[%d]: %w", i, err)
 		}
 		if r.URL == "" {
 			return nil, fmt.Errorf("git_sync.repos[%d] (%q): url is required", i, r.Name)
 		}
-		if parsed, err := url.Parse(r.URL); err != nil {
-			return nil, fmt.Errorf("git_sync.repos[%d] (%q): invalid url: %w", i, r.Name, err)
-		} else if parsed.User != nil {
-			return nil, fmt.Errorf("git_sync.repos[%d] (%q): url must not embed credentials", i, r.Name)
+		if err := validateGitSyncURL(r.URL); err != nil {
+			return nil, fmt.Errorf("git_sync.repos[%d] (%q): %w", i, r.Name, err)
 		}
 		if r.PollInterval != "" {
-			if err := repo.ValidatePollInterval(r.PollInterval); err != nil {
+			if err := validateGitSyncPollInterval(r.PollInterval); err != nil {
 				return nil, fmt.Errorf("git_sync.repos[%d] (%q): %w", i, r.Name, err)
 			}
 		}
@@ -414,4 +412,53 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// gitSyncNamePattern enforces DNS-label-like names: lowercase alphanumerics,
+// underscores, and hyphens, starting and ending with an alphanumeric.
+// This is a local copy of the pattern in packages/engine/internal/repo/types.go
+// kept here to avoid a config → repo → auth test-time import cycle.
+var gitSyncNamePattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9_-]*[a-z0-9])?$`)
+
+// validateGitSyncName is a local copy of repo.ValidateName to avoid a
+// config → repo → auth test-time import cycle. Keep in sync with the
+// canonical version in packages/engine/internal/repo/types.go.
+func validateGitSyncName(name string) error {
+	if name == "" {
+		return fmt.Errorf("repo name is required")
+	}
+	if len(name) > 63 {
+		return fmt.Errorf("invalid repo name %q: length %d exceeds 63-char cap", name, len(name))
+	}
+	if !gitSyncNamePattern.MatchString(name) {
+		return fmt.Errorf("invalid repo name %q: must match %s", name, gitSyncNamePattern.String())
+	}
+	return nil
+}
+
+// validateGitSyncPollInterval is a local copy of repo.ValidatePollInterval.
+// See validateGitSyncName for the rationale.
+func validateGitSyncPollInterval(interval string) error {
+	d, err := time.ParseDuration(interval)
+	if err != nil {
+		return fmt.Errorf("invalid poll_interval %q: %w", interval, err)
+	}
+	if d < 10*time.Second {
+		return fmt.Errorf("poll_interval %q below 10s minimum", interval)
+	}
+	return nil
+}
+
+// validateGitSyncURL rejects any URL that embeds credentials in the
+// userinfo component (https://user@host or https://user:pass@host). All
+// auth material must flow through the Credential reference.
+func validateGitSyncURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid url %q: %w", raw, err)
+	}
+	if u.User != nil {
+		return fmt.Errorf("repo url must not embed credentials — use the Credential field instead")
+	}
+	return nil
 }
