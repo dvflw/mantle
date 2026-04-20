@@ -30,7 +30,7 @@ CREATE TABLE git_repos (
 );
 
 CREATE INDEX idx_git_repos_team ON git_repos(team_id);
-CREATE INDEX idx_git_repos_enabled ON git_repos(enabled) WHERE enabled = TRUE;
+CREATE INDEX idx_git_repos_team_enabled ON git_repos(team_id, enabled) WHERE enabled = TRUE;
 
 -- +goose Down
 DROP TABLE IF EXISTS git_repos;
