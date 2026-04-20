@@ -17,8 +17,9 @@ import (
 const maxRepoNameLength = 63
 
 // validRepoNamePattern enforces DNS-label-like names: lowercase
-// alphanumerics, underscores, and hyphens, starting with an alphanumeric.
-var validRepoNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
+// alphanumerics, underscores, and hyphens, starting and ending with an
+// alphanumeric. Single-character names (pure alnum) are allowed.
+var validRepoNamePattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9_-]*[a-z0-9])?$`)
 
 // Repo represents a registered git repository that Mantle pulls workflow
 // definitions from.
