@@ -57,6 +57,23 @@ func reposCtx(t *testing.T) (context.Context, *config.Config) {
 	return ctx, cfg
 }
 
+// seedRepo registers a single repo via the add command, failing the test on
+// error. Shared by tests that need at least one row in git_repos.
+func seedRepo(t *testing.T, cfg *config.Config, name string) {
+	t.Helper()
+	root := NewRootCommand()
+	var seedStderr bytes.Buffer
+	root.SetErr(&seedStderr)
+	root.SetArgs([]string{"repos", "add", name,
+		"--url", "https://example.com/a.git",
+		"--credential", "pat",
+		"--database-url", cfg.Database.URL,
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("seedRepo(%q): %v\nstderr: %s", name, err, seedStderr.String())
+	}
+}
+
 func TestReposAdd_PersistsRepo(t *testing.T) {
 	_, cfg := reposCtx(t)
 	root := NewRootCommand()
@@ -78,20 +95,8 @@ func TestReposAdd_PersistsRepo(t *testing.T) {
 
 func TestReposList_ShowsRegisteredRepos(t *testing.T) {
 	_, cfg := reposCtx(t)
-	// Seed one row by calling the add command.
-	{
-		root := NewRootCommand()
-		var seedStderr bytes.Buffer
-		root.SetErr(&seedStderr)
-		root.SetArgs([]string{"repos", "add", "acme",
-			"--url", "https://example.com/a.git",
-			"--credential", "pat",
-			"--database-url", cfg.Database.URL,
-		})
-		if err := root.Execute(); err != nil {
-			t.Fatalf("seed add: %v\nstderr: %s", err, seedStderr.String())
-		}
-	}
+	seedRepo(t, cfg, "acme")
+
 	root := NewRootCommand()
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
@@ -116,26 +121,15 @@ func TestReposList_EmptyState(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("list: %v\nstderr: %s", err, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "(no repos)") {
+	if strings.TrimSpace(stdout.String()) != "(no repos)" {
 		t.Errorf("empty list output: %q", stdout.String())
 	}
 }
 
 func TestReposStatus_ShowsDetails(t *testing.T) {
 	_, cfg := reposCtx(t)
-	{
-		root := NewRootCommand()
-		var seedStderr bytes.Buffer
-		root.SetErr(&seedStderr)
-		root.SetArgs([]string{"repos", "add", "acme",
-			"--url", "https://example.com/a.git",
-			"--credential", "pat",
-			"--database-url", cfg.Database.URL,
-		})
-		if err := root.Execute(); err != nil {
-			t.Fatalf("seed add: %v\nstderr: %s", err, seedStderr.String())
-		}
-	}
+	seedRepo(t, cfg, "acme")
+
 	root := NewRootCommand()
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
@@ -154,19 +148,8 @@ func TestReposStatus_ShowsDetails(t *testing.T) {
 
 func TestReposRemove_RequiresYesFlag(t *testing.T) {
 	_, cfg := reposCtx(t)
-	{
-		root := NewRootCommand()
-		var seedStderr bytes.Buffer
-		root.SetErr(&seedStderr)
-		root.SetArgs([]string{"repos", "add", "acme",
-			"--url", "https://example.com/a.git",
-			"--credential", "pat",
-			"--database-url", cfg.Database.URL,
-		})
-		if err := root.Execute(); err != nil {
-			t.Fatalf("seed add: %v\nstderr: %s", err, seedStderr.String())
-		}
-	}
+	seedRepo(t, cfg, "acme")
+
 	root := NewRootCommand()
 	var stderr bytes.Buffer
 	root.SetErr(&stderr)
@@ -179,19 +162,8 @@ func TestReposRemove_RequiresYesFlag(t *testing.T) {
 
 func TestReposRemove_DeletesRow(t *testing.T) {
 	_, cfg := reposCtx(t)
-	{
-		root := NewRootCommand()
-		var seedStderr bytes.Buffer
-		root.SetErr(&seedStderr)
-		root.SetArgs([]string{"repos", "add", "acme",
-			"--url", "https://example.com/a.git",
-			"--credential", "pat",
-			"--database-url", cfg.Database.URL,
-		})
-		if err := root.Execute(); err != nil {
-			t.Fatalf("seed add: %v\nstderr: %s", err, seedStderr.String())
-		}
-	}
+	seedRepo(t, cfg, "acme")
+
 	root := NewRootCommand()
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
