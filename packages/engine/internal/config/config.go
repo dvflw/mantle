@@ -372,6 +372,9 @@ func Load(cmd *cobra.Command) (*Config, error) {
 		if err := validateGitSyncURL(r.URL); err != nil {
 			return nil, fmt.Errorf("git_sync.repos[%d] (%q): %w", i, r.Name, err)
 		}
+		if r.Credential == "" {
+			return nil, fmt.Errorf("git_sync.repos[%d] (%q): credential is required", i, r.Name)
+		}
 		if r.PollInterval != "" {
 			if err := validateGitSyncPollInterval(r.PollInterval); err != nil {
 				return nil, fmt.Errorf("git_sync.repos[%d] (%q): %w", i, r.Name, err)
@@ -420,6 +423,11 @@ func Load(cmd *cobra.Command) (*Config, error) {
 // kept here to avoid a config → repo → auth test-time import cycle.
 var gitSyncNamePattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9_-]*[a-z0-9])?$`)
 
+// scpStyleSSHPattern matches scp-style SSH git URLs (e.g. git@github.com:user/repo.git).
+// url.Parse does not recognise these as having a scheme or host, so they need a
+// separate check after the standard parse-based validation.
+var scpStyleSSHPattern = regexp.MustCompile(`^[^@\s]+@[^:\s]+:.+$`)
+
 // validateGitSyncName is a local copy of repo.ValidateName to avoid a
 // config → repo → auth test-time import cycle. Keep in sync with the
 // canonical version in packages/engine/internal/repo/types.go.
@@ -449,9 +457,11 @@ func validateGitSyncPollInterval(interval string) error {
 	return nil
 }
 
-// validateGitSyncURL rejects any URL that embeds credentials in the
-// userinfo component (https://user@host or https://user:pass@host). All
-// auth material must flow through the Credential reference.
+// validateGitSyncURL rejects URLs that embed credentials in the userinfo
+// component (https://user@host or https://user:pass@host) and also rejects
+// strings that are neither a well-formed URL (scheme + host) nor a valid
+// scp-style SSH reference (user@host:path). All auth material must flow
+// through the Credential reference.
 func validateGitSyncURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -459,6 +469,11 @@ func validateGitSyncURL(raw string) error {
 	}
 	if u.User != nil {
 		return fmt.Errorf("repo url must not embed credentials — use the Credential field instead")
+	}
+	if u.Scheme == "" || u.Host == "" {
+		if !scpStyleSSHPattern.MatchString(raw) {
+			return fmt.Errorf("invalid url %q: must have scheme and host (e.g. https://host/path) or use scp-style SSH format (git@host:path)", raw)
+		}
 	}
 	return nil
 }

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"os"
 	"strings"
 	"testing"
@@ -17,10 +16,11 @@ import (
 )
 
 // reposCtx spins up a Postgres container, runs migrations, and returns a
-// context with the DatabaseConfig attached so `newRepoStore` can load it.
-func reposCtx(t *testing.T) (context.Context, *config.Config) {
+// *config.Config with the DatabaseConfig attached. Callers pass the database
+// URL via --database-url flags; the config is used only to read that URL.
+func reposCtx(t *testing.T) *config.Config {
 	t.Helper()
-	bg := context.Background()
+	bg := t.Context()
 	pgContainer, err := postgres.Run(bg,
 		dbdefaults.PostgresImage,
 		postgres.WithDatabase(dbdefaults.TestDatabase),
@@ -52,9 +52,7 @@ func reposCtx(t *testing.T) (context.Context, *config.Config) {
 	if err := db.Migrate(bg, conn); err != nil {
 		t.Fatalf("db.Migrate: %v", err)
 	}
-	cfg := &config.Config{Database: dbCfg}
-	ctx := config.WithContext(bg, cfg)
-	return ctx, cfg
+	return &config.Config{Database: dbCfg}
 }
 
 // seedRepo registers a single repo via the add command, failing the test on
@@ -75,7 +73,7 @@ func seedRepo(t *testing.T, cfg *config.Config, name string) {
 }
 
 func TestReposAdd_PersistsRepo(t *testing.T) {
-	_, cfg := reposCtx(t)
+	cfg := reposCtx(t)
 	root := NewRootCommand()
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
@@ -94,7 +92,7 @@ func TestReposAdd_PersistsRepo(t *testing.T) {
 }
 
 func TestReposList_ShowsRegisteredRepos(t *testing.T) {
-	_, cfg := reposCtx(t)
+	cfg := reposCtx(t)
 	seedRepo(t, cfg, "acme")
 
 	root := NewRootCommand()
@@ -112,7 +110,7 @@ func TestReposList_ShowsRegisteredRepos(t *testing.T) {
 }
 
 func TestReposList_EmptyState(t *testing.T) {
-	_, cfg := reposCtx(t)
+	cfg := reposCtx(t)
 	root := NewRootCommand()
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
@@ -127,7 +125,7 @@ func TestReposList_EmptyState(t *testing.T) {
 }
 
 func TestReposStatus_ShowsDetails(t *testing.T) {
-	_, cfg := reposCtx(t)
+	cfg := reposCtx(t)
 	seedRepo(t, cfg, "acme")
 
 	root := NewRootCommand()
@@ -147,7 +145,7 @@ func TestReposStatus_ShowsDetails(t *testing.T) {
 }
 
 func TestReposRemove_RequiresYesFlag(t *testing.T) {
-	_, cfg := reposCtx(t)
+	cfg := reposCtx(t)
 	seedRepo(t, cfg, "acme")
 
 	root := NewRootCommand()
@@ -161,7 +159,7 @@ func TestReposRemove_RequiresYesFlag(t *testing.T) {
 }
 
 func TestReposRemove_DeletesRow(t *testing.T) {
-	_, cfg := reposCtx(t)
+	cfg := reposCtx(t)
 	seedRepo(t, cfg, "acme")
 
 	root := NewRootCommand()
