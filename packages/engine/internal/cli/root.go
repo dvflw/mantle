@@ -82,6 +82,7 @@ Full documentation: https://mantle.dvflw.co/docs`,
 		newLibraryCommand(),
 		newCleanupCommand(),
 		newBudgetCommand(),
+		newReposCommand(),
 	)
 
 	// Info.

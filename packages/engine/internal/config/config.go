@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -33,6 +34,7 @@ type Config struct {
 	GCP        GCPConfig        `mapstructure:"gcp"`
 	Azure      AzureConfig      `mapstructure:"azure"`
 	Storage    StorageConfig    `mapstructure:"storage"`
+	GitSync    GitSyncConfig    `mapstructure:"git_sync"`
 	Env        map[string]string `mapstructure:"env"`
 }
 
@@ -65,6 +67,32 @@ type StorageConfig struct {
 	Prefix    string `mapstructure:"prefix"`    // Key prefix (for type: s3)
 	Path      string `mapstructure:"path"`      // Local directory (for type: filesystem)
 	Retention string `mapstructure:"retention"` // Duration string, e.g. "24h". Empty = no auto-cleanup.
+}
+
+// GitSyncConfig configures GitOps-style workflow sync (issue #16). Plan A
+// parses and exposes this block so operators can version their repo
+// registry in mantle.yaml; the startup reconciliation that materializes
+// entries into git_repos rows ships with the sync engine in a later
+// milestone.
+type GitSyncConfig struct {
+	// Repos is list-valued; Viper cannot bind individual list elements to env
+	// vars, so no BindEnv calls are present for git_sync.repos — this is
+	// intentional. Repos are configured exclusively via the config file.
+	Repos []GitSyncRepo `mapstructure:"repos"`
+}
+
+// GitSyncRepo mirrors the relevant fields of the git_repos table for
+// config-driven registration. Fields default to the same values as the
+// DB when omitted.
+type GitSyncRepo struct {
+	Name         string `mapstructure:"name"`
+	URL          string `mapstructure:"url"`
+	Branch       string `mapstructure:"branch"`
+	Path         string `mapstructure:"path"`
+	PollInterval string `mapstructure:"poll_interval"`
+	Credential   string `mapstructure:"credential"`
+	AutoApply    bool   `mapstructure:"auto_apply"`
+	Prune        bool   `mapstructure:"prune"`
 }
 
 // AuthConfig holds authentication configuration.
@@ -329,6 +357,31 @@ func Load(cmd *cobra.Command) (*Config, error) {
 		cfg.Env = normalized
 	}
 
+	// Validate git_sync.repos entries. Each repo must have a valid name,
+	// a valid poll_interval, and a URL free of embedded credentials.
+	// The URL check is intentionally a subset of the store's validateURL:
+	// it only needs to catch the "user@host" form that people may put in a
+	// config file. Full store-level validation runs again at registration time.
+	for i, r := range cfg.GitSync.Repos {
+		if err := validateGitSyncName(r.Name); err != nil {
+			return nil, fmt.Errorf("git_sync.repos[%d]: %w", i, err)
+		}
+		if r.URL == "" {
+			return nil, fmt.Errorf("git_sync.repos[%d] (%q): url is required", i, r.Name)
+		}
+		if err := validateGitSyncURL(r.URL); err != nil {
+			return nil, fmt.Errorf("git_sync.repos[%d] (%q): %w", i, r.Name, err)
+		}
+		if r.Credential == "" {
+			return nil, fmt.Errorf("git_sync.repos[%d] (%q): credential is required", i, r.Name)
+		}
+		if r.PollInterval != "" {
+			if err := validateGitSyncPollInterval(r.PollInterval); err != nil {
+				return nil, fmt.Errorf("git_sync.repos[%d] (%q): %w", i, r.Name, err)
+			}
+		}
+	}
+
 	// Validate budget reset_day range.
 	if cfg.Engine.Budget.ResetDay < 1 || cfg.Engine.Budget.ResetDay > 28 {
 		if cfg.Engine.Budget.ResetMode == budget.ResetModeRolling {
@@ -362,4 +415,65 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// gitSyncNamePattern enforces DNS-label-like names: lowercase alphanumerics,
+// underscores, and hyphens, starting and ending with an alphanumeric.
+// This is a local copy of the pattern in packages/engine/internal/repo/types.go
+// kept here to avoid a config → repo → auth test-time import cycle.
+var gitSyncNamePattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9_-]*[a-z0-9])?$`)
+
+// scpStyleSSHPattern matches scp-style SSH git URLs (e.g. git@github.com:user/repo.git).
+// url.Parse does not recognise these as having a scheme or host, so they need a
+// separate check after the standard parse-based validation.
+var scpStyleSSHPattern = regexp.MustCompile(`^[^@\s]+@[^:\s]+:.+$`)
+
+// validateGitSyncName is a local copy of repo.ValidateName to avoid a
+// config → repo → auth test-time import cycle. Keep in sync with the
+// canonical version in packages/engine/internal/repo/types.go.
+func validateGitSyncName(name string) error {
+	if name == "" {
+		return fmt.Errorf("repo name is required")
+	}
+	if len(name) > 63 {
+		return fmt.Errorf("invalid repo name %q: length %d exceeds 63-char cap", name, len(name))
+	}
+	if !gitSyncNamePattern.MatchString(name) {
+		return fmt.Errorf("invalid repo name %q: must match %s", name, gitSyncNamePattern.String())
+	}
+	return nil
+}
+
+// validateGitSyncPollInterval is a local copy of repo.ValidatePollInterval.
+// See validateGitSyncName for the rationale.
+func validateGitSyncPollInterval(interval string) error {
+	d, err := time.ParseDuration(interval)
+	if err != nil {
+		return fmt.Errorf("invalid poll_interval %q: %w", interval, err)
+	}
+	if d < 10*time.Second {
+		return fmt.Errorf("poll_interval %q below 10s minimum", interval)
+	}
+	return nil
+}
+
+// validateGitSyncURL rejects URLs that embed credentials in the userinfo
+// component (https://user@host or https://user:pass@host) and also rejects
+// strings that are neither a well-formed URL (scheme + host) nor a valid
+// scp-style SSH reference (user@host:path). All auth material must flow
+// through the Credential reference.
+func validateGitSyncURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid url %q: %w", raw, err)
+	}
+	if u.User != nil {
+		return fmt.Errorf("repo url must not embed credentials — use the Credential field instead")
+	}
+	if u.Scheme == "" || u.Host == "" {
+		if !scpStyleSSHPattern.MatchString(raw) {
+			return fmt.Errorf("invalid url %q: must have scheme and host (e.g. https://host/path) or use scp-style SSH format (git@host:path)", raw)
+		}
+	}
+	return nil
 }

@@ -467,3 +467,129 @@ log:
 
 	assert.Empty(t, cfg.Env)
 }
+
+func TestLoadConfig_GitSyncRepos(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mantle.yaml")
+	yaml := `version: 1
+database:
+  url: postgres://localhost/mantle
+git_sync:
+  repos:
+    - name: acme
+      url: https://github.com/acme/workflows.git
+      branch: main
+      path: /
+      poll_interval: 60s
+      credential: github-pat
+      auto_apply: true
+      prune: true
+`
+	if err := os.WriteFile(path, []byte(yaml), 0600); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+	cmd := newTestCommand()
+	_ = cmd.Flags().Set("config", path)
+	cfg, err := Load(cmd)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.GitSync.Repos) != 1 {
+		t.Fatalf("got %d repos, want 1", len(cfg.GitSync.Repos))
+	}
+	r := cfg.GitSync.Repos[0]
+	if r.Name != "acme" || r.URL != "https://github.com/acme/workflows.git" ||
+		r.Branch != "main" || r.Credential != "github-pat" || !r.AutoApply {
+		t.Errorf("parsed repo: %+v", r)
+	}
+	if r.Path != "/" {
+		t.Errorf("Path: got %q, want %q", r.Path, "/")
+	}
+	if r.PollInterval != "60s" {
+		t.Errorf("PollInterval: got %q, want %q", r.PollInterval, "60s")
+	}
+	if !r.Prune {
+		t.Errorf("Prune: got false, want true")
+	}
+}
+
+func TestLoad_GitSyncRepos_Validation(t *testing.T) {
+	base := `version: 1
+database:
+  url: postgres://localhost/mantle
+git_sync:
+  repos:
+`
+	cases := []struct {
+		name    string
+		repo    string
+		wantErr string
+	}{
+		{
+			name: "invalid name",
+			repo: `    - name: "Bad Name!"
+      url: https://example.com/a.git
+      credential: pat
+`,
+			wantErr: "invalid repo name",
+		},
+		{
+			name: "missing url",
+			repo: `    - name: acme
+      credential: pat
+`,
+			wantErr: "url is required",
+		},
+		{
+			name: "url with embedded credentials",
+			repo: `    - name: acme
+      url: https://user:pass@github.com/a.git
+      credential: pat
+`,
+			wantErr: "must not embed credentials",
+		},
+		{
+			name: "url with no scheme or host",
+			repo: `    - name: acme
+      url: "not a url"
+      credential: pat
+`,
+			wantErr: "must have scheme and host",
+		},
+		{
+			name: "missing credential",
+			repo: `    - name: acme
+      url: https://github.com/a.git
+`,
+			wantErr: "credential is required",
+		},
+		{
+			name: "poll_interval below minimum",
+			repo: `    - name: acme
+      url: https://github.com/a.git
+      credential: pat
+      poll_interval: 5s
+`,
+			wantErr: "below 10s minimum",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "mantle.yaml")
+			if err := os.WriteFile(path, []byte(base+tc.repo), 0600); err != nil {
+				t.Fatalf("writing config: %v", err)
+			}
+			cmd := newTestCommand()
+			_ = cmd.Flags().Set("config", path)
+			_, err := Load(cmd)
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("error %q does not contain %q", err.Error(), tc.wantErr)
+			}
+		})
+	}
+}

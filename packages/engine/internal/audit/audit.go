@@ -61,6 +61,11 @@ const (
 	ActionEnvironmentUpdated  Action = "environment.updated"
 	ActionEnvironmentDeleted  Action = "environment.deleted"
 	ActionEnvironmentRevealed Action = "environment.revealed"
+
+	// Git repo operations.
+	ActionRepoAdded   Action = "repo.created"
+	ActionRepoUpdated Action = "repo.updated"
+	ActionRepoRemoved Action = "repo.deleted"
 )
 
 // Resource identifies the target of an audit event.
