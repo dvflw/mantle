@@ -3,7 +3,9 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -15,6 +17,8 @@ import (
 	"github.com/dvflw/mantle/internal/db"
 	"github.com/dvflw/mantle/internal/engine"
 	"github.com/dvflw/mantle/internal/logging"
+	"github.com/dvflw/mantle/internal/repo"
+	reposync "github.com/dvflw/mantle/internal/repo/sync"
 	"github.com/dvflw/mantle/internal/secret"
 	"github.com/dvflw/mantle/internal/server"
 	"github.com/spf13/cobra"
@@ -138,6 +142,38 @@ func newServeCommand() *cobra.Command {
 			// Handle SIGTERM and SIGINT for graceful shutdown.
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
 			defer stop()
+
+			// Reconcile git_sync repos from config into the DB. Errors are fatal
+			// at startup — a config mismatch must be fixed before the server runs.
+			repoStore := &repo.Store{DB: database, Actor: "server"}
+			if err := reposync.Reconcile(ctx, repoStore, cfg.GitSync.Repos); err != nil {
+				return fmt.Errorf("reconciling git_sync repos: %w", err)
+			}
+
+			// Launch the git sync poller. It exits cleanly when ctx is cancelled.
+			artifactBase := cfg.Storage.Path
+			if artifactBase == "" {
+				artifactBase = filepath.Join(os.TempDir(), "mantle-artifacts")
+			}
+			var secretResolver *secret.Resolver
+			if cfg.Encryption.Key != "" {
+				encryptor, encErr := secret.NewEncryptor(cfg.Encryption.Key)
+				if encErr != nil {
+					return fmt.Errorf("configuring encryption for git sync: %w", encErr)
+				}
+				secretResolver = &secret.Resolver{
+					Store: &secret.Store{DB: database, Encryptor: encryptor},
+				}
+			}
+			poller := &reposync.Poller{
+				DB:    database,
+				Store: repoStore,
+				Driver: &reposync.GoGitDriver{
+					BasePath: filepath.Join(artifactBase, "git"),
+					Auth:     reposync.NewAuthResolver(ctx, secretResolver),
+				},
+			}
+			go poller.Run(ctx)
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Mantle server starting on %s\n", cfg.API.Address)
 			return srv.Start(ctx)
