@@ -30,7 +30,7 @@ func (c *NotionCreatePageConnector) apiURL(path string) string {
 }
 
 func (c *NotionCreatePageConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
-	token, err := extractNotionToken(params)
+	token, err := extractBearerToken(params)
 	if err != nil {
 		return nil, fmt.Errorf("notion/create_page: %w", err)
 	}
@@ -141,7 +141,7 @@ func (c *NotionQueryDatabaseConnector) apiURL(path string) string {
 }
 
 func (c *NotionQueryDatabaseConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
-	token, err := extractNotionToken(params)
+	token, err := extractBearerToken(params)
 	if err != nil {
 		return nil, fmt.Errorf("notion/query_database: %w", err)
 	}
@@ -212,29 +212,4 @@ func (c *NotionQueryDatabaseConnector) Execute(ctx context.Context, params map[s
 		out["next_cursor"] = result.NextCursor
 	}
 	return out, nil
-}
-
-// extractNotionToken pulls the Notion integration token from _credential.
-// Accepts both map[string]string (engine-injected) and map[string]any
-// (JSON/CEL-deserialised) credential shapes.
-func extractNotionToken(params map[string]any) (string, error) {
-	raw, ok := params["_credential"]
-	if !ok || raw == nil {
-		return "", fmt.Errorf("credential is required")
-	}
-	delete(params, "_credential")
-
-	var token string
-	switch cred := raw.(type) {
-	case map[string]string:
-		token = cred["token"]
-	case map[string]any:
-		token, _ = cred["token"].(string)
-	default:
-		return "", fmt.Errorf("credential is required")
-	}
-	if token == "" {
-		return "", fmt.Errorf("credential must contain a 'token' field")
-	}
-	return token, nil
 }
