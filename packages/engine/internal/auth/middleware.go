@@ -76,7 +76,9 @@ func AuthMiddleware(store *Store, oidcValidator TokenValidator, next http.Handle
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Skip auth for health checks only. /metrics requires authentication.
+		// Skip auth for health checks only. /metrics is intentionally protected —
+		// path labels expose workflow names. Configure Prometheus with a bearer
+		// token via serviceMonitor.bearerTokenSecret in the Helm values.
 		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
 			next.ServeHTTP(w, r)
 			return

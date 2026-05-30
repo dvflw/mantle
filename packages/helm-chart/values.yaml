@@ -37,6 +37,8 @@ resources:
 
 podSecurityContext:
   runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
 
 securityContext:
   readOnlyRootFilesystem: true
@@ -85,4 +87,9 @@ serviceMonitor:
   enabled: false
   interval: 30s
   labels: {}
+  # bearerTokenSecret: populate with a Kubernetes Secret that holds a Mantle
+  # API key so Prometheus can authenticate against /metrics. Example:
+  #   bearerTokenSecret:
+  #     name: mantle-prometheus-token
+  #     key: token
   bearerTokenSecret: {}
