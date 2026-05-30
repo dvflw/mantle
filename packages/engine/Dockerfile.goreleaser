@@ -1,8 +1,8 @@
-FROM alpine:3.21
+FROM alpine:3.21@sha256:1f390db9d9746cc317e16a98a8be2854c599abcbf04d45b6320b040e72034e33
 
 RUN apk add --no-cache ca-certificates tzdata \
     && addgroup -S mantle \
-    && adduser -S -G mantle -h /home/mantle -s /bin/sh mantle
+    && adduser -S -u 10001 -G mantle -h /home/mantle -s /bin/sh mantle
 
 ARG TARGETPLATFORM
 COPY $TARGETPLATFORM/mantle /usr/local/bin/mantle
@@ -15,7 +15,7 @@ EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
     CMD wget -qO- http://localhost:8080/healthz || exit 1
 
-USER mantle
+USER 10001:10001
 WORKDIR /home/mantle
 
 ENTRYPOINT ["mantle"]

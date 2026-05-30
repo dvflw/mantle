@@ -137,8 +137,17 @@ func TestEmailReceive_FetchesUnseenMessages(t *testing.T) {
 		"\r\n" +
 		"This is the body of the test email.\r\n")
 
-	if err := smtp.SendMail(smtpAddr, nil, "sender@example.com", []string{username}, msg); err != nil {
-		t.Fatalf("failed to send test email: %v", err)
+	var smtpErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		smtpErr = smtp.SendMail(smtpAddr, nil, "sender@example.com", []string{username}, msg)
+		if smtpErr == nil {
+			break
+		}
+		t.Logf("smtp attempt %d: %v (retrying in 500ms)", attempt, smtpErr)
+		time.Sleep(500 * time.Millisecond)
+	}
+	if smtpErr != nil {
+		t.Fatalf("failed to send test email after retries: %v", smtpErr)
 	}
 
 	// Fetch via the connector — retry to allow GreenMail time to propagate

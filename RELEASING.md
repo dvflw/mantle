@@ -18,7 +18,7 @@ The automated CI path (Version PR → merge) requires no local tooling beyond gi
 ```
 1. changeset file added during dev
          ↓
-2. push to main → release-please.yml creates/updates "Version PR"
+2. push to main → changeset-version.yml creates/updates "Version PR"
          ↓
 3. merge Version PR
          ↓
@@ -27,8 +27,6 @@ The automated CI path (Version PR → merge) requires no local tooling beyond gi
 5a. release-engine.yml  → goreleaser: binaries + Docker + GitHub Release + Trivy
 5b. release-helm.yml    → helm push OCI + GitHub Release
 ```
-
-> **Note on workflow naming:** `release-please.yml` is named after a tool we evaluated but didn't adopt — it actually runs the Changesets CLI. A rename to `changeset-version.yml` is tracked in [dvflw/mantle#123](https://github.com/dvflw/mantle/issues/123).
 
 ## Step 1: Add a Changeset (During Development)
 
@@ -56,7 +54,7 @@ If a PR touches only CI, tests, or tooling with no user impact, skip the changes
 
 ## Step 2: The Version PR
 
-After any push to `main` that contains pending changesets, the `release-please.yml` workflow automatically creates (or updates) a PR titled **"ci: version packages"**.
+After any push to `main` that contains pending changesets, the `changeset-version.yml` workflow automatically creates (or updates) a PR titled **"ci: version packages"**.
 
 This PR:
 - Bumps `version` in each affected `package.json` (taking the highest bump across all pending changesets)
@@ -65,7 +63,7 @@ This PR:
 
 Review the PR to confirm the version bumps and changelog entries are correct. If more changesets land on `main` before you merge, CI updates the PR automatically.
 
-> **Loop guard:** the workflow has an `if` condition that skips runs where the triggering commit message starts with `"ci: version packages"`. This prevents the workflow from retriggering on its own Version PR merge commit. If you ever rename the commit message in the workflow, update the guard condition in `release-please.yml` to match.
+> **Loop guard:** the workflow has an `if` condition that skips runs where the triggering commit message starts with `"ci: version packages"`. This prevents the workflow from retriggering on its own Version PR merge commit. If you ever rename the commit message in the workflow, update the guard condition in `changeset-version.yml` to match.
 
 ## Step 3: Merge the Version PR
 
@@ -107,7 +105,7 @@ The tag-triggered workflows are safe to retrigger — goreleaser will fail clean
 
 This applies when `package.json` is already at the target version but `.changeset/` contains no pending changeset files — for example, the first-ever release of a newly bootstrapped repo, or after manually editing `package.json` outside the changeset flow.
 
-In this state the `release-please.yml` workflow has nothing to process and will not create a Version PR. Push the tags directly:
+In this state the `changeset-version.yml` workflow has nothing to process and will not create a Version PR. Push the tags directly:
 
 ```bash
 git tag engine/v<version>

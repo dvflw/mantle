@@ -56,24 +56,6 @@ type Server struct {
 	running    map[string]context.CancelFunc // execution ID → cancel
 }
 
-// workerLivenessChecker adapts the Worker to the health.LivenessChecker interface.
-type workerLivenessChecker struct {
-	w         *engine.Worker
-	threshold time.Duration
-}
-
-func (c *workerLivenessChecker) IsAlive() bool { return c.w.IsAlive(c.threshold) }
-func (c *workerLivenessChecker) Name() string  { return "worker" }
-
-// reaperLivenessChecker adapts the Reaper to the health.LivenessChecker interface.
-type reaperLivenessChecker struct {
-	r         *engine.Reaper
-	threshold time.Duration
-}
-
-func (c *reaperLivenessChecker) IsAlive() bool { return c.r.IsAlive(c.threshold) }
-func (c *reaperLivenessChecker) Name() string  { return "reaper" }
-
 // New creates a Server with the given configuration.
 func New(db *sql.DB, eng *engine.Engine, address string) *Server {
 	logger := slog.Default()
@@ -127,9 +109,6 @@ func metricsMiddleware(next http.Handler) http.Handler {
 // It blocks until the context is cancelled.
 func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
-
-	// Collect liveness checkers for readyz.
-	var livenessCheckers []health.LivenessChecker
 
 	// Prometheus metrics endpoint.
 	mux.Handle("/metrics", promhttp.Handler())
@@ -192,17 +171,6 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 		go s.reaper.Run(ctx)
 		s.Logger.Info("reaper started", "interval", cfg.Engine.ReaperInterval)
-
-		// Register liveness checkers for readyz.
-		workerThreshold := 3 * cfg.Engine.WorkerPollInterval
-		if workerThreshold < time.Second {
-			workerThreshold = 3 * time.Second
-		}
-		reaperThreshold := 3 * cfg.Engine.ReaperInterval
-		livenessCheckers = append(livenessCheckers,
-			&workerLivenessChecker{w: s.worker, threshold: workerThreshold},
-			&reaperLivenessChecker{r: s.reaper, threshold: reaperThreshold},
-		)
 
 		// Start retention cleanup if configured.
 		if cfg.Retention.ExecutionDays > 0 || cfg.Retention.AuditDays > 0 {
@@ -270,9 +238,10 @@ func (s *Server) Start(ctx context.Context) error {
 		go s.pollQueueDepth(ctx, cfg.Engine.ReaperInterval)
 	}
 
-	// Health endpoints (registered after engine components so checkers are populated).
+	// Health endpoints. /readyz checks DB connectivity only; worker/reaper
+	// liveness is no longer gated here to avoid flapping between poll cycles.
 	mux.Handle("/healthz", health.HealthzHandler())
-	mux.Handle("/readyz", health.ReadyzHandler(s.DB, livenessCheckers...))
+	mux.Handle("/readyz", health.ReadyzHandler(s.DB))
 
 	// Wrap with metrics middleware (innermost, runs for every request).
 	handler := metricsMiddleware(mux)

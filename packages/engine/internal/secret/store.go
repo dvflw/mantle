@@ -4,16 +4,27 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/dvflw/mantle/internal/audit"
 	"github.com/dvflw/mantle/internal/auth"
 )
 
 // Store handles CRUD operations for encrypted credentials in Postgres.
+// Every state-changing method emits an audit event in the same transaction.
 type Store struct {
 	DB        *sql.DB
 	Encryptor *Encryptor
+	Actor     string // defaults to "cli" when empty
+}
+
+func (s *Store) actor() string {
+	if s.Actor == "" {
+		return "cli"
+	}
+	return s.Actor
 }
 
 // Create validates, encrypts, and stores a new credential.
@@ -60,6 +71,17 @@ func (s *Store) Create(ctx context.Context, name, typeName string, data map[stri
 	).Scan(&cred.ID, &cred.Name, &cred.Type, &cred.CreatedAt, &cred.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("storing credential: %w", err)
+	}
+
+	if err := audit.EmitTx(ctx, tx, audit.Event{
+		Timestamp: time.Now(),
+		Actor:     s.actor(),
+		Action:    audit.ActionCredentialCreated,
+		Resource:  audit.Resource{Type: "credential", ID: cred.ID},
+		TeamID:    teamID,
+		Metadata:  map[string]string{"name": name, "type": typeName},
+	}); err != nil {
+		return nil, fmt.Errorf("emitting audit event: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -119,21 +141,42 @@ func (s *Store) List(ctx context.Context) ([]Credential, error) {
 	return creds, rows.Err()
 }
 
-// Delete removes a credential by name.
+// Delete removes a credential by name and emits a credential.deleted audit
+// event in the same transaction. Returns an error when no row matches.
 func (s *Store) Delete(ctx context.Context, name string) error {
 	teamID := auth.TeamIDFromContext(ctx)
-	result, err := s.DB.ExecContext(ctx,
-		`DELETE FROM credentials WHERE name = $1 AND team_id = $2`, name, teamID,
-	)
+
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("starting transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var deletedID string
+	err = tx.QueryRowContext(ctx,
+		`DELETE FROM credentials WHERE name = $1 AND team_id = $2 RETURNING id`,
+		name, teamID,
+	).Scan(&deletedID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("credential %q not found", name)
+	}
 	if err != nil {
 		return fmt.Errorf("deleting credential: %w", err)
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
+
+	if err := audit.EmitTx(ctx, tx, audit.Event{
+		Timestamp: time.Now(),
+		Actor:     s.actor(),
+		Action:    audit.ActionCredentialDeleted,
+		Resource:  audit.Resource{Type: "credential", ID: deletedID},
+		TeamID:    teamID,
+		Metadata:  map[string]string{"name": name},
+	}); err != nil {
+		return fmt.Errorf("emitting audit event: %w", err)
 	}
-	if rows == 0 {
-		return fmt.Errorf("credential %q not found", name)
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing credential delete: %w", err)
 	}
 	return nil
 }

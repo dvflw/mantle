@@ -44,6 +44,12 @@ jobs:
           # what triggered this workflow; goreleaser needs the plain vX.Y.Z form.
           git tag "${TAG}"
 
+      - name: Generate NOTICE
+        run: |
+          go install github.com/google/go-licenses@v2.0.1
+          go-licenses report ./... > NOTICE
+        working-directory: packages/engine
+
       - name: Run goreleaser
         uses: goreleaser/goreleaser-action@v6
         with:
