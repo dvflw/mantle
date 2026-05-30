@@ -2,7 +2,9 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/dvflw/mantle
-  tag: latest
+  # tag defaults to the chart's appVersion (e.g. v0.4.0) when left empty.
+  # Override to pin a specific release: --set image.tag=v0.5.0
+  tag: ""
   pullPolicy: IfNotPresent
 
 database:

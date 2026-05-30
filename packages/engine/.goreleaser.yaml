@@ -68,6 +68,12 @@ dockers_v2:
       - "--platform=linux/arm64"
 
 docker_manifests:
+  # v-prefixed tag (e.g. v0.4.0) — the canonical form users and Helm charts reference.
+  - name_template: "ghcr.io/dvflw/mantle:v{{ .Version }}"
+    image_templates:
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
+      - "ghcr.io/dvflw/mantle:{{ .Version }}-arm64"
+  # Bare version without v prefix (e.g. 0.4.0) for tooling that strips it.
   - name_template: "ghcr.io/dvflw/mantle:{{ .Version }}"
     image_templates:
       - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
