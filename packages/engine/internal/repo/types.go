@@ -34,6 +34,11 @@ type Repo struct {
 	AutoApply     bool
 	Prune         bool
 	Enabled       bool
+	// WebhookSecret is the HMAC shared secret used to verify inbound push
+	// webhooks from the git provider. SECURITY: this value is sensitive and
+	// MUST NOT be printed to terminal or logs. The CLI intentionally never
+	// renders it; any new caller must follow the same discipline.
+	WebhookSecret string
 	LastSyncSHA   string
 	LastSyncAt    *time.Time
 	LastSyncError string

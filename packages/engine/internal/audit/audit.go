@@ -72,6 +72,8 @@ const (
 	ActionGitSyncFailed           Action = "git.sync.failed"
 	ActionGitSyncValidationFailed Action = "git.sync.validation_failed"
 	ActionGitSyncApplyFailed      Action = "git.sync.apply_failed"
+	ActionGitSyncPruned           Action = "git.sync.pruned"
+	ActionGitPushReceived         Action = "git.push.received"
 )
 
 // Resource identifies the target of an audit event.

@@ -19,6 +19,7 @@ type Report struct {
 	Applied   int
 	Unchanged int
 	Failures  []FileResult
+	Pruned    int
 }
 
 // FileResult captures a per-file failure so operators can trace which
@@ -49,32 +50,40 @@ func SyncRepo(ctx context.Context, database *sql.DB, store *repo.Store, r *repo.
 
 	pull, err := driver.Pull(ctx, r)
 	if err != nil {
-		_ = store.UpdateSyncState(ctx, r.ID, "", fmt.Sprintf("pull failed: %v", err))
+		_ = store.UpdateSyncState(ctx, r.ID, "", sanitizeURL(fmt.Sprintf("pull failed: %v", err)))
 		emit(ctx, database, audit.Event{
 			Timestamp: time.Now(),
 			Actor:     "sync",
 			Action:    audit.ActionGitSyncFailed,
 			Resource:  audit.Resource{Type: "git_repo", ID: r.ID},
 			TeamID:    teamID,
-			Metadata:  map[string]string{"name": r.Name, "error": err.Error()},
+			Metadata:  map[string]string{"name": r.Name, "error": sanitizeURL(err.Error())},
 		})
 		return nil, fmt.Errorf("driver pull: %w", err)
 	}
 
 	files, err := Discover(pull.LocalPath, r.Path)
 	if err != nil {
-		_ = store.UpdateSyncState(ctx, r.ID, pull.SHA, fmt.Sprintf("discover failed: %v", err))
+		_ = store.UpdateSyncState(ctx, r.ID, pull.SHA, sanitizeURL(fmt.Sprintf("discover failed: %v", err)))
 		emit(ctx, database, audit.Event{
 			Timestamp: time.Now(),
 			Actor:     "sync",
 			Action:    audit.ActionGitSyncFailed,
 			Resource:  audit.Resource{Type: "git_repo", ID: r.ID},
 			TeamID:    teamID,
-			Metadata:  map[string]string{"name": r.Name, "error": err.Error()},
+			Metadata:  map[string]string{"name": r.Name, "error": sanitizeURL(err.Error())},
 		})
 		return nil, fmt.Errorf("discover: %w", err)
 	}
 
+	// Capture syncStart from the DB clock so it's in the same domain as
+	// the last_seen_at timestamps written by RecordSeen. Using Go's
+	// time.Now() risks a mismatch if the DB clock drifts relative to the
+	// host, which would cause either over-pruning or under-pruning.
+	var syncStart time.Time
+	if err := database.QueryRowContext(ctx, `SELECT NOW()`).Scan(&syncStart); err != nil {
+		syncStart = time.Now() // fall back to host clock if the query fails
+	}
 	report := &Report{SHA: pull.SHA}
 	for _, f := range files {
 		parseResult, parseErr := workflow.ParseBytes(f.Bytes)
@@ -86,7 +95,7 @@ func SyncRepo(ctx context.Context, database *sql.DB, store *repo.Store, r *repo.
 				Action:    audit.ActionGitSyncValidationFailed,
 				Resource:  audit.Resource{Type: "git_repo", ID: r.ID},
 				TeamID:    teamID,
-				Metadata:  map[string]string{"name": r.Name, "file": f.RelPath, "error": parseErr.Error()},
+				Metadata:  map[string]string{"name": r.Name, "file": f.RelPath, "error": sanitizeURL(parseErr.Error())},
 			})
 			continue
 		}
@@ -99,10 +108,19 @@ func SyncRepo(ctx context.Context, database *sql.DB, store *repo.Store, r *repo.
 				Action:    audit.ActionGitSyncApplyFailed,
 				Resource:  audit.Resource{Type: "git_repo", ID: r.ID},
 				TeamID:    teamID,
-				Metadata:  map[string]string{"name": r.Name, "file": f.RelPath, "error": saveErr.Error()},
+				Metadata:  map[string]string{"name": r.Name, "file": f.RelPath, "error": sanitizeURL(saveErr.Error())},
 			})
 			continue
 		}
+		if recordErr := RecordSeen(ctx, database, r.ID, parseResult.Workflow.Name); recordErr != nil {
+			report.Failures = append(report.Failures, FileResult{RelPath: f.RelPath, Err: recordErr.Error()})
+			continue
+		}
+		// Re-enable if this workflow was previously pruned. Errors are
+		// non-fatal — surfacing them would require restructuring the loop;
+		// they are visible via the workflow.* audit events if re-enable
+		// itself fails.
+		_ = workflow.Reenable(ctx, database, parseResult.Workflow.Name)
 		if version == 0 {
 			report.Unchanged++
 		} else {
@@ -110,9 +128,28 @@ func SyncRepo(ctx context.Context, database *sql.DB, store *repo.Store, r *repo.
 		}
 	}
 
+	if r.Prune {
+		stale, listErr := ListStale(ctx, database, r.ID, syncStart)
+		if listErr == nil {
+			for _, name := range stale {
+				_ = workflow.Disable(ctx, database, name)
+				emit(ctx, database, audit.Event{
+					Timestamp: time.Now(),
+					Actor:     "sync",
+					Action:    audit.ActionGitSyncPruned,
+					Resource:  audit.Resource{Type: "git_repo", ID: r.ID},
+					TeamID:    teamID,
+					Metadata:  map[string]string{"name": r.Name, "workflow": name},
+				})
+			}
+			_ = RemoveSeenRecords(ctx, database, r.ID, stale)
+			report.Pruned = len(stale)
+		}
+	}
+
 	errSummary := ""
 	if len(report.Failures) > 0 {
-		errSummary = summarizeFailures(report.Failures)
+		errSummary = sanitizeURL(summarizeFailures(report.Failures))
 	}
 	_ = store.UpdateSyncState(ctx, r.ID, pull.SHA, errSummary)
 
@@ -128,6 +165,7 @@ func SyncRepo(ctx context.Context, database *sql.DB, store *repo.Store, r *repo.
 			"applied":   fmt.Sprintf("%d", report.Applied),
 			"unchanged": fmt.Sprintf("%d", report.Unchanged),
 			"failures":  fmt.Sprintf("%d", len(report.Failures)),
+			"pruned":    fmt.Sprintf("%d", report.Pruned),
 		},
 	})
 	return report, nil
@@ -145,6 +183,41 @@ func emit(ctx context.Context, database *sql.DB, e audit.Event) {
 		return
 	}
 	_ = tx.Commit()
+}
+
+// PlanRepo runs a dry-run sync: pulls the repo, discovers files, and
+// classifies each as "would apply" (new or changed) or "unchanged"
+// without writing to the DB. Returns a Report with the same shape as
+// SyncRepo's, so CLI output and tests stay consistent. No audit
+// events fire — planning is a read-only operation.
+func PlanRepo(ctx context.Context, database *sql.DB, r *repo.Repo, driver Driver) (*Report, error) {
+	pull, err := driver.Pull(ctx, r)
+	if err != nil {
+		return nil, fmt.Errorf("driver pull: %w", err)
+	}
+	files, err := Discover(pull.LocalPath, r.Path)
+	if err != nil {
+		return nil, fmt.Errorf("discover: %w", err)
+	}
+	report := &Report{SHA: pull.SHA}
+	for _, f := range files {
+		parsed, parseErr := workflow.ParseBytes(f.Bytes)
+		if parseErr != nil {
+			report.Failures = append(report.Failures, FileResult{RelPath: f.RelPath, Err: parseErr.Error()})
+			continue
+		}
+		existingHash, hashErr := workflow.GetLatestHash(ctx, database, parsed.Workflow.Name)
+		if hashErr != nil {
+			report.Failures = append(report.Failures, FileResult{RelPath: f.RelPath, Err: hashErr.Error()})
+			continue
+		}
+		if existingHash == f.Hash {
+			report.Unchanged++
+		} else {
+			report.Applied++ // semantically "would apply"
+		}
+	}
+	return report, nil
 }
 
 // summarizeFailures joins up to three failure messages into a single
