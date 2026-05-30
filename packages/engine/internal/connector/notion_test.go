@@ -389,6 +389,25 @@ func TestNotionQueryDatabaseConnector_NoNextCursorWhenEmpty(t *testing.T) {
 	}
 }
 
+func TestNotionCreatePageConnector_MapAnyCredential(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(notionPageResponse())
+	}))
+	defer server.Close()
+
+	c := &NotionCreatePageConnector{baseURL: server.URL}
+	// Simulate a credential delivered as map[string]any (JSON/CEL-deserialised shape).
+	_, err := c.Execute(context.Background(), map[string]any{
+		"parent_database_id": "db-uuid-1",
+		"title":              "Test",
+		"_credential":        map[string]any{"token": "secret_test"},
+	})
+	if err != nil {
+		t.Fatalf("Execute() with map[string]any credential: %v", err)
+	}
+}
+
 func TestNotionQueryDatabaseConnector_MissingDatabaseID(t *testing.T) {
 	c := &NotionQueryDatabaseConnector{}
 	_, err := c.Execute(context.Background(), map[string]any{

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 )
 
 const (
@@ -169,7 +170,7 @@ func (c *NotionQueryDatabaseConnector) Execute(ctx context.Context, params map[s
 		return nil, fmt.Errorf("notion/query_database: marshaling request: %w", err)
 	}
 
-	path := fmt.Sprintf("/databases/%s/query", databaseID)
+	path := fmt.Sprintf("/databases/%s/query", url.PathEscape(databaseID))
 	req, err := http.NewRequestWithContext(ctx, "POST", c.apiURL(path), bytes.NewReader(reqJSON))
 	if err != nil {
 		return nil, fmt.Errorf("notion/query_database: creating request: %w", err)
@@ -214,13 +215,24 @@ func (c *NotionQueryDatabaseConnector) Execute(ctx context.Context, params map[s
 }
 
 // extractNotionToken pulls the Notion integration token from _credential.
+// Accepts both map[string]string (engine-injected) and map[string]any
+// (JSON/CEL-deserialised) credential shapes.
 func extractNotionToken(params map[string]any) (string, error) {
-	cred, ok := params["_credential"].(map[string]string)
-	if !ok {
+	raw, ok := params["_credential"]
+	if !ok || raw == nil {
 		return "", fmt.Errorf("credential is required")
 	}
 	delete(params, "_credential")
-	token := cred["token"]
+
+	var token string
+	switch cred := raw.(type) {
+	case map[string]string:
+		token = cred["token"]
+	case map[string]any:
+		token, _ = cred["token"].(string)
+	default:
+		return "", fmt.Errorf("credential is required")
+	}
 	if token == "" {
 		return "", fmt.Errorf("credential must contain a 'token' field")
 	}
