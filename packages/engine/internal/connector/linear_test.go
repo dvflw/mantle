@@ -103,6 +103,19 @@ func TestLinearCreateIssueConnector_MissingTitle(t *testing.T) {
 	}
 }
 
+func TestLinearCreateIssueConnector_InvalidPriority(t *testing.T) {
+	c := &LinearCreateIssueConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{
+		"team_id":     "team-uuid",
+		"title":       "Test",
+		"priority":    float64(5),
+		"_credential": map[string]string{"token": "lin_api_test"},
+	})
+	if err == nil {
+		t.Fatal("expected error for priority out of range")
+	}
+}
+
 func TestLinearCreateIssueConnector_MissingCredential(t *testing.T) {
 	c := &LinearCreateIssueConnector{}
 	_, err := c.Execute(context.Background(), map[string]any{

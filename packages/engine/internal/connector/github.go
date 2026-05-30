@@ -167,8 +167,8 @@ func (c *GitHubDispatchConnector) Execute(ctx context.Context, params map[string
 
 	// GitHub returns 204 No Content on success.
 	if resp.StatusCode != http.StatusNoContent {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 500))
-		return nil, fmt.Errorf("github/dispatch: GitHub API returned %d: %s", resp.StatusCode, truncate(string(body), 500))
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 500))
+		return nil, fmt.Errorf("github/dispatch: GitHub API returned %d: %s", resp.StatusCode, truncate(string(respBody), 500))
 	}
 
 	return map[string]any{"ok": true}, nil

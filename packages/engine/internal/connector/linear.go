@@ -52,7 +52,10 @@ func (c *LinearCreateIssueConnector) Execute(ctx context.Context, params map[str
 	if projectID, ok := params["project_id"].(string); ok && projectID != "" {
 		input["projectId"] = projectID
 	}
-	if priority, ok := extractIntParam(params["priority"]); ok {
+	if priority, ok := extractInt(params["priority"]); ok {
+		if priority < 0 || priority > 4 {
+			return nil, fmt.Errorf("linear/create_issue: priority must be between 0 and 4, got %d", priority)
+		}
 		input["priority"] = priority
 	}
 	if labelIDs := toStringSlice(params["label_ids"]); len(labelIDs) > 0 {
@@ -117,7 +120,7 @@ func (c *LinearSearchConnector) Execute(ctx context.Context, params map[string]a
 	}
 
 	limit := 25
-	if l, ok := extractIntParam(params["limit"]); ok && l > 0 {
+	if l, ok := extractInt(params["limit"]); ok && l > 0 {
 		limit = l
 	}
 
@@ -235,13 +238,3 @@ func extractLinearToken(params map[string]any) (string, error) {
 	return token, nil
 }
 
-// extractIntParam extracts an integer from float64 (JSON default) or int.
-func extractIntParam(v any) (int, bool) {
-	switch n := v.(type) {
-	case int:
-		return n, true
-	case float64:
-		return int(n), true
-	}
-	return 0, false
-}
