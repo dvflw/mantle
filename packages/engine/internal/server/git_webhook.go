@@ -58,7 +58,7 @@ func (h *GitWebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	emitGitAudit(context.Background(), h.DB, audit.Event{
+	emitGitAudit(r.Context(), h.DB, audit.Event{
 		Timestamp: time.Now(),
 		Actor:     "webhook",
 		Action:    audit.ActionGitPushReceived,
@@ -67,8 +67,11 @@ func (h *GitWebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Fire sync in the background so the provider gets its 202 fast.
+	// context.WithoutCancel propagates request values without tying the
+	// goroutine's lifetime to the HTTP request context.
+	syncCtx := context.WithoutCancel(r.Context())
 	go func() {
-		_, _ = reposync.SyncRepo(context.Background(), h.DB, h.Store, repoRow, h.Driver)
+		_, _ = reposync.SyncRepo(syncCtx, h.DB, h.Store, repoRow, h.Driver)
 	}()
 
 	w.Header().Set("Content-Type", "application/json")
