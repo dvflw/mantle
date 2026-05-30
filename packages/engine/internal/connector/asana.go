@@ -27,7 +27,7 @@ func (c *AsanaCreateTaskConnector) apiURL(path string) string {
 }
 
 func (c *AsanaCreateTaskConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
-	token, err := extractAsanaToken(params)
+	token, err := extractBearerToken(params)
 	if err != nil {
 		return nil, fmt.Errorf("asana/create_task: %w", err)
 	}
@@ -120,7 +120,7 @@ func (c *AsanaSearchConnector) apiURL(path string) string {
 }
 
 func (c *AsanaSearchConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
-	token, err := extractAsanaToken(params)
+	token, err := extractBearerToken(params)
 	if err != nil {
 		return nil, fmt.Errorf("asana/search: %w", err)
 	}
@@ -188,24 +188,3 @@ func (c *AsanaSearchConnector) Execute(ctx context.Context, params map[string]an
 	}, nil
 }
 
-func extractAsanaToken(params map[string]any) (string, error) {
-	raw, ok := params["_credential"]
-	if !ok || raw == nil {
-		return "", fmt.Errorf("credential is required")
-	}
-	delete(params, "_credential")
-
-	var token string
-	switch cred := raw.(type) {
-	case map[string]string:
-		token = cred["token"]
-	case map[string]any:
-		token, _ = cred["token"].(string)
-	default:
-		return "", fmt.Errorf("credential is required")
-	}
-	if token == "" {
-		return "", fmt.Errorf("credential must contain a 'token' field")
-	}
-	return token, nil
-}
