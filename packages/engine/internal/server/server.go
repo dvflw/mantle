@@ -238,7 +238,8 @@ func (s *Server) Start(ctx context.Context) error {
 		go s.pollQueueDepth(ctx, cfg.Engine.ReaperInterval)
 	}
 
-	// Health endpoints (registered after engine components so checkers are populated).
+	// Health endpoints. /readyz checks DB connectivity only; worker/reaper
+	// liveness is no longer gated here to avoid flapping between poll cycles.
 	mux.Handle("/healthz", health.HealthzHandler())
 	mux.Handle("/readyz", health.ReadyzHandler(s.DB))
 
