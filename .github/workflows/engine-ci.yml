@@ -74,16 +74,23 @@ jobs:
           #   GO-2026-4946 (crypto/x509: policy-validation DoS) — EmailSendConnector→crypto/tls→crypto/x509
           #   GO-2026-4947 (crypto/x509: certificate chain-building DoS) — EmailSendConnector→crypto/tls→crypto/x509
           # Remove these five exclusions once go-version in this workflow is >= 1.25.9.
+          #
+          # go-git v5 transitive dependency vulnerabilities — "your code does not appear to call
+          # the vulnerable code" per govulncheck. No upstream fix available; go-git is a direct
+          # dependency of the sync engine (feat/git-sync-engine). Track upstream for fixes.
+          #   GO-2026-4918, GO-2026-4945, GO-2026-5013, GO-2026-5015, GO-2026-5017,
+          #   GO-2026-5018, GO-2026-5019, GO-2026-5020, GO-2026-5021, GO-2026-5026
           OUTPUT=$(govulncheck ./... 2>&1 || true)
           echo "$OUTPUT"
           # Emit each actionable vulnerability ID as a GHA error annotation for visibility.
           ALL_IDS=$(echo "$OUTPUT" | grep -oE 'GO-[0-9]+-[0-9]+' | sort -u || true)
           echo "govulncheck IDs found: ${ALL_IDS:-none}"
-          ACTIONABLE_IDS=$(echo "$ALL_IDS" | grep -vE '^(GO-2026-4887|GO-2026-4883|GO-2026-4865|GO-2026-4869|GO-2026-4870|GO-2026-4946|GO-2026-4947)$' || true)
+          KNOWN='GO-2026-4887|GO-2026-4883|GO-2026-4865|GO-2026-4869|GO-2026-4870|GO-2026-4946|GO-2026-4947|GO-2026-4918|GO-2026-4945|GO-2026-5013|GO-2026-5015|GO-2026-5017|GO-2026-5018|GO-2026-5019|GO-2026-5020|GO-2026-5021|GO-2026-5026'
+          ACTIONABLE_IDS=$(echo "$ALL_IDS" | grep -vE "^($KNOWN)$" || true)
           for ID in $ACTIONABLE_IDS; do
             echo "::error file=go.mod,line=1,title=Unfixed vulnerability::$ID — add to exclusion list or upgrade the affected dependency"
           done
-          ACTIONABLE=$(echo "$OUTPUT" | grep -E '^Vulnerability #[0-9]+:' | grep -vE 'GO-2026-4887|GO-2026-4883|GO-2026-4865|GO-2026-4869|GO-2026-4870|GO-2026-4946|GO-2026-4947' || true)
+          ACTIONABLE=$(echo "$OUTPUT" | grep -E '^Vulnerability #[0-9]+:' | grep -vE "$KNOWN" || true)
           if [ -n "$ACTIONABLE" ]; then
             exit 1
           fi
