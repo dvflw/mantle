@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -40,6 +41,14 @@ func Discover(scanRoot, subPath string) ([]DiscoveredFile, error) {
 		return nil, fmt.Errorf("%s is not a directory", target)
 	}
 
+	// os.OpenRoot pins reads to the target directory, preventing symlink
+	// TOCTOU traversal (gosec G122 / CWE-367).
+	root, err := os.OpenRoot(target)
+	if err != nil {
+		return nil, fmt.Errorf("opening scan root: %w", err)
+	}
+	defer root.Close()
+
 	var out []DiscoveredFile
 	err = filepath.WalkDir(target, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -54,13 +63,18 @@ func Discover(scanRoot, subPath string) ([]DiscoveredFile, error) {
 		if !isYAML(d.Name()) {
 			return nil
 		}
-		b, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return fmt.Errorf("reading %s: %w", path, readErr)
-		}
 		rel, relErr := filepath.Rel(target, path)
 		if relErr != nil {
 			return fmt.Errorf("computing relpath for %s: %w", path, relErr)
+		}
+		f, openErr := root.Open(rel)
+		if openErr != nil {
+			return fmt.Errorf("reading %s: %w", rel, openErr)
+		}
+		b, readErr := io.ReadAll(f)
+		f.Close()
+		if readErr != nil {
+			return fmt.Errorf("reading %s: %w", rel, readErr)
 		}
 		h := sha256.Sum256(b)
 		out = append(out, DiscoveredFile{
