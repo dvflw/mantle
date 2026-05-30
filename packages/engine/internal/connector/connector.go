@@ -46,6 +46,14 @@ func NewRegistry() *Registry {
 	r.Register("linear/search", &LinearSearchConnector{})
 	r.Register("notion/create_page", &NotionCreatePageConnector{})
 	r.Register("notion/query_database", &NotionQueryDatabaseConnector{})
+	r.Register("airtable/list", &AirtableListConnector{})
+	r.Register("airtable/create_record", &AirtableCreateRecordConnector{})
+	r.Register("pagerduty/create_incident", &PagerDutyCreateIncidentConnector{})
+	r.Register("pagerduty/resolve", &PagerDutyResolveConnector{})
+	r.Register("twilio/sms", &TwilioSMSConnector{})
+	r.Register("twilio/call", &TwilioCallConnector{})
+	r.Register("asana/create_task", &AsanaCreateTaskConnector{})
+	r.Register("asana/search", &AsanaSearchConnector{})
 	return r
 }
 
