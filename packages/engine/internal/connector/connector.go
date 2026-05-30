@@ -44,6 +44,8 @@ func NewRegistry() *Registry {
 	r.Register("github/dispatch", &GitHubDispatchConnector{})
 	r.Register("linear/create_issue", &LinearCreateIssueConnector{})
 	r.Register("linear/search", &LinearSearchConnector{})
+	r.Register("notion/create_page", &NotionCreatePageConnector{})
+	r.Register("notion/query_database", &NotionQueryDatabaseConnector{})
 	return r
 }
 
