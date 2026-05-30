@@ -46,7 +46,7 @@ func (c *DiscordSendConnector) Execute(ctx context.Context, params map[string]an
 		body["tts"] = tts
 	}
 
-	return discordPostMessage(ctx, c.apiURL(fmt.Sprintf("/channels/%s/messages", url.PathEscape(channelID))), token, body, "discord/send")
+	return discordPostMessage(ctx, c.Client, c.apiURL(fmt.Sprintf("/channels/%s/messages", url.PathEscape(channelID))), token, body, "discord/send")
 }
 
 // DiscordEmbedConnector sends an embed message to a Discord channel.
@@ -99,10 +99,10 @@ func (c *DiscordEmbedConnector) Execute(ctx context.Context, params map[string]a
 		body["content"] = content
 	}
 
-	return discordPostMessage(ctx, c.apiURL(fmt.Sprintf("/channels/%s/messages", url.PathEscape(channelID))), token, body, "discord/embed")
+	return discordPostMessage(ctx, c.Client, c.apiURL(fmt.Sprintf("/channels/%s/messages", url.PathEscape(channelID))), token, body, "discord/embed")
 }
 
-func discordPostMessage(ctx context.Context, endpoint, token string, body map[string]any, action string) (map[string]any, error) {
+func discordPostMessage(ctx context.Context, client *http.Client, endpoint, token string, body map[string]any, action string) (map[string]any, error) {
 	reqJSON, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("%s: marshaling request: %w", action, err)
@@ -115,7 +115,7 @@ func discordPostMessage(ctx context.Context, endpoint, token string, body map[st
 	req.Header.Set("Authorization", "Bot "+token)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := httpClient(nil).Do(req)
+	resp, err := httpClient(client).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", action, err)
 	}

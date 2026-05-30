@@ -16,13 +16,6 @@ type ElasticsearchSearchConnector struct {
 	baseURL string // override for testing
 }
 
-func (c *ElasticsearchSearchConnector) apiURL(base, path string) string {
-	if base == "" {
-		base = c.baseURL
-	}
-	return base + path
-}
-
 func (c *ElasticsearchSearchConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
 	baseURL, auth, err := extractElasticsearchCredential(params)
 	if err != nil {
