@@ -181,6 +181,9 @@ func TestPagerDutyResolveConnector_ResolvesIncident(t *testing.T) {
 		if r.Method != "PUT" || r.URL.Path != "/incidents/Q2AVLPZB5RX" {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
+		if r.Header.Get("From") != "oncall@example.com" {
+			t.Errorf("expected From header, got %s", r.Header.Get("From"))
+		}
 		var body map[string]any
 		json.NewDecoder(r.Body).Decode(&body)
 		inc := body["incident"].(map[string]any)
@@ -199,7 +202,7 @@ func TestPagerDutyResolveConnector_ResolvesIncident(t *testing.T) {
 
 	c := &PagerDutyResolveConnector{baseURL: srv.URL}
 	out, err := c.Execute(t.Context(), map[string]any{
-		"_credential": map[string]string{"token": "u+abc"},
+		"_credential": map[string]string{"token": "u+abc", "from_email": "oncall@example.com"},
 		"incident_id": "Q2AVLPZB5RX",
 	})
 	if err != nil {
@@ -207,6 +210,40 @@ func TestPagerDutyResolveConnector_ResolvesIncident(t *testing.T) {
 	}
 	if out["status"] != "resolved" {
 		t.Errorf("expected status=resolved, got %v", out["status"])
+	}
+}
+
+func TestPagerDutyResolveConnector_FromEmailInParam(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("From") != "param@example.com" {
+			t.Errorf("expected From=param@example.com, got %s", r.Header.Get("From"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"incident": map[string]any{"id": "Q1", "status": "resolved"},
+		})
+	}))
+	defer srv.Close()
+
+	c := &PagerDutyResolveConnector{baseURL: srv.URL}
+	_, err := c.Execute(t.Context(), map[string]any{
+		"_credential": map[string]string{"token": "u+abc"},
+		"incident_id": "Q1",
+		"from_email":  "param@example.com",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPagerDutyResolveConnector_MissingFromEmail(t *testing.T) {
+	c := &PagerDutyResolveConnector{baseURL: "http://unused"}
+	_, err := c.Execute(t.Context(), map[string]any{
+		"_credential": map[string]string{"token": "u+abc"},
+		"incident_id": "Q1",
+	})
+	if err == nil {
+		t.Fatal("expected error when from_email is missing")
 	}
 }
 

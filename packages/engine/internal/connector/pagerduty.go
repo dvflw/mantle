@@ -139,6 +139,15 @@ func (c *PagerDutyResolveConnector) Execute(ctx context.Context, params map[stri
 		return nil, fmt.Errorf("pagerduty/resolve: incident_id is required")
 	}
 
+	// from_email is required for REST API key auth: PagerDuty rejects incident
+	// updates without a From header when using non-user-context credentials.
+	if fromEmail == "" {
+		fromEmail, _ = params["from_email"].(string)
+	}
+	if fromEmail == "" {
+		return nil, fmt.Errorf("pagerduty/resolve: from_email is required (set in credential or as param)")
+	}
+
 	body := map[string]any{
 		"incident": map[string]any{
 			"type":   "incident",
@@ -158,11 +167,7 @@ func (c *PagerDutyResolveConnector) Execute(ctx context.Context, params map[stri
 	req.Header.Set("Authorization", "Token token="+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/vnd.pagerduty+json;version=2")
-	if fromEmail != "" {
-		req.Header.Set("From", fromEmail)
-	} else if fe, ok := params["from_email"].(string); ok && fe != "" {
-		req.Header.Set("From", fe)
-	}
+	req.Header.Set("From", fromEmail)
 
 	resp, err := httpClient(c.Client).Do(req)
 	if err != nil {

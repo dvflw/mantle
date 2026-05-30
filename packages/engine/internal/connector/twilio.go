@@ -126,6 +126,9 @@ func (c *TwilioCallConnector) Execute(ctx context.Context, params map[string]any
 	if callURL == "" && twiml == "" {
 		return nil, fmt.Errorf("twilio/call: url or twiml is required")
 	}
+	if callURL != "" && twiml != "" {
+		return nil, fmt.Errorf("twilio/call: url and twiml are mutually exclusive; provide only one")
+	}
 
 	form := url.Values{}
 	form.Set("To", to)

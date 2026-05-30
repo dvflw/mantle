@@ -95,6 +95,7 @@ func TestAsanaCreateTaskConnector_WithProjects(t *testing.T) {
 		var body map[string]any
 		json.NewDecoder(r.Body).Decode(&body)
 		data := body["data"].(map[string]any)
+		// JSON round-trip produces []any from []string in the serialized body.
 		projects, _ := data["projects"].([]any)
 		if len(projects) != 1 || projects[0] != "PROJ123" {
 			t.Errorf("unexpected projects: %v", projects)
@@ -111,6 +112,33 @@ func TestAsanaCreateTaskConnector_WithProjects(t *testing.T) {
 		"_credential": map[string]string{"token": "asana-token"},
 		"name":        "t",
 		"projects":    []any{"PROJ123"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAsanaCreateTaskConnector_ProjectsAsStringSlice(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		data := body["data"].(map[string]any)
+		projects, _ := data["projects"].([]any)
+		if len(projects) != 1 || projects[0] != "PROJ456" {
+			t.Errorf("unexpected projects: %v", projects)
+		}
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{"gid": "1", "name": "t", "permalink_url": ""},
+		})
+	}))
+	defer srv.Close()
+
+	c := &AsanaCreateTaskConnector{baseURL: srv.URL}
+	_, err := c.Execute(t.Context(), map[string]any{
+		"_credential": map[string]string{"token": "asana-token"},
+		"name":        "t",
+		"projects":    []string{"PROJ456"}, // native []string, not []any
 	})
 	if err != nil {
 		t.Fatal(err)

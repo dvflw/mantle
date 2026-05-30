@@ -207,6 +207,20 @@ func TestTwilioCallConnector_MissingURLAndTwiml(t *testing.T) {
 	}
 }
 
+func TestTwilioCallConnector_BothURLAndTwiml(t *testing.T) {
+	c := &TwilioCallConnector{baseURL: "http://unused"}
+	_, err := c.Execute(t.Context(), map[string]any{
+		"_credential": map[string]string{"account_sid": "ACtest123", "auth_token": "secret"},
+		"to":          "+15551234567",
+		"from":        "+15559876543",
+		"url":         "https://example.com/twiml",
+		"twiml":       "<Response><Say>Hi</Say></Response>",
+	})
+	if err == nil {
+		t.Fatal("expected error when both url and twiml are set")
+	}
+}
+
 func TestTwilioCallConnector_MissingTo(t *testing.T) {
 	c := &TwilioCallConnector{baseURL: "http://unused"}
 	_, err := c.Execute(t.Context(), map[string]any{

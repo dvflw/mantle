@@ -38,7 +38,7 @@ func (c *AsanaCreateTaskConnector) Execute(ctx context.Context, params map[strin
 	}
 
 	workspace, _ := params["workspace"].(string)
-	projects, _ := params["projects"].([]any)
+	projects := toStringSlice(params["projects"])
 	if workspace == "" && len(projects) == 0 {
 		return nil, fmt.Errorf("asana/create_task: workspace or projects is required")
 	}
