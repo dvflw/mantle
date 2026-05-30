@@ -48,6 +48,13 @@ func (c *NotionCreatePageConnector) Execute(ctx context.Context, params map[stri
 	}
 
 	// Merge caller-supplied properties, then add title shorthand if not already set.
+	// title_key names the database column that holds the title (defaults to "title";
+	// many databases use "Name" or another user-defined label).
+	titleKey := "title"
+	if k, ok := params["title_key"].(string); ok && k != "" {
+		titleKey = k
+	}
+
 	properties := map[string]any{}
 	if p, ok := params["properties"].(map[string]any); ok {
 		for k, v := range p {
@@ -55,8 +62,8 @@ func (c *NotionCreatePageConnector) Execute(ctx context.Context, params map[stri
 		}
 	}
 	if title, ok := params["title"].(string); ok && title != "" {
-		if _, exists := properties["title"]; !exists {
-			properties["title"] = map[string]any{
+		if _, exists := properties[titleKey]; !exists {
+			properties[titleKey] = map[string]any{
 				"title": []any{
 					map[string]any{"text": map[string]any{"content": title}},
 				},

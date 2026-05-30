@@ -159,6 +159,42 @@ func TestNotionCreatePageConnector_ExplicitPropertiesNotOverriddenByTitle(t *tes
 	}
 }
 
+func TestNotionCreatePageConnector_CustomTitleKey(t *testing.T) {
+	var gotBody map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(notionPageResponse())
+	}))
+	defer server.Close()
+
+	c := &NotionCreatePageConnector{baseURL: server.URL}
+	if _, err := c.Execute(context.Background(), map[string]any{
+		"parent_database_id": "db-uuid-1",
+		"title":              "My Task",
+		"title_key":          "Name",
+		"_credential":        map[string]string{"token": "secret_test"},
+	}); err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+
+	props, _ := gotBody["properties"].(map[string]any)
+	if _, hasTitle := props["title"]; hasTitle {
+		t.Error("properties should not contain key 'title' when title_key=Name")
+	}
+	nameProp, ok := props["Name"].(map[string]any)
+	if !ok {
+		t.Fatal("properties.Name missing or wrong type")
+	}
+	titleArr, _ := nameProp["title"].([]any)
+	text, _ := titleArr[0].(map[string]any)
+	textContent, _ := text["text"].(map[string]any)
+	if textContent["content"] != "My Task" {
+		t.Errorf("Name content = %q, want My Task", textContent["content"])
+	}
+}
+
 func TestNotionCreatePageConnector_MissingParent(t *testing.T) {
 	c := &NotionCreatePageConnector{}
 	_, err := c.Execute(context.Background(), map[string]any{
