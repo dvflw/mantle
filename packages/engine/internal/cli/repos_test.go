@@ -176,7 +176,7 @@ func TestReposRemove_DeletesRow(t *testing.T) {
 }
 
 func TestReposSync_UsesNoopDriverWithFromDir(t *testing.T) {
-	_, cfg := reposCtx(t)
+	cfg := reposCtx(t)
 	// Seed a repo.
 	{
 		root := NewRootCommand()
