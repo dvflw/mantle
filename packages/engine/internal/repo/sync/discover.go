@@ -48,6 +48,9 @@ func Discover(scanRoot, subPath string) ([]DiscoveredFile, error) {
 		if d.IsDir() {
 			return nil
 		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
 		if !isYAML(d.Name()) {
 			return nil
 		}
