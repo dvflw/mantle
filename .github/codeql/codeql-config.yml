@@ -1,0 +1,7 @@
+name: "Mantle CodeQL config"
+
+query-filters:
+  - exclude:
+      id: go/weak-sensitive-data-hashing
+      paths:
+        - packages/engine/internal/connector/**
