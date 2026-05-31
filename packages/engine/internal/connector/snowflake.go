@@ -5,8 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	sf "github.com/snowflakedb/gosnowflake"
-	_ "github.com/snowflakedb/gosnowflake" // register "snowflake" driver
+	sf "github.com/snowflakedb/gosnowflake" // named import registers "snowflake" driver via init()
 )
 
 // extractSnowflakeCredential pulls Snowflake connection fields from the _credential param.

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/url"
 
-	_ "github.com/go-sql-driver/mysql"         // register "mysql" driver
+	mysqldrv "github.com/go-sql-driver/mysql"   // register "mysql" driver + Config type
 	_ "github.com/jackc/pgx/v5/stdlib"         // register "pgx" driver for Redshift
 	_ "github.com/microsoft/go-mssqldb"        // register "sqlserver" driver
 )
@@ -56,8 +56,15 @@ func extractMySQLCredential(params map[string]any) (dsn string, err error) {
 		return "", fmt.Errorf("credential must contain a 'database' field")
 	}
 
-	dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", user, password, host, port, database)
-	return dsn, nil
+	cfg := mysqldrv.Config{
+		User:      user,
+		Passwd:    password,
+		Net:       "tcp",
+		Addr:      host + ":" + port,
+		DBName:    database,
+		ParseTime: true,
+	}
+	return cfg.FormatDSN(), nil
 }
 
 // scanSQLRows scans database/sql rows into a slice of maps, stopping at maxRows.
@@ -316,12 +323,12 @@ func (c *MSSQLExecuteConnector) Execute(ctx context.Context, params map[string]a
 	}
 
 	rowsAffected, _ := res.RowsAffected()
-	lastInsertID, _ := res.LastInsertId()
 
-	return map[string]any{
-		"rows_affected":  rowsAffected,
-		"last_insert_id": lastInsertID,
-	}, nil
+	out := map[string]any{"rows_affected": rowsAffected}
+	if lastInsertID, err := res.LastInsertId(); err == nil {
+		out["last_insert_id"] = lastInsertID
+	}
+	return out, nil
 }
 
 // ---- Redshift ----

@@ -150,7 +150,7 @@ func (c *AWSSendSQSConnector) Execute(ctx context.Context, params map[string]any
 	}
 
 	if ds, ok := extractInt(params["delay_seconds"]); ok && ds > 0 {
-		input.DelaySeconds = int32(ds)
+		input.DelaySeconds = int32(ds) // #nosec G115 -- delay_seconds valid range 0-900, safe narrowing
 	}
 	if mgid, _ := params["message_group_id"].(string); mgid != "" {
 		input.MessageGroupId = aws.String(mgid)

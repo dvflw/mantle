@@ -84,7 +84,7 @@ func (c *TeamsSendMessageConnector) Execute(ctx context.Context, params map[stri
 		return nil, fmt.Errorf("teams/send_message: %w", err)
 	}
 	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body) //nolint:errcheck
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, DefaultMaxResponseBytes))
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("teams/send_message: Teams returned %d", resp.StatusCode)
@@ -142,7 +142,7 @@ func (c *TeamsSendAdaptiveCardConnector) Execute(ctx context.Context, params map
 		return nil, fmt.Errorf("teams/send_adaptive_card: %w", err)
 	}
 	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body) //nolint:errcheck
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, DefaultMaxResponseBytes))
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("teams/send_adaptive_card: Teams returned %d", resp.StatusCode)

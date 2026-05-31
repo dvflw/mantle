@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -243,7 +244,6 @@ func TestRegistry_K8sConnectors(t *testing.T) {
 	}
 }
 
-// containsStr is a helper to check if s contains substr.
 func containsStr(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && (s[:len(substr)] == substr || containsStr(s[1:], substr)))
+	return strings.Contains(s, substr)
 }

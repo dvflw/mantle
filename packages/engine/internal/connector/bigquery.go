@@ -159,7 +159,9 @@ func parseIntString(s string) any {
 		return nil
 	}
 	var n int
-	fmt.Sscanf(s, "%d", &n)
+	if _, err := fmt.Sscanf(s, "%d", &n); err != nil {
+		return nil
+	}
 	return n
 }
 

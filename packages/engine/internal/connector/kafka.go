@@ -53,7 +53,7 @@ func extractKafkaCredential(params map[string]any) (brokers []string, err error)
 }
 
 // KafkaProduceConnector produces a message to a Kafka topic.
-// Params: topic (required), message (required), key (optional), partition (optional int).
+// Params: topic (required), message (required), key (optional).
 // Output: {"ok": true}
 type KafkaProduceConnector struct{}
 

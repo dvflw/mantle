@@ -59,8 +59,22 @@ func k8sInsecureClient(c *http.Client) *http.Client {
 	}
 	return &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- K8s clusters commonly use self-signed certs; callers that need cert verification should supply their own *http.Client
 		},
+	}
+}
+
+// k8sPlural returns the lowercase plural resource type for a Kubernetes kind.
+// Handles common English pluralization rules that appear in the K8s API.
+func k8sPlural(kind string) string {
+	lower := strings.ToLower(kind)
+	switch {
+	case strings.HasSuffix(lower, "s"):
+		return lower + "es" // ingress → ingresses, storageclass → storageclasses
+	case strings.HasSuffix(lower, "y"):
+		return lower[:len(lower)-1] + "ies" // networkpolicy → networkpolicies
+	default:
+		return lower + "s"
 	}
 }
 
@@ -68,7 +82,7 @@ func k8sInsecureClient(c *http.Client) *http.Client {
 // Core API (apiVersion="v1"): /api/v1/namespaces/{ns}/{resourceType}/{name}
 // Other APIs: /apis/{apiVersion}/namespaces/{ns}/{resourceType}/{name}
 func k8sResourcePath(apiVersion, kind, namespace, name string) string {
-	resourceType := strings.ToLower(kind) + "s"
+	resourceType := k8sPlural(kind)
 
 	var basePath string
 	if apiVersion == "v1" {
@@ -189,7 +203,10 @@ func (c *K8sApplyConnector) Execute(ctx context.Context, params map[string]any) 
 		return nil, fmt.Errorf("k8s/apply: %w", err)
 	}
 	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, DefaultMaxResponseBytes))
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, DefaultMaxResponseBytes))
+	if err != nil {
+		return nil, fmt.Errorf("k8s/apply: reading response: %w", err)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("k8s/apply: server-side apply returned %d: %s", resp.StatusCode, truncate(string(respBody), 200))
 	}

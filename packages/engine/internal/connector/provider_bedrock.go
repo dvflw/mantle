@@ -129,7 +129,7 @@ func (p *BedrockProvider) ChatCompletion(ctx context.Context, req *ChatRequest) 
 	// Set max tokens if specified.
 	if req.MaxTokens > 0 {
 		input.InferenceConfig = &brtypes.InferenceConfiguration{
-			MaxTokens: aws.Int32(int32(req.MaxTokens)),
+			MaxTokens: aws.Int32(int32(req.MaxTokens)), // #nosec G115 -- MaxTokens is bounded by model limits, safe narrowing
 		}
 	}
 
