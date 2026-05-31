@@ -250,11 +250,13 @@ func (s *Server) Start(ctx context.Context) error {
 	rl := NewRateLimiter(100, 200)
 	apiHandler = rl.Middleware(apiHandler)
 
-	// Top-level mux: health and metrics endpoints bypass auth so that Kubernetes
-	// probes and Prometheus scrapers work without an API key. All other requests
-	// fall through to the auth-wrapped apiHandler.
+	// Metrics behind auth — path labels include workflow names which are sensitive.
+	// Kubernetes probes bypass auth; Prometheus must be configured with an API key.
+	apiMux.Handle("/metrics", promhttp.Handler())
+
+	// Top-level mux: health probes bypass auth so Kubernetes can reach them
+	// without credentials. All other requests fall through to apiHandler.
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
 	mux.Handle("/healthz", health.HealthzHandler())
 	// /readyz checks DB connectivity only; worker/reaper liveness is intentionally
 	// excluded to prevent flapping between poll cycles.
