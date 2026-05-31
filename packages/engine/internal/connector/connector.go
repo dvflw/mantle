@@ -65,6 +65,22 @@ func NewRegistry() *Registry {
 	r.Register("redis/publish", &RedisPublishConnector{})
 	r.Register("mongodb/find", &MongoFindConnector{})
 	r.Register("mongodb/aggregate", &MongoAggregateConnector{})
+	r.Register("stripe/create_charge", &StripeCreateChargeConnector{})
+	r.Register("stripe/create_customer", &StripeCreateCustomerConnector{})
+	r.Register("stripe/create_refund", &StripeCreateRefundConnector{})
+	r.Register("okta/list_users", &OktaListUsersConnector{})
+	r.Register("okta/create_user", &OktaCreateUserConnector{})
+	r.Register("quickbooks/create_invoice", &QuickBooksCreateInvoiceConnector{})
+	r.Register("quickbooks/list_invoices", &QuickBooksListInvoicesConnector{})
+	r.Register("onedrive/upload", &OneDriveUploadConnector{})
+	r.Register("sharepoint/list_items", &SharePointListItemsConnector{})
+	r.Register("rabbitmq/publish", &RabbitMQPublishConnector{})
+	r.Register("rabbitmq/consume", &RabbitMQConsumeConnector{})
+	r.Register("shopify/list_orders", &ShopifyListOrdersConnector{})
+	r.Register("shopify/list_products", &ShopifyListProductsConnector{})
+	r.Register("shopify/create_order", &ShopifyCreateOrderConnector{})
+	r.Register("mailchimp/list_members", &MailchimpListMembersConnector{})
+	r.Register("mailchimp/add_member", &MailchimpAddMemberConnector{})
 	return r
 }
 

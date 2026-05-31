@@ -348,6 +348,15 @@ func truncateOlderToolResults(messages []map[string]any, targetBytes int) int {
 	return truncated
 }
 
+// parseJSONBody unmarshals a JSON response body into map[string]any.
+func parseJSONBody(body []byte, action string) (map[string]any, error) {
+	var result map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("%s: parsing response: %w", action, err)
+	}
+	return result, nil
+}
+
 // extractBearerToken pulls a "token" field from the _credential param.
 // Accepts both map[string]string (engine-injected) and map[string]any
 // (JSON/CEL-deserialised) credential shapes, and deletes _credential from params.
