@@ -90,6 +90,11 @@ func (c *RabbitMQConsumeConnector) Execute(ctx context.Context, params map[strin
 			"routing_key":  msg.RoutingKey,
 			"exchange":     msg.Exchange,
 		})
+		if !autoAck {
+			if err := msg.Ack(false); err != nil {
+				return nil, fmt.Errorf("rabbitmq/consume: acking message: %w", err)
+			}
+		}
 	}
 
 	if messages == nil {

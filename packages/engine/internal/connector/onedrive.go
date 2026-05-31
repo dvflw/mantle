@@ -41,12 +41,16 @@ func (c *OneDriveUploadConnector) Execute(ctx context.Context, params map[string
 		return nil, fmt.Errorf("onedrive/upload: content is required")
 	}
 
+	// filePath must NOT be PathEscaped here: Graph path addressing uses
+	// literal "/" separators inside the /root:/...:/content template, so
+	// escaping them produces %2F which resolves to a file literally named
+	// "documents%2Fhello.txt" instead of hello.txt inside the documents folder.
 	var endpoint string
 	if driveID, ok := params["drive_id"].(string); ok && driveID != "" {
 		endpoint = c.apiURL(fmt.Sprintf("/drives/%s/root:/%s:/content",
-			url.PathEscape(driveID), url.PathEscape(filePath)))
+			url.PathEscape(driveID), filePath))
 	} else {
-		endpoint = c.apiURL(fmt.Sprintf("/me/drive/root:/%s:/content", url.PathEscape(filePath)))
+		endpoint = c.apiURL(fmt.Sprintf("/me/drive/root:/%s:/content", filePath))
 	}
 
 	contentType := "application/octet-stream"
