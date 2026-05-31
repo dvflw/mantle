@@ -202,9 +202,76 @@ func TestGitHubDispatchConnector_APIError(t *testing.T) {
 	}
 }
 
+func TestGitHubDispatchWorkflowConnector_DispatchesWorkflow(t *testing.T) {
+	var gotBody map[string]any
+	var gotPath string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		if r.Method != "POST" {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &gotBody)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	c := &GitHubDispatchWorkflowConnector{baseURL: server.URL}
+	out, err := c.Execute(context.Background(), map[string]any{
+		"owner":       "acme",
+		"repo":        "repo",
+		"workflow_id": "deploy.yml",
+		"ref":         "main",
+		"inputs":      map[string]any{"env": "production"},
+		"_credential": map[string]string{"token": "ghp_test"},
+	})
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+	if gotPath != "/repos/acme/repo/actions/workflows/deploy.yml/dispatches" {
+		t.Errorf("path = %q", gotPath)
+	}
+	if gotBody["ref"] != "main" {
+		t.Errorf("ref = %q, want main", gotBody["ref"])
+	}
+	if inputs, ok := gotBody["inputs"].(map[string]any); !ok || inputs["env"] != "production" {
+		t.Errorf("inputs = %v", gotBody["inputs"])
+	}
+	if out["ok"] != true {
+		t.Errorf("ok = %v, want true", out["ok"])
+	}
+}
+
+func TestGitHubDispatchWorkflowConnector_MissingWorkflowID(t *testing.T) {
+	c := &GitHubDispatchWorkflowConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{
+		"owner":       "acme",
+		"repo":        "repo",
+		"ref":         "main",
+		"_credential": map[string]string{"token": "ghp_test"},
+	})
+	if err == nil {
+		t.Fatal("expected error for missing workflow_id")
+	}
+}
+
+func TestGitHubDispatchWorkflowConnector_MissingCredential(t *testing.T) {
+	c := &GitHubDispatchWorkflowConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{
+		"owner":       "acme",
+		"repo":        "repo",
+		"workflow_id": "deploy.yml",
+		"ref":         "main",
+	})
+	if err == nil {
+		t.Fatal("expected error for missing credential")
+	}
+}
+
 func TestRegistry_GitHubConnectors(t *testing.T) {
 	r := NewRegistry()
-	for _, action := range []string{"github/create_issue", "github/dispatch"} {
+	for _, action := range []string{"github/create_issue", "github/dispatch", "github/dispatch_workflow"} {
 		if _, err := r.Get(action); err != nil {
 			t.Errorf("Get(%q) error: %v", action, err)
 		}
