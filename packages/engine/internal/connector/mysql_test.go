@@ -71,6 +71,23 @@ func TestMySQLExecuteConnector_MissingCredential(t *testing.T) {
 	}
 }
 
+func TestMySQLQueryConnector_MissingArgs(t *testing.T) {
+	// args is optional — omitting it should not cause a validation error.
+	c := &MySQLQueryConnector{}
+	_, err := c.Execute(t.Context(), map[string]any{
+		"query": "SELECT 1",
+		// no args, no credential — should fail on credential, not on args
+		"_credential": map[string]string{
+			"host":     "localhost",
+			"user":     "root",
+			"password": "secret",
+			"database": "mydb",
+		},
+	})
+	// Will fail trying to connect — that's fine; the point is no panic on missing args.
+	_ = err
+}
+
 func TestRegistry_MySQLConnectors(t *testing.T) {
 	r := NewRegistry()
 	for _, action := range []string{

@@ -70,6 +70,11 @@ func (c *SnowflakeQueryConnector) Execute(ctx context.Context, params map[string
 		maxRows = m
 	}
 
+	var args []any
+	if rawArgs, ok := params["args"].([]any); ok {
+		args = rawArgs
+	}
+
 	account, user, password, database, schema, warehouse, err := extractSnowflakeCredential(params)
 	if err != nil {
 		return nil, fmt.Errorf("snowflake/query: %w", err)
@@ -97,7 +102,7 @@ func (c *SnowflakeQueryConnector) Execute(ctx context.Context, params map[string
 		return nil, fmt.Errorf("snowflake/query: connecting: %w", err)
 	}
 
-	rows, err := db.QueryContext(ctx, query)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("snowflake/query: executing query: %w", err)
 	}

@@ -70,6 +70,21 @@ func TestSnowflakeQueryConnector_MissingPassword(t *testing.T) {
 	}
 }
 
+func TestSnowflakeQueryConnector_ArgsOptional(t *testing.T) {
+	// args is optional — omitting it should not cause a validation error.
+	c := &SnowflakeQueryConnector{}
+	_, err := c.Execute(t.Context(), map[string]any{
+		"query": "SELECT 1",
+		"_credential": map[string]string{
+			"account":  "myaccount",
+			"user":     "myuser",
+			"password": "mypassword",
+		},
+	})
+	// Will fail trying to connect — that's fine; no panic on missing args.
+	_ = err
+}
+
 func TestRegistry_SnowflakeConnectors(t *testing.T) {
 	r := NewRegistry()
 	for _, action := range []string{

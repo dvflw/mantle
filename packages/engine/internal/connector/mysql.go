@@ -109,6 +109,11 @@ func (c *MySQLQueryConnector) Execute(ctx context.Context, params map[string]any
 		maxRows = m
 	}
 
+	var args []any
+	if rawArgs, ok := params["args"].([]any); ok {
+		args = rawArgs
+	}
+
 	dsn, err := extractMySQLCredential(params)
 	if err != nil {
 		return nil, fmt.Errorf("mysql/query: %w", err)
@@ -124,7 +129,7 @@ func (c *MySQLQueryConnector) Execute(ctx context.Context, params map[string]any
 		return nil, fmt.Errorf("mysql/query: connecting: %w", err)
 	}
 
-	rows, err := db.QueryContext(ctx, query)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("mysql/query: executing query: %w", err)
 	}
@@ -155,6 +160,11 @@ func (c *MySQLExecuteConnector) Execute(ctx context.Context, params map[string]a
 		return nil, fmt.Errorf("mysql/execute: statement is required")
 	}
 
+	var args []any
+	if rawArgs, ok := params["args"].([]any); ok {
+		args = rawArgs
+	}
+
 	dsn, err := extractMySQLCredential(params)
 	if err != nil {
 		return nil, fmt.Errorf("mysql/execute: %w", err)
@@ -170,7 +180,7 @@ func (c *MySQLExecuteConnector) Execute(ctx context.Context, params map[string]a
 		return nil, fmt.Errorf("mysql/execute: connecting: %w", err)
 	}
 
-	res, err := db.ExecContext(ctx, statement)
+	res, err := db.ExecContext(ctx, statement, args...)
 	if err != nil {
 		return nil, fmt.Errorf("mysql/execute: executing statement: %w", err)
 	}
@@ -256,6 +266,11 @@ func (c *MSSQLQueryConnector) Execute(ctx context.Context, params map[string]any
 		maxRows = m
 	}
 
+	var args []any
+	if rawArgs, ok := params["args"].([]any); ok {
+		args = rawArgs
+	}
+
 	dsn, err := extractMSSQLCredential(params)
 	if err != nil {
 		return nil, fmt.Errorf("mssql/query: %w", err)
@@ -271,7 +286,7 @@ func (c *MSSQLQueryConnector) Execute(ctx context.Context, params map[string]any
 		return nil, fmt.Errorf("mssql/query: connecting: %w", err)
 	}
 
-	rows, err := db.QueryContext(ctx, query)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("mssql/query: executing query: %w", err)
 	}
@@ -302,6 +317,11 @@ func (c *MSSQLExecuteConnector) Execute(ctx context.Context, params map[string]a
 		return nil, fmt.Errorf("mssql/execute: statement is required")
 	}
 
+	var args []any
+	if rawArgs, ok := params["args"].([]any); ok {
+		args = rawArgs
+	}
+
 	dsn, err := extractMSSQLCredential(params)
 	if err != nil {
 		return nil, fmt.Errorf("mssql/execute: %w", err)
@@ -317,7 +337,7 @@ func (c *MSSQLExecuteConnector) Execute(ctx context.Context, params map[string]a
 		return nil, fmt.Errorf("mssql/execute: connecting: %w", err)
 	}
 
-	res, err := db.ExecContext(ctx, statement)
+	res, err := db.ExecContext(ctx, statement, args...)
 	if err != nil {
 		return nil, fmt.Errorf("mssql/execute: executing statement: %w", err)
 	}
@@ -397,6 +417,11 @@ func (c *RedshiftQueryConnector) Execute(ctx context.Context, params map[string]
 		maxRows = m
 	}
 
+	var args []any
+	if rawArgs, ok := params["args"].([]any); ok {
+		args = rawArgs
+	}
+
 	connStr, err := extractRedshiftCredential(params)
 	if err != nil {
 		return nil, fmt.Errorf("redshift/query: %w", err)
@@ -412,7 +437,7 @@ func (c *RedshiftQueryConnector) Execute(ctx context.Context, params map[string]
 		return nil, fmt.Errorf("redshift/query: connecting: %w", err)
 	}
 
-	rows, err := db.QueryContext(ctx, query)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("redshift/query: executing query: %w", err)
 	}
