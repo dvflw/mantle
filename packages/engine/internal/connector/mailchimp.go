@@ -125,7 +125,7 @@ func (c *MailchimpAddMemberConnector) Execute(ctx context.Context, params map[st
 	}
 
 	// Mailchimp API requires MD5(lowercase(email)) as the subscriber hash — API identifier, not a security hash.
-	hash := md5.Sum([]byte(strings.ToLower(email))) // #nosec G401 G501
+	hash := md5.Sum([]byte(strings.ToLower(email))) // #nosec G401 G501 -- CodeQL[go/weak-sensitive-data-hashing]
 	subscriberHash := hex.EncodeToString(hash[:])
 
 	req, err := http.NewRequestWithContext(ctx, "PUT",
