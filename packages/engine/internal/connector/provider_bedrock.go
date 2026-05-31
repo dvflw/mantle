@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -128,8 +129,11 @@ func (p *BedrockProvider) ChatCompletion(ctx context.Context, req *ChatRequest) 
 
 	// Set max tokens if specified.
 	if req.MaxTokens > 0 {
+		if req.MaxTokens > math.MaxInt32 {
+			return nil, fmt.Errorf("bedrock: max_tokens value %d exceeds maximum allowed (%d)", req.MaxTokens, math.MaxInt32)
+		}
 		input.InferenceConfig = &brtypes.InferenceConfiguration{
-			MaxTokens: aws.Int32(int32(req.MaxTokens)), // #nosec G115 -- MaxTokens is bounded by model limits, safe narrowing
+			MaxTokens: aws.Int32(int32(req.MaxTokens)),
 		}
 	}
 

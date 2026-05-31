@@ -396,9 +396,16 @@ func extractRedshiftCredential(params map[string]any) (connStr string, err error
 		return "", fmt.Errorf("credential must contain a 'database' field")
 	}
 
-	connStr = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=require",
-		host, port, user, password, database)
-	return connStr, nil
+	u := &url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(user, password),
+		Host:   host + ":" + port,
+		Path:   "/" + database,
+	}
+	q := u.Query()
+	q.Set("sslmode", "require")
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }
 
 // RedshiftQueryConnector executes a SQL query against Amazon Redshift (Postgres-compatible).

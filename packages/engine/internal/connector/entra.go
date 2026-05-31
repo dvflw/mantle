@@ -209,10 +209,13 @@ func (c *EntraAddGroupMemberConnector) Execute(ctx context.Context, params map[s
 		return nil, fmt.Errorf("entra/add_group_member: %w", err)
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, DefaultMaxResponseBytes))
 
+	body, err := io.ReadAll(io.LimitReader(resp.Body, DefaultMaxResponseBytes))
+	if err != nil {
+		return nil, fmt.Errorf("entra/add_group_member: reading response: %w", err)
+	}
 	if resp.StatusCode != http.StatusNoContent {
-		return nil, fmt.Errorf("entra/add_group_member: API returned %d", resp.StatusCode)
+		return nil, fmt.Errorf("entra/add_group_member: API returned %d: %s", resp.StatusCode, truncate(string(body), 500))
 	}
 
 	return map[string]any{"ok": true}, nil

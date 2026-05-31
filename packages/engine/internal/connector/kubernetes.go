@@ -46,9 +46,6 @@ func extractK8sCredential(params map[string]any) (server, token, namespace strin
 		return "", "", "", fmt.Errorf("credential must contain a 'token' field")
 	}
 	namespace = cred["namespace"]
-	if namespace == "" {
-		namespace = "default"
-	}
 	return server, token, namespace, nil
 }
 
@@ -60,7 +57,7 @@ func k8sInsecureClient(c *http.Client) *http.Client {
 	}
 	return &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- K8s clusters commonly use self-signed certs; callers that need cert verification should supply their own *http.Client
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12}, // #nosec G402 -- K8s clusters commonly use self-signed certs; callers that need cert verification should supply their own *http.Client
 		},
 	}
 }
@@ -82,6 +79,7 @@ func k8sPlural(kind string) string {
 // k8sResourcePath builds the REST path for a Kubernetes resource.
 // Core API (apiVersion="v1"): /api/v1/namespaces/{ns}/{resourceType}/{name}
 // Other APIs: /apis/{apiVersion}/namespaces/{ns}/{resourceType}/{name}
+// An empty namespace produces a cluster-scoped path (omits /namespaces/{ns}).
 func k8sResourcePath(apiVersion, kind, namespace, name string) string {
 	resourceType := k8sPlural(kind)
 
@@ -90,6 +88,13 @@ func k8sResourcePath(apiVersion, kind, namespace, name string) string {
 		basePath = "/api/v1"
 	} else {
 		basePath = "/apis/" + apiVersion
+	}
+
+	if namespace == "" {
+		if name != "" {
+			return fmt.Sprintf("%s/%s/%s", basePath, resourceType, url.PathEscape(name))
+		}
+		return fmt.Sprintf("%s/%s", basePath, resourceType)
 	}
 
 	if name != "" {
@@ -273,6 +278,9 @@ func (c *K8sCreateJobConnector) Execute(ctx context.Context, params map[string]a
 	if ns, _ := params["namespace"].(string); ns != "" {
 		namespace = ns
 	}
+	if namespace == "" {
+		namespace = "default"
+	}
 
 	restartPolicy := "Never"
 	if rp, _ := params["restart_policy"].(string); rp != "" {
@@ -354,6 +362,9 @@ func (c *K8sGetPodStatusConnector) Execute(ctx context.Context, params map[strin
 	namespace := credNamespace
 	if ns, _ := params["namespace"].(string); ns != "" {
 		namespace = ns
+	}
+	if namespace == "" {
+		namespace = "default"
 	}
 
 	client := k8sInsecureClient(c.Client)

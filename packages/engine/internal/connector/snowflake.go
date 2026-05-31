@@ -108,29 +108,9 @@ func (c *SnowflakeQueryConnector) Execute(ctx context.Context, params map[string
 	}
 	defer rows.Close()
 
-	cols, err := rows.Columns()
+	result, err := scanSQLRows(rows, maxRows)
 	if err != nil {
-		return nil, fmt.Errorf("snowflake/query: reading columns: %w", err)
-	}
-
-	var result []map[string]any
-	for rows.Next() && len(result) < maxRows {
-		vals := make([]any, len(cols))
-		ptrs := make([]any, len(cols))
-		for i := range vals {
-			ptrs[i] = &vals[i]
-		}
-		if err := rows.Scan(ptrs...); err != nil {
-			return nil, fmt.Errorf("snowflake/query: scanning row: %w", err)
-		}
-		row := make(map[string]any, len(cols))
-		for i, col := range cols {
-			row[col] = vals[i]
-		}
-		result = append(result, row)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("snowflake/query: reading rows: %w", err)
+		return nil, fmt.Errorf("snowflake/query: scanning rows: %w", err)
 	}
 
 	if result == nil {
