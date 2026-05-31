@@ -141,7 +141,7 @@ func (c *SalesforceCreateRecordConnector) Execute(ctx context.Context, params ma
 		return nil, fmt.Errorf("salesforce/create_record: marshaling request: %w", err)
 	}
 
-	path := fmt.Sprintf("/sobjects/%s", objectType)
+	path := fmt.Sprintf("/sobjects/%s", url.PathEscape(objectType))
 	req, err := http.NewRequestWithContext(ctx, "POST", c.dataURL(instanceURL, path), bytes.NewReader(reqJSON))
 	if err != nil {
 		return nil, fmt.Errorf("salesforce/create_record: creating request: %w", err)

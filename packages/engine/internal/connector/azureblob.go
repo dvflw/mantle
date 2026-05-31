@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -200,9 +201,9 @@ func (c *AzureInvokeFunctionConnector) Execute(ctx context.Context, params map[s
 	endpoint := functionURL
 	if functionKey != "" {
 		if strings.Contains(endpoint, "?") {
-			endpoint += "&code=" + functionKey
+			endpoint += "&code=" + url.QueryEscape(functionKey)
 		} else {
-			endpoint += "?code=" + functionKey
+			endpoint += "?code=" + url.QueryEscape(functionKey)
 		}
 	}
 
@@ -231,6 +232,9 @@ func (c *AzureInvokeFunctionConnector) Execute(ctx context.Context, params map[s
 	body, err := io.ReadAll(io.LimitReader(resp.Body, DefaultMaxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("azure/invoke_function: reading response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("azure/invoke_function: request failed with status %d: %s", resp.StatusCode, truncate(string(body), 500))
 	}
 
 	contentType := resp.Header.Get("Content-Type")

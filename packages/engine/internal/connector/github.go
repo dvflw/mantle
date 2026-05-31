@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -221,7 +222,7 @@ func (c *GitHubDispatchWorkflowConnector) Execute(ctx context.Context, params ma
 		return nil, fmt.Errorf("github/dispatch_workflow: marshaling request: %w", err)
 	}
 
-	path := fmt.Sprintf("/repos/%s/%s/actions/workflows/%s/dispatches", owner, repo, workflowID)
+	path := fmt.Sprintf("/repos/%s/%s/actions/workflows/%s/dispatches", owner, repo, url.PathEscape(workflowID))
 	req, err := http.NewRequestWithContext(ctx, "POST", c.apiURL(path), bytes.NewReader(reqJSON))
 	if err != nil {
 		return nil, fmt.Errorf("github/dispatch_workflow: creating request: %w", err)

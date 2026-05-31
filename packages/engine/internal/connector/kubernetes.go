@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -92,9 +93,9 @@ func k8sResourcePath(apiVersion, kind, namespace, name string) string {
 	}
 
 	if name != "" {
-		return fmt.Sprintf("%s/namespaces/%s/%s/%s", basePath, namespace, resourceType, name)
+		return fmt.Sprintf("%s/namespaces/%s/%s/%s", basePath, url.PathEscape(namespace), resourceType, url.PathEscape(name))
 	}
-	return fmt.Sprintf("%s/namespaces/%s/%s", basePath, namespace, resourceType)
+	return fmt.Sprintf("%s/namespaces/%s/%s", basePath, url.PathEscape(namespace), resourceType)
 }
 
 // k8sDoRequest executes an HTTP request against the Kubernetes API.
@@ -356,9 +357,9 @@ func (c *K8sGetPodStatusConnector) Execute(ctx context.Context, params map[strin
 	}
 
 	client := k8sInsecureClient(c.Client)
-	url := fmt.Sprintf("%s/api/v1/namespaces/%s/pods/%s", baseURL, namespace, podName)
+	podURL := fmt.Sprintf("%s/api/v1/namespaces/%s/pods/%s", baseURL, url.PathEscape(namespace), url.PathEscape(podName))
 
-	result, statusCode, err := k8sDoRequest(ctx, client, http.MethodGet, url, token, nil)
+	result, statusCode, err := k8sDoRequest(ctx, client, http.MethodGet, podURL, token, nil)
 	if err != nil {
 		return nil, fmt.Errorf("k8s/get_pod_status: %w", err)
 	}

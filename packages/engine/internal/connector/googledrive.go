@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 )
 
@@ -56,17 +58,32 @@ func (c *GoogleDriveUploadConnector) Execute(ctx context.Context, params map[str
 		metaBody = fmt.Sprintf(`{"name":%q}`, name)
 	}
 
-	boundary := "mantle_multipart_boundary"
 	var buf bytes.Buffer
-	// Part 1: metadata
-	buf.WriteString("--" + boundary + "\r\n")
-	buf.WriteString("Content-Type: application/json\r\n\r\n")
-	buf.WriteString(metaBody + "\r\n")
-	// Part 2: content
-	buf.WriteString("--" + boundary + "\r\n")
-	buf.WriteString("Content-Type: " + mimeType + "\r\n\r\n")
-	buf.WriteString(content + "\r\n")
-	buf.WriteString("--" + boundary + "--\r\n")
+	mw := multipart.NewWriter(&buf)
+
+	metaHeader := make(textproto.MIMEHeader)
+	metaHeader.Set("Content-Type", "application/json")
+	metaPart, err := mw.CreatePart(metaHeader)
+	if err != nil {
+		return nil, fmt.Errorf("drive/upload: creating metadata part: %w", err)
+	}
+	if _, err := io.WriteString(metaPart, metaBody); err != nil {
+		return nil, fmt.Errorf("drive/upload: writing metadata: %w", err)
+	}
+
+	contentHeader := make(textproto.MIMEHeader)
+	contentHeader.Set("Content-Type", mimeType)
+	contentPart, err := mw.CreatePart(contentHeader)
+	if err != nil {
+		return nil, fmt.Errorf("drive/upload: creating content part: %w", err)
+	}
+	if _, err := io.WriteString(contentPart, content); err != nil {
+		return nil, fmt.Errorf("drive/upload: writing content: %w", err)
+	}
+
+	if err := mw.Close(); err != nil {
+		return nil, fmt.Errorf("drive/upload: closing writer: %w", err)
+	}
 
 	endpoint := c.getUploadURL() + "?uploadType=multipart"
 
@@ -75,7 +92,7 @@ func (c *GoogleDriveUploadConnector) Execute(ctx context.Context, params map[str
 		return nil, fmt.Errorf("drive/upload: creating request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "multipart/related; boundary="+boundary)
+	req.Header.Set("Content-Type", "multipart/related; boundary="+mw.Boundary())
 
 	resp, err := httpClient(c.Client).Do(req)
 	if err != nil {

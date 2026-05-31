@@ -139,6 +139,9 @@ func (c *GCPInvokeCloudRunConnector) Execute(ctx context.Context, params map[str
 	if err != nil {
 		return nil, fmt.Errorf("gcp/invoke_cloud_run: reading response: %w", err)
 	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("gcp/invoke_cloud_run: request failed with status %d: %s", resp.StatusCode, truncate(string(body), 500))
+	}
 
 	contentType := resp.Header.Get("Content-Type")
 	if strings.Contains(contentType, "application/json") && len(body) > 0 {
