@@ -3,6 +3,8 @@ package connector
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -122,8 +124,11 @@ func (c *MailchimpAddMemberConnector) Execute(ctx context.Context, params map[st
 		return nil, fmt.Errorf("mailchimp/add_member: marshaling request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST",
-		c.apiURL(dc, fmt.Sprintf("/lists/%s/members", listID)),
+	hash := md5.Sum([]byte(strings.ToLower(email)))
+	subscriberHash := hex.EncodeToString(hash[:])
+
+	req, err := http.NewRequestWithContext(ctx, "PUT",
+		c.apiURL(dc, fmt.Sprintf("/lists/%s/members/%s", listID, subscriberHash)),
 		bytes.NewReader(reqJSON),
 	)
 	if err != nil {

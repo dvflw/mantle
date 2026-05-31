@@ -78,6 +78,9 @@ func TestOktaCreateUserConnector_CreatesUser(t *testing.T) {
 		if r.Method != "POST" {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
+		if r.URL.Query().Get("activate") != "true" {
+			t.Errorf("expected activate=true, got %q", r.URL.Query().Get("activate"))
+		}
 		var body map[string]any
 		json.NewDecoder(r.Body).Decode(&body)
 		profile, _ := body["profile"].(map[string]any)
@@ -105,6 +108,31 @@ func TestOktaCreateUserConnector_CreatesUser(t *testing.T) {
 	}
 	if out["id"] != "00u1" {
 		t.Errorf("expected id=00u1, got %v", out["id"])
+	}
+}
+
+func TestOktaCreateUserConnector_ActivateFalse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("activate") != "false" {
+			t.Errorf("expected activate=false, got %q", r.URL.Query().Get("activate"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]any{"id": "00u2", "status": "STAGED"})
+	}))
+	defer srv.Close()
+
+	c := &OktaCreateUserConnector{baseURL: srv.URL}
+	out, err := c.Execute(t.Context(), map[string]any{
+		"_credential": map[string]string{"domain": "dev.okta.com", "token": "tok"},
+		"activate":    false,
+		"profile":     map[string]any{"login": "staged@example.com", "email": "staged@example.com"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out["id"] != "00u2" {
+		t.Errorf("expected id=00u2, got %v", out["id"])
 	}
 }
 

@@ -121,10 +121,7 @@ func (c *OktaCreateUserConnector) Execute(ctx context.Context, params map[string
 		return nil, fmt.Errorf("okta/create_user: marshaling request: %w", err)
 	}
 
-	endpoint := c.apiURL(domain, "/api/v1/users")
-	if activate {
-		endpoint += "?activate=true"
-	}
+	endpoint := fmt.Sprintf("%s?activate=%v", c.apiURL(domain, "/api/v1/users"), activate)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(reqJSON))
 	if err != nil {
