@@ -12,6 +12,9 @@ func TestOneDriveUploadConnector_UploadsFile(t *testing.T) {
 		if r.Method != "PUT" {
 			t.Errorf("expected PUT, got %s", r.Method)
 		}
+		if r.URL.Path != "/me/drive/root:/documents/hello.txt:/content" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
 		if r.Header.Get("Authorization") != "Bearer graph-token" {
 			t.Errorf("unexpected Authorization: %s", r.Header.Get("Authorization"))
 		}

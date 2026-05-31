@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 const quickbooksBaseURL = "https://quickbooks.api.intuit.com/v3/company"
@@ -74,9 +75,21 @@ func (c *QuickBooksListInvoicesConnector) Execute(ctx context.Context, params ma
 
 	query := "SELECT * FROM Invoice"
 	if where, ok := params["where"].(string); ok && where != "" {
+		wl := strings.ToLower(where)
+		for _, kw := range []string{"maxresults", "startposition", "orderby"} {
+			if strings.Contains(wl, kw) {
+				return nil, fmt.Errorf("quickbooks/list_invoices: invalid where clause")
+			}
+		}
 		query += " WHERE " + where
 	}
 	if orderBy, ok := params["order_by"].(string); ok && orderBy != "" {
+		ol := strings.ToLower(orderBy)
+		for _, kw := range []string{"maxresults", "startposition", "where"} {
+			if strings.Contains(ol, kw) {
+				return nil, fmt.Errorf("quickbooks/list_invoices: invalid order_by clause")
+			}
+		}
 		query += " ORDERBY " + orderBy
 	}
 	maxResults := 20

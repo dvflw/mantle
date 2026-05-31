@@ -8,9 +8,20 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 const graphBaseURL = "https://graph.microsoft.com/v1.0"
+
+// escapePath percent-encodes each segment of a slash-delimited path individually,
+// preserving "/" as the folder separator for Microsoft Graph path-based addressing.
+func escapePath(p string) string {
+	segs := strings.Split(p, "/")
+	for i, s := range segs {
+		segs[i] = url.PathEscape(s)
+	}
+	return strings.Join(segs, "/")
+}
 
 // OneDriveUploadConnector uploads a file to OneDrive via the Microsoft Graph API.
 type OneDriveUploadConnector struct {
@@ -41,16 +52,14 @@ func (c *OneDriveUploadConnector) Execute(ctx context.Context, params map[string
 		return nil, fmt.Errorf("onedrive/upload: content is required")
 	}
 
-	// filePath must NOT be PathEscaped here: Graph path addressing uses
-	// literal "/" separators inside the /root:/...:/content template, so
-	// escaping them produces %2F which resolves to a file literally named
-	// "documents%2Fhello.txt" instead of hello.txt inside the documents folder.
+	// escapePath preserves "/" as folder separators while encoding special characters
+	// within each segment (spaces, #, etc.) for Microsoft Graph path-based addressing.
 	var endpoint string
 	if driveID, ok := params["drive_id"].(string); ok && driveID != "" {
 		endpoint = c.apiURL(fmt.Sprintf("/drives/%s/root:/%s:/content",
-			url.PathEscape(driveID), filePath))
+			url.PathEscape(driveID), escapePath(filePath)))
 	} else {
-		endpoint = c.apiURL(fmt.Sprintf("/me/drive/root:/%s:/content", filePath))
+		endpoint = c.apiURL(fmt.Sprintf("/me/drive/root:/%s:/content", escapePath(filePath)))
 	}
 
 	contentType := "application/octet-stream"

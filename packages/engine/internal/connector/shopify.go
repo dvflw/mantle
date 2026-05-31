@@ -12,17 +12,17 @@ import (
 
 const shopifyAPIVersion = "2024-01"
 
+func shopifyAPIURL(baseURL, shop, path string) string {
+	if baseURL != "" {
+		return baseURL + path
+	}
+	return fmt.Sprintf("https://%s.myshopify.com/admin/api/%s%s", shop, shopifyAPIVersion, path)
+}
+
 // ShopifyListOrdersConnector lists orders from a Shopify store.
 type ShopifyListOrdersConnector struct {
 	Client  *http.Client
 	baseURL string
-}
-
-func (c *ShopifyListOrdersConnector) apiURL(shop, path string) string {
-	if c.baseURL != "" {
-		return c.baseURL + path
-	}
-	return fmt.Sprintf("https://%s.myshopify.com/admin/api/%s%s", shop, shopifyAPIVersion, path)
 }
 
 func (c *ShopifyListOrdersConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
@@ -42,7 +42,7 @@ func (c *ShopifyListOrdersConnector) Execute(ctx context.Context, params map[str
 		query.Set("since_id", sinceID)
 	}
 
-	endpoint := c.apiURL(shop, "/orders.json")
+	endpoint := shopifyAPIURL(c.baseURL, shop, "/orders.json")
 	if len(query) > 0 {
 		endpoint += "?" + query.Encode()
 	}
@@ -63,13 +63,6 @@ type ShopifyListProductsConnector struct {
 	baseURL string
 }
 
-func (c *ShopifyListProductsConnector) apiURL(shop, path string) string {
-	if c.baseURL != "" {
-		return c.baseURL + path
-	}
-	return fmt.Sprintf("https://%s.myshopify.com/admin/api/%s%s", shop, shopifyAPIVersion, path)
-}
-
 func (c *ShopifyListProductsConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
 	shop, token, err := extractShopifyCredential(params)
 	if err != nil {
@@ -87,7 +80,7 @@ func (c *ShopifyListProductsConnector) Execute(ctx context.Context, params map[s
 		query.Set("vendor", vendor)
 	}
 
-	endpoint := c.apiURL(shop, "/products.json")
+	endpoint := shopifyAPIURL(c.baseURL, shop, "/products.json")
 	if len(query) > 0 {
 		endpoint += "?" + query.Encode()
 	}
@@ -106,13 +99,6 @@ func (c *ShopifyListProductsConnector) Execute(ctx context.Context, params map[s
 type ShopifyCreateOrderConnector struct {
 	Client  *http.Client
 	baseURL string
-}
-
-func (c *ShopifyCreateOrderConnector) apiURL(shop, path string) string {
-	if c.baseURL != "" {
-		return c.baseURL + path
-	}
-	return fmt.Sprintf("https://%s.myshopify.com/admin/api/%s%s", shop, shopifyAPIVersion, path)
 }
 
 func (c *ShopifyCreateOrderConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
@@ -142,7 +128,7 @@ func (c *ShopifyCreateOrderConnector) Execute(ctx context.Context, params map[st
 		return nil, fmt.Errorf("shopify/create_order: marshaling request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.apiURL(shop, "/orders.json"), bytes.NewReader(reqJSON))
+	req, err := http.NewRequestWithContext(ctx, "POST", shopifyAPIURL(c.baseURL, shop, "/orders.json"), bytes.NewReader(reqJSON))
 	if err != nil {
 		return nil, fmt.Errorf("shopify/create_order: creating request: %w", err)
 	}

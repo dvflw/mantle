@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"net"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -12,13 +13,6 @@ import (
 type RabbitMQPublishConnector struct{}
 
 func (c *RabbitMQPublishConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
-	conn, ch, err := newRabbitMQChannel(params)
-	if err != nil {
-		return nil, fmt.Errorf("rabbitmq/publish: %w", err)
-	}
-	defer conn.Close()
-	defer ch.Close()
-
 	exchange, _ := params["exchange"].(string)
 	routingKey, _ := params["routing_key"].(string)
 	if exchange == "" && routingKey == "" {
@@ -29,6 +23,13 @@ func (c *RabbitMQPublishConnector) Execute(ctx context.Context, params map[strin
 	if body == "" {
 		return nil, fmt.Errorf("rabbitmq/publish: body is required")
 	}
+
+	conn, ch, err := newRabbitMQChannel(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("rabbitmq/publish: %w", err)
+	}
+	defer conn.Close()
+	defer ch.Close()
 
 	contentType := "text/plain"
 	if ct, ok := params["content_type"].(string); ok && ct != "" {
@@ -49,27 +50,30 @@ func (c *RabbitMQPublishConnector) Execute(ctx context.Context, params map[strin
 }
 
 // RabbitMQConsumeConnector consumes up to N messages from a RabbitMQ queue (non-blocking poll).
+// auto_ack defaults to false (at-least-once): each message is acknowledged after it is
+// collected. Set auto_ack=true to opt into at-most-once delivery.
 type RabbitMQConsumeConnector struct{}
 
 func (c *RabbitMQConsumeConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
-	conn, ch, err := newRabbitMQChannel(params)
+	queue, _ := params["queue"].(string)
+	if queue == "" {
+		return nil, fmt.Errorf("rabbitmq/consume: queue is required")
+	}
+
+	conn, ch, err := newRabbitMQChannel(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("rabbitmq/consume: %w", err)
 	}
 	defer conn.Close()
 	defer ch.Close()
 
-	queue, _ := params["queue"].(string)
-	if queue == "" {
-		return nil, fmt.Errorf("rabbitmq/consume: queue is required")
-	}
-
 	maxMessages := 10
 	if m, ok := extractInt(params["max_messages"]); ok && m > 0 {
 		maxMessages = m
 	}
 
-	autoAck := true
+	// Default false: broker requires explicit Ack; set true to opt into at-most-once.
+	autoAck := false
 	if a, ok := params["auto_ack"].(bool); ok {
 		autoAck = a
 	}
@@ -104,8 +108,9 @@ func (c *RabbitMQConsumeConnector) Execute(ctx context.Context, params map[strin
 }
 
 // newRabbitMQChannel dials a RabbitMQ connection and opens a channel.
+// The dial respects ctx cancellation via a context-aware net.Dialer.
 // Credential: {url: "amqp://user:pass@host:5672/"}
-func newRabbitMQChannel(params map[string]any) (*amqp.Connection, *amqp.Channel, error) {
+func newRabbitMQChannel(ctx context.Context, params map[string]any) (*amqp.Connection, *amqp.Channel, error) {
 	raw, ok := params["_credential"]
 	if !ok || raw == nil {
 		return nil, nil, fmt.Errorf("credential is required")
@@ -125,7 +130,12 @@ func newRabbitMQChannel(params map[string]any) (*amqp.Connection, *amqp.Channel,
 		return nil, nil, fmt.Errorf("credential must contain a 'url' field (amqp://...)")
 	}
 
-	conn, err := amqp.Dial(amqpURL)
+	d := &net.Dialer{}
+	conn, err := amqp.DialConfig(amqpURL, amqp.Config{
+		Dial: func(network, addr string) (net.Conn, error) {
+			return d.DialContext(ctx, network, addr)
+		},
+	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("connecting to RabbitMQ: %w", err)
 	}
