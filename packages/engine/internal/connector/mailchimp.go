@@ -3,6 +3,8 @@ package connector
 import (
 	"bytes"
 	"context"
+	"crypto/md5" // #nosec G501 -- Mailchimp API requires MD5(lowercase(email)) as subscriber hash; not a security primitive
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -122,8 +124,12 @@ func (c *MailchimpAddMemberConnector) Execute(ctx context.Context, params map[st
 		return nil, fmt.Errorf("mailchimp/add_member: marshaling request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST",
-		c.apiURL(dc, fmt.Sprintf("/lists/%s/members", listID)),
+	// CodeQL[go/weak-sensitive-data-hashing]
+	hash := md5.Sum([]byte(strings.ToLower(email))) // #nosec G401 G501 -- Mailchimp API mandates MD5(lowercase(email)) as subscriber hash
+	subscriberHash := hex.EncodeToString(hash[:])
+
+	req, err := http.NewRequestWithContext(ctx, "PUT",
+		c.apiURL(dc, fmt.Sprintf("/lists/%s/members/%s", listID, subscriberHash)),
 		bytes.NewReader(reqJSON),
 	)
 	if err != nil {

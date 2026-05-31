@@ -119,7 +119,9 @@ func k8sDoRequest(ctx context.Context, client *http.Client, method, url, token s
 	return result, resp.StatusCode, nil
 }
 
-// K8sApplyConnector applies a Kubernetes resource manifest (PUT, fallback to POST on 404).
+// K8sApplyConnector applies a Kubernetes resource manifest using server-side apply
+// (PATCH with application/apply-patch+yaml and fieldManager=mantle).
+// Creates or updates without requiring resourceVersion in the manifest.
 // Params: manifest (required — map[string]any Kubernetes resource manifest).
 // Output: {"ok": true, "name": "...", "kind": "..."}
 type K8sApplyConnector struct {
@@ -171,26 +173,25 @@ func (c *K8sApplyConnector) Execute(ctx context.Context, params map[string]any) 
 
 	client := k8sInsecureClient(c.Client)
 	path := k8sResourcePath(apiVersion, kind, namespace, name)
-	url := baseURL + path
+	applyURL := baseURL + path + "?fieldManager=mantle&force=true"
 
-	_, statusCode, err := k8sDoRequest(ctx, client, http.MethodPut, url, token, body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, applyURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("k8s/apply: %w", err)
 	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	// Server-side apply content type: creates or updates without requiring resourceVersion.
+	req.Header.Set("Content-Type", "application/apply-patch+yaml")
+	req.Header.Set("Accept", "application/json")
 
-	if statusCode == http.StatusNotFound {
-		// Resource does not exist — POST to collection endpoint.
-		collectionPath := k8sResourcePath(apiVersion, kind, namespace, "")
-		collectionURL := baseURL + collectionPath
-		_, statusCode, err = k8sDoRequest(ctx, client, http.MethodPost, collectionURL, token, body)
-		if err != nil {
-			return nil, fmt.Errorf("k8s/apply: %w", err)
-		}
-		if statusCode < 200 || statusCode >= 300 {
-			return nil, fmt.Errorf("k8s/apply: POST returned status %d", statusCode)
-		}
-	} else if statusCode < 200 || statusCode >= 300 {
-		return nil, fmt.Errorf("k8s/apply: PUT returned status %d", statusCode)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("k8s/apply: %w", err)
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, DefaultMaxResponseBytes))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("k8s/apply: server-side apply returned %d: %s", resp.StatusCode, truncate(string(respBody), 200))
 	}
 
 	return map[string]any{

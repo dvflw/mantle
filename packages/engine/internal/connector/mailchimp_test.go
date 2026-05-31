@@ -73,8 +73,10 @@ func TestMailchimpListMembersConnector_InvalidAPIKeyFormat(t *testing.T) {
 }
 
 func TestMailchimpAddMemberConnector_AddsMember(t *testing.T) {
+	// md5("bob@example.com") = 4b9bb80620f03eb3719e0a061c14283d
+	const wantPath = "/3.0/lists/list1/members/4b9bb80620f03eb3719e0a061c14283d"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/3.0/lists/list1/members" {
+		if r.Method != "PUT" || r.URL.Path != wantPath {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		var body map[string]any

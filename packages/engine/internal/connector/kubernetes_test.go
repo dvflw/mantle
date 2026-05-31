@@ -15,6 +15,69 @@ func testK8sCredential() map[string]string {
 	}
 }
 
+// --- K8sApplyConnector ---
+
+func TestK8sApplyConnector_ServerSideApply(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("expected PATCH, got %s", r.Method)
+		}
+		if r.Header.Get("Content-Type") != "application/apply-patch+yaml" {
+			t.Errorf("unexpected Content-Type: %s", r.Header.Get("Content-Type"))
+		}
+		if r.URL.Query().Get("fieldManager") != "mantle" {
+			t.Errorf("expected fieldManager=mantle, got %q", r.URL.Query().Get("fieldManager"))
+		}
+		if r.URL.Query().Get("force") != "true" {
+			t.Errorf("expected force=true, got %q", r.URL.Query().Get("force"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	c := &K8sApplyConnector{Client: ts.Client(), baseURL: ts.URL}
+	out, err := c.Execute(t.Context(), map[string]any{
+		"_credential": testK8sCredential(),
+		"manifest": map[string]any{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+			"metadata":   map[string]any{"name": "my-config", "namespace": "default"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out["ok"] != true {
+		t.Errorf("expected ok=true, got %v", out["ok"])
+	}
+}
+
+func TestK8sApplyConnector_MissingManifest(t *testing.T) {
+	c := &K8sApplyConnector{}
+	_, err := c.Execute(t.Context(), map[string]any{
+		"_credential": testK8sCredential(),
+	})
+	if err == nil {
+		t.Fatal("expected error for missing manifest")
+	}
+}
+
+func TestK8sApplyConnector_MissingMetadataName(t *testing.T) {
+	c := &K8sApplyConnector{baseURL: "http://unused"}
+	_, err := c.Execute(t.Context(), map[string]any{
+		"_credential": testK8sCredential(),
+		"manifest": map[string]any{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+			"metadata":   map[string]any{},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for missing metadata.name")
+	}
+}
+
 // --- K8sCreateJobConnector ---
 
 func TestK8sCreateJobConnector_CreatesJob(t *testing.T) {

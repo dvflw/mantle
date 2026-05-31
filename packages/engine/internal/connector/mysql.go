@@ -60,15 +60,15 @@ func extractMySQLCredential(params map[string]any) (dsn string, err error) {
 	return dsn, nil
 }
 
-// scanSQLRows scans database/sql rows into a slice of maps.
-func scanSQLRows(rows *sql.Rows) ([]map[string]any, error) {
+// scanSQLRows scans database/sql rows into a slice of maps, stopping at maxRows.
+func scanSQLRows(rows *sql.Rows, maxRows int) ([]map[string]any, error) {
 	cols, err := rows.Columns()
 	if err != nil {
 		return nil, err
 	}
 
 	var result []map[string]any
-	for rows.Next() {
+	for rows.Next() && len(result) < maxRows {
 		vals := make([]any, len(cols))
 		ptrs := make([]any, len(cols))
 		for i := range vals {
@@ -123,14 +123,11 @@ func (c *MySQLQueryConnector) Execute(ctx context.Context, params map[string]any
 	}
 	defer rows.Close()
 
-	result, err := scanSQLRows(rows)
+	result, err := scanSQLRows(rows, maxRows)
 	if err != nil {
 		return nil, fmt.Errorf("mysql/query: scanning rows: %w", err)
 	}
 
-	if len(result) > maxRows {
-		result = result[:maxRows]
-	}
 	if result == nil {
 		result = []map[string]any{}
 	}
@@ -273,14 +270,11 @@ func (c *MSSQLQueryConnector) Execute(ctx context.Context, params map[string]any
 	}
 	defer rows.Close()
 
-	result, err := scanSQLRows(rows)
+	result, err := scanSQLRows(rows, maxRows)
 	if err != nil {
 		return nil, fmt.Errorf("mssql/query: scanning rows: %w", err)
 	}
 
-	if len(result) > maxRows {
-		result = result[:maxRows]
-	}
 	if result == nil {
 		result = []map[string]any{}
 	}
@@ -417,14 +411,11 @@ func (c *RedshiftQueryConnector) Execute(ctx context.Context, params map[string]
 	}
 	defer rows.Close()
 
-	result, err := scanSQLRows(rows)
+	result, err := scanSQLRows(rows, maxRows)
 	if err != nil {
 		return nil, fmt.Errorf("redshift/query: scanning rows: %w", err)
 	}
 
-	if len(result) > maxRows {
-		result = result[:maxRows]
-	}
 	if result == nil {
 		result = []map[string]any{}
 	}
