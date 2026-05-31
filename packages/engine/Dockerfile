@@ -26,8 +26,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 FROM alpine:3.21
 
 RUN apk add --no-cache ca-certificates tzdata \
-    && addgroup -S mantle \
-    && adduser -S -G mantle -h /home/mantle -s /bin/sh mantle
+    && addgroup -S -g 10001 mantle \
+    && adduser -S -u 10001 -G mantle -h /home/mantle -s /bin/sh mantle
 
 COPY --from=builder /mantle /usr/local/bin/mantle
 
@@ -39,7 +39,7 @@ EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
     CMD wget -qO- http://localhost:8080/healthz || exit 1
 
-USER mantle
+USER 10001:10001
 WORKDIR /home/mantle
 
 ENTRYPOINT ["mantle"]

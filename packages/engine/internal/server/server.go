@@ -108,43 +108,43 @@ func metricsMiddleware(next http.Handler) http.Handler {
 // Start starts the HTTP server, cron scheduler, and webhook handler.
 // It blocks until the context is cancelled.
 func (s *Server) Start(ctx context.Context) error {
-	mux := http.NewServeMux()
-
-	// Prometheus metrics endpoint.
-	mux.Handle("/metrics", promhttp.Handler())
+	// apiMux holds all routes that require authentication (and rate limiting).
+	// Health and metrics endpoints are registered on the top-level mux below
+	// so that Kubernetes probes and Prometheus scrapes bypass auth entirely.
+	apiMux := http.NewServeMux()
 
 	// Git push webhook endpoint — registered before the generic /hooks/ prefix
 	// so the more-specific path is explicit (Go's ServeMux uses longest-prefix
 	// match regardless of registration order, but explicit ordering is clearer).
-	mux.Handle("/hooks/git/", &GitWebhookHandler{
+	apiMux.Handle("/hooks/git/", &GitWebhookHandler{
 		DB:     s.DB,
 		Store:  s.RepoStore,
 		Driver: s.GitDriver,
 	})
 
 	// Webhook endpoints.
-	mux.HandleFunc("/hooks/", s.webhooks.ServeHTTP)
+	apiMux.HandleFunc("/hooks/", s.webhooks.ServeHTTP)
 
 	// API endpoints.
-	mux.HandleFunc("POST /api/v1/run/{workflow}", s.handleRun)
-	mux.HandleFunc("POST /api/v1/cancel/{execution}", s.handleCancel)
-	mux.HandleFunc("GET /api/v1/executions", s.handleListExecutions)
-	mux.HandleFunc("GET /api/v1/executions/{id}", s.handleGetExecution)
+	apiMux.HandleFunc("POST /api/v1/run/{workflow}", s.handleRun)
+	apiMux.HandleFunc("POST /api/v1/cancel/{execution}", s.handleCancel)
+	apiMux.HandleFunc("GET /api/v1/executions", s.handleListExecutions)
+	apiMux.HandleFunc("GET /api/v1/executions/{id}", s.handleGetExecution)
 
 	// Workflow definition endpoints.
-	mux.HandleFunc("GET /api/v1/workflows", s.handleListWorkflows)
-	mux.HandleFunc("GET /api/v1/workflows/{name}", s.handleGetWorkflow)
-	mux.HandleFunc("GET /api/v1/workflows/{name}/versions", s.handleListWorkflowVersions)
-	mux.HandleFunc("GET /api/v1/workflows/{name}/versions/{version}", s.handleGetWorkflowVersion)
+	apiMux.HandleFunc("GET /api/v1/workflows", s.handleListWorkflows)
+	apiMux.HandleFunc("GET /api/v1/workflows/{name}", s.handleGetWorkflow)
+	apiMux.HandleFunc("GET /api/v1/workflows/{name}/versions", s.handleListWorkflowVersions)
+	apiMux.HandleFunc("GET /api/v1/workflows/{name}/versions/{version}", s.handleGetWorkflowVersion)
 
 	// Budget endpoints.
-	mux.HandleFunc("GET /api/v1/budgets", s.handleListBudgets)
-	mux.HandleFunc("PUT /api/v1/budgets/{provider}", s.handleSetBudget)
-	mux.HandleFunc("DELETE /api/v1/budgets/{provider}", s.handleDeleteBudget)
-	mux.HandleFunc("GET /api/v1/budgets/usage", s.handleGetUsage)
+	apiMux.HandleFunc("GET /api/v1/budgets", s.handleListBudgets)
+	apiMux.HandleFunc("PUT /api/v1/budgets/{provider}", s.handleSetBudget)
+	apiMux.HandleFunc("DELETE /api/v1/budgets/{provider}", s.handleDeleteBudget)
+	apiMux.HandleFunc("GET /api/v1/budgets/usage", s.handleGetUsage)
 
 	// OpenAPI spec endpoint.
-	mux.HandleFunc("GET /api/v1/openapi.json", handleOpenAPISpec)
+	apiMux.HandleFunc("GET /api/v1/openapi.json", handleOpenAPISpec)
 
 	// Start distributed engine components (worker + reaper).
 	if cfg := config.FromContext(ctx); cfg != nil {
@@ -238,24 +238,30 @@ func (s *Server) Start(ctx context.Context) error {
 		go s.pollQueueDepth(ctx, cfg.Engine.ReaperInterval)
 	}
 
-	// Health endpoints. /readyz checks DB connectivity only; worker/reaper
-	// liveness is no longer gated here to avoid flapping between poll cycles.
-	mux.Handle("/healthz", health.HealthzHandler())
-	mux.Handle("/readyz", health.ReadyzHandler(s.DB))
-
-	// Wrap with metrics middleware (innermost, runs for every request).
-	handler := metricsMiddleware(mux)
+	// Wrap the API mux with metrics middleware, auth, and rate limiting.
+	apiHandler := metricsMiddleware(apiMux)
 	if s.AuthStore != nil {
 		if s.Auditor != nil {
-			handler = auth.AuthMiddleware(s.AuthStore, s.OIDCValidator, handler, s.Auditor)
+			apiHandler = auth.AuthMiddleware(s.AuthStore, s.OIDCValidator, apiHandler, s.Auditor)
 		} else {
-			handler = auth.AuthMiddleware(s.AuthStore, s.OIDCValidator, handler)
+			apiHandler = auth.AuthMiddleware(s.AuthStore, s.OIDCValidator, apiHandler)
 		}
 	}
-
-	// Apply rate limiting (after auth so rate limit keys can use API key prefix).
 	rl := NewRateLimiter(100, 200)
-	handler = rl.Middleware(handler)
+	apiHandler = rl.Middleware(apiHandler)
+
+	// Top-level mux: health and metrics endpoints bypass auth so that Kubernetes
+	// probes and Prometheus scrapers work without an API key. All other requests
+	// fall through to the auth-wrapped apiHandler.
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	mux.Handle("/healthz", health.HealthzHandler())
+	// /readyz checks DB connectivity only; worker/reaper liveness is intentionally
+	// excluded to prevent flapping between poll cycles.
+	mux.Handle("/readyz", health.ReadyzHandler(s.DB))
+	mux.Handle("/", apiHandler)
+
+	handler := mux
 
 	s.httpServer = &http.Server{
 		Addr:              s.Address,
