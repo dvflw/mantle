@@ -124,6 +124,9 @@ func (c *MailchimpAddMemberConnector) Execute(ctx context.Context, params map[st
 		return nil, fmt.Errorf("mailchimp/add_member: marshaling request: %w", err)
 	}
 
+	// Mailchimp requires MD5(lowercase(email)) as the member identifier — this is an API
+	// contract, not a security hash. MD5 is mandated by the Mailchimp API spec.
+	// #nosec G401 -- codeql[go/weak-sensitive-data-hashing] -- noncryptographic API identifier required by Mailchimp
 	hash := md5.Sum([]byte(strings.ToLower(email)))
 	subscriberHash := hex.EncodeToString(hash[:])
 
