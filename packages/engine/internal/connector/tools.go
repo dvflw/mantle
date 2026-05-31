@@ -348,6 +348,31 @@ func truncateOlderToolResults(messages []map[string]any, targetBytes int) int {
 	return truncated
 }
 
+// extractBearerToken pulls a "token" field from the _credential param.
+// Accepts both map[string]string (engine-injected) and map[string]any
+// (JSON/CEL-deserialised) credential shapes, and deletes _credential from params.
+func extractBearerToken(params map[string]any) (string, error) {
+	raw, ok := params["_credential"]
+	if !ok || raw == nil {
+		return "", fmt.Errorf("credential is required")
+	}
+	delete(params, "_credential")
+
+	var token string
+	switch cred := raw.(type) {
+	case map[string]string:
+		token = cred["token"]
+	case map[string]any:
+		token, _ = cred["token"].(string)
+	default:
+		return "", fmt.Errorf("credential is required")
+	}
+	if token == "" {
+		return "", fmt.Errorf("credential must contain a 'token' field")
+	}
+	return token, nil
+}
+
 // extractInt attempts to extract an int from a value that may be int or float64
 // (JSON unmarshalling often produces float64).
 func extractInt(v any) (int, bool) {

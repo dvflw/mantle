@@ -54,6 +54,17 @@ func NewRegistry() *Registry {
 	r.Register("twilio/call", &TwilioCallConnector{})
 	r.Register("asana/create_task", &AsanaCreateTaskConnector{})
 	r.Register("asana/search", &AsanaSearchConnector{})
+	r.Register("discord/send", &DiscordSendConnector{})
+	r.Register("discord/embed", &DiscordEmbedConnector{})
+	r.Register("elasticsearch/search", &ElasticsearchSearchConnector{})
+	r.Register("elasticsearch/index", &ElasticsearchIndexConnector{})
+	r.Register("datadog/submit_event", &DatadogSubmitEventConnector{})
+	r.Register("datadog/query_metrics", &DatadogQueryMetricsConnector{})
+	r.Register("redis/get", &RedisGetConnector{})
+	r.Register("redis/set", &RedisSetConnector{})
+	r.Register("redis/publish", &RedisPublishConnector{})
+	r.Register("mongodb/find", &MongoFindConnector{})
+	r.Register("mongodb/aggregate", &MongoAggregateConnector{})
 	return r
 }
 
