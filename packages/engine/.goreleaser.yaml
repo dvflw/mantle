@@ -50,7 +50,7 @@ changelog:
     - title: Other
       order: 999
 
-dockers_v2:
+dockers:
   - image_templates:
       - "ghcr.io/dvflw/mantle:{{ .Version }}-amd64"
     use: buildx
