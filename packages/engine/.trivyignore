@@ -1,0 +1,5 @@
+# CVE-2026-34040 and CVE-2026-42306: fixed in github.com/docker/docker v29.3.1, but Docker
+# does not publish v29 to the Go module proxy (uses +incompatible versioning). Tracked in
+# https://github.com/dvflw/mantle/issues/151 — upgrade once v29 lands in the proxy.
+CVE-2026-34040
+CVE-2026-42306

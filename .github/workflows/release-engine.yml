@@ -70,6 +70,8 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/engine/v}"
           echo "version=${TAG}" >> "$GITHUB_OUTPUT"
 
+      - uses: actions/checkout@v4
+
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -77,3 +79,5 @@ jobs:
           format: table
           exit-code: '1'
           severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          trivyignores: packages/engine/.trivyignore

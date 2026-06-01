@@ -25,7 +25,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # Stage 2: Minimal runtime image
 FROM alpine:3.21
 
-RUN apk add --no-cache ca-certificates tzdata \
+RUN apk upgrade --no-cache \
+    && apk add --no-cache ca-certificates tzdata \
     && addgroup -S -g 10001 mantle \
     && adduser -S -u 10001 -G mantle -h /home/mantle -s /bin/sh mantle
 
