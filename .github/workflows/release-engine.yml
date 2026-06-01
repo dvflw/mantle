@@ -42,7 +42,7 @@ jobs:
           # the current commit. Goreleaser reads tags but never pushes them, so
           # this won't pollute the remote. The namespaced tag (engine/vX.Y.Z) is
           # what triggered this workflow; goreleaser needs the plain vX.Y.Z form.
-          git tag "${TAG}"
+          git tag -f "${TAG}"
 
       - name: Generate NOTICE
         run: |
