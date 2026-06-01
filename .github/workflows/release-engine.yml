@@ -46,7 +46,7 @@ jobs:
 
       - name: Generate NOTICE
         run: |
-          go install github.com/google/go-licenses@v2.0.1
+          go install github.com/google/go-licenses/v2@v2.0.1
           go-licenses report ./... > NOTICE
         working-directory: packages/engine
 
