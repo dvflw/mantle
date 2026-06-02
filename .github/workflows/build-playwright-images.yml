@@ -1,0 +1,76 @@
+name: Build Playwright Images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - packages/playwright/PLAYWRIGHT_VERSION
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read Playwright version
+        id: version
+        run: |
+          VERSION=$(cat packages/playwright/PLAYWRIGHT_VERSION)
+          echo "playwright_version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Node image
+        uses: docker/build-push-action@v6
+        with:
+          context: packages/playwright/
+          file: packages/playwright/Dockerfile.node
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            PLAYWRIGHT_VERSION=${{ steps.version.outputs.playwright_version }}
+          tags: |
+            ghcr.io/dvflw/mantle-playwright-node:${{ steps.version.outputs.playwright_version }}
+            ${{ !contains(steps.version.outputs.playwright_version, '-') && 'ghcr.io/dvflw/mantle-playwright-node:latest' || '' }}
+
+      - name: Build and push Python image
+        uses: docker/build-push-action@v6
+        with:
+          context: packages/playwright/
+          file: packages/playwright/Dockerfile.python
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            PLAYWRIGHT_VERSION=${{ steps.version.outputs.playwright_version }}
+          tags: |
+            ghcr.io/dvflw/mantle-playwright-python:${{ steps.version.outputs.playwright_version }}
+            ${{ !contains(steps.version.outputs.playwright_version, '-') && 'ghcr.io/dvflw/mantle-playwright-python:latest' || '' }}
+
+      - name: Smoke-test Node image
+        run: |
+          docker run --rm \
+            ghcr.io/dvflw/mantle-playwright-node:${{ steps.version.outputs.playwright_version }} \
+            node -e "require('playwright'); console.log('ok')"
+
+      - name: Smoke-test Python image
+        run: |
+          docker run --rm \
+            ghcr.io/dvflw/mantle-playwright-python:${{ steps.version.outputs.playwright_version }} \
+            python3 -c "import playwright; print('ok')"
