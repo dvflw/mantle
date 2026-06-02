@@ -70,7 +70,7 @@ func TestExtractTimeoutMs_Provided(t *testing.T) {
 func TestBuildDeclarativeScript_FreshSession(t *testing.T) {
 	script := buildDeclarativeScript("actionData.x = 1;", nil, 30000, false)
 	for _, want := range []string{
-		"chromium.launch()",
+		"chromium.launch({ headless: true })",
 		"actionData.x = 1;",
 		"setDefaultTimeout(30000)",
 		"session_state",
@@ -110,8 +110,10 @@ func TestBuildDeclarativeScript_WithSession_RestoresURL(t *testing.T) {
 
 func TestBuildDeclarativeScript_SkipURLRestore(t *testing.T) {
 	session := &BrowserSession{
-		Cookies: []map[string]any{},
-		URL:     "https://old.example.com/page",
+		Cookies: []map[string]any{
+			{"name": "sid", "value": "abc", "domain": "example.com", "path": "/"},
+		},
+		URL: "https://old.example.com/page",
 	}
 	script := buildDeclarativeScript("await page.goto('https://new.example.com');", session, 30000, true)
 	if strings.Contains(script, "old.example.com") {
@@ -119,5 +121,8 @@ func TestBuildDeclarativeScript_SkipURLRestore(t *testing.T) {
 	}
 	if !strings.Contains(script, "new.example.com") {
 		t.Error("action snippet must be present")
+	}
+	if !strings.Contains(script, "addCookies") {
+		t.Error("skipURLRestore=true should still restore cookies")
 	}
 }

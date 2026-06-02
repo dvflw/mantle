@@ -42,7 +42,7 @@ func buildDeclarativeScript(actionSnippet string, session *BrowserSession, timeo
 	b.WriteString("const { chromium } = require('playwright');\n")
 	b.WriteString("(async () => {\n")
 	b.WriteString("  let actionData = {};\n")
-	b.WriteString("  const browser = await chromium.launch();\n")
+	b.WriteString("  const browser = await chromium.launch({ headless: true });\n")
 	b.WriteString("  try {\n")
 	b.WriteString("    const context = await browser.newContext();\n")
 
