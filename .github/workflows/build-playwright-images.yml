@@ -24,6 +24,23 @@ jobs:
           VERSION=$(cat packages/playwright/PLAYWRIGHT_VERSION)
           echo "playwright_version=${VERSION}" >> "$GITHUB_OUTPUT"
 
+      - name: Compute image tags
+        id: tags
+        run: |
+          VERSION="${{ steps.version.outputs.playwright_version }}"
+          NODE_TAGS="ghcr.io/dvflw/mantle-playwright-node:${VERSION}"
+          PY_TAGS="ghcr.io/dvflw/mantle-playwright-python:${VERSION}"
+          if [[ "${VERSION}" != *-* ]]; then
+            NODE_TAGS="${NODE_TAGS}"$'\n'"ghcr.io/dvflw/mantle-playwright-node:latest"
+            PY_TAGS="${PY_TAGS}"$'\n'"ghcr.io/dvflw/mantle-playwright-python:latest"
+          fi
+          echo "node_tags<<EOF" >> "$GITHUB_OUTPUT"
+          echo "${NODE_TAGS}" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "python_tags<<EOF" >> "$GITHUB_OUTPUT"
+          echo "${PY_TAGS}" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -46,9 +63,7 @@ jobs:
           push: true
           build-args: |
             PLAYWRIGHT_VERSION=${{ steps.version.outputs.playwright_version }}
-          tags: |
-            ghcr.io/dvflw/mantle-playwright-node:${{ steps.version.outputs.playwright_version }}
-            ${{ !contains(steps.version.outputs.playwright_version, '-') && 'ghcr.io/dvflw/mantle-playwright-node:latest' || '' }}
+          tags: ${{ steps.tags.outputs.node_tags }}
 
       - name: Build and push Python image
         uses: docker/build-push-action@v6
@@ -59,9 +74,7 @@ jobs:
           push: true
           build-args: |
             PLAYWRIGHT_VERSION=${{ steps.version.outputs.playwright_version }}
-          tags: |
-            ghcr.io/dvflw/mantle-playwright-python:${{ steps.version.outputs.playwright_version }}
-            ${{ !contains(steps.version.outputs.playwright_version, '-') && 'ghcr.io/dvflw/mantle-playwright-python:latest' || '' }}
+          tags: ${{ steps.tags.outputs.python_tags }}
 
       - name: Smoke-test Node image
         run: |
