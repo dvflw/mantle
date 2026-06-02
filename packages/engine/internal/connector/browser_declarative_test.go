@@ -66,3 +66,58 @@ func TestExtractTimeoutMs_Provided(t *testing.T) {
 		t.Errorf("got %d, want 5000", got)
 	}
 }
+
+func TestBuildDeclarativeScript_FreshSession(t *testing.T) {
+	script := buildDeclarativeScript("actionData.x = 1;", nil, 30000, false)
+	for _, want := range []string{
+		"chromium.launch()",
+		"actionData.x = 1;",
+		"setDefaultTimeout(30000)",
+		"session_state",
+		"JSON.stringify",
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("script missing %q", want)
+		}
+	}
+	if strings.Contains(script, "addCookies") {
+		t.Error("fresh session should not call addCookies")
+	}
+	if strings.Contains(script, "page.goto") {
+		t.Error("fresh session should not restore URL")
+	}
+}
+
+func TestBuildDeclarativeScript_WithSession_RestoresURL(t *testing.T) {
+	session := &BrowserSession{
+		Cookies: []map[string]any{
+			{"name": "sid", "value": "abc", "domain": "example.com", "path": "/"},
+		},
+		LocalStorage: map[string]map[string]string{},
+		URL:          "https://example.com/dashboard",
+	}
+	script := buildDeclarativeScript("", session, 5000, false)
+	if !strings.Contains(script, "addCookies") {
+		t.Error("should restore cookies")
+	}
+	if !strings.Contains(script, "example.com/dashboard") {
+		t.Error("should restore URL")
+	}
+	if !strings.Contains(script, "setDefaultTimeout(5000)") {
+		t.Error("should use provided timeout")
+	}
+}
+
+func TestBuildDeclarativeScript_SkipURLRestore(t *testing.T) {
+	session := &BrowserSession{
+		Cookies: []map[string]any{},
+		URL:     "https://old.example.com/page",
+	}
+	script := buildDeclarativeScript("await page.goto('https://new.example.com');", session, 30000, true)
+	if strings.Contains(script, "old.example.com") {
+		t.Error("skipURLRestore=true must not navigate to previous URL")
+	}
+	if !strings.Contains(script, "new.example.com") {
+		t.Error("action snippet must be present")
+	}
+}
