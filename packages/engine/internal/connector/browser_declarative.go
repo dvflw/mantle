@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -124,4 +125,49 @@ func extractTimeoutMs(params map[string]any) int {
 		}
 	}
 	return 30000
+}
+
+// executeBrowserScript runs a generated Playwright script via DockerRunConnector
+// and returns the parsed JSON envelope { session_state, data }.
+//
+// Passes through pull, memory, and _credential from params.
+func executeBrowserScript(ctx context.Context, script string, params map[string]any) (map[string]any, error) {
+	memory, _ := params["memory"].(string)
+	if memory == "" {
+		memory = "1g"
+	}
+	// playwrightNodeImage and playwrightVersion are defined in browser.go (same package).
+	dockerParams := map[string]any{
+		"image": playwrightNodeImage,
+		"cmd": toAnySlice([]string{
+			"sh", "-c",
+			"npm install --no-save --silent playwright@" + playwrightVersion + " && node",
+		}),
+		"stdin":   script,
+		"network": "bridge",
+		"remove":  true,
+		"memory":  memory,
+	}
+	if pull, ok := params["pull"].(string); ok && pull != "" {
+		dockerParams["pull"] = pull
+	}
+	if cred, ok := params["_credential"]; ok {
+		dockerParams["_credential"] = cred
+	}
+
+	docker := &DockerRunConnector{}
+	result, err := docker.Execute(ctx, dockerParams)
+	if err != nil {
+		return nil, err
+	}
+	if code, _ := result["exit_code"].(int64); code != 0 {
+		stderr, _ := result["stderr"].(string)
+		return nil, fmt.Errorf("script failed (exit %d): %s", code, strings.TrimSpace(stderr))
+	}
+	stdout, _ := result["stdout"].(string)
+	var envelope map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &envelope); err != nil {
+		return nil, fmt.Errorf("invalid output JSON: %w", err)
+	}
+	return envelope, nil
 }
