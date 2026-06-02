@@ -1,0 +1,455 @@
+package connector
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
+// BrowserSession holds serialized browser state passed between declarative steps.
+type BrowserSession struct {
+	Cookies      []map[string]any             `json:"cookies"`
+	LocalStorage map[string]map[string]string `json:"local_storage"`
+	URL          string                       `json:"url"`
+}
+
+// extractSession parses the optional session_state param into a *BrowserSession.
+// Returns nil (no error) when absent or nil — callers treat nil as "start fresh".
+func extractSession(params map[string]any) (*BrowserSession, error) {
+	raw, ok := params["session_state"]
+	if !ok || raw == nil {
+		return nil, nil
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("browser: marshaling session_state: %w", err)
+	}
+	var s BrowserSession
+	if err := json.Unmarshal(b, &s); err != nil {
+		return nil, fmt.Errorf("browser: invalid session_state: %w", err)
+	}
+	return &s, nil
+}
+
+// buildDeclarativeScript generates a self-contained Playwright JS script.
+//
+// actionSnippet is injected into the page context after optional session
+// restore. skipURLRestore=true restores cookies but skips navigating to the
+// previous URL — used by browser/navigate, which sets its own destination.
+func buildDeclarativeScript(actionSnippet string, session *BrowserSession, timeoutMs int, skipURLRestore bool) (string, error) {
+	var b strings.Builder
+
+	b.WriteString("const { chromium } = require('playwright');\n")
+	b.WriteString("(async () => {\n")
+	b.WriteString("  let actionData = {};\n")
+	b.WriteString("  const browser = await chromium.launch({ headless: true });\n")
+	b.WriteString("  try {\n")
+	b.WriteString("    const context = await browser.newContext();\n")
+
+	if session != nil && len(session.Cookies) > 0 {
+		cookiesJSON, err := json.Marshal(session.Cookies)
+		if err != nil {
+			return "", fmt.Errorf("browser: marshaling cookies: %w", err)
+		}
+		fmt.Fprintf(&b, "    await context.addCookies(%s);\n", cookiesJSON)
+	}
+
+	b.WriteString("    const page = await context.newPage();\n")
+	fmt.Fprintf(&b, "    page.setDefaultTimeout(%d);\n", timeoutMs)
+
+	if session != nil && session.URL != "" && !skipURLRestore {
+		urlJSON, err := json.Marshal(session.URL)
+		if err != nil {
+			return "", fmt.Errorf("browser: marshaling URL: %w", err)
+		}
+		fmt.Fprintf(&b, "    await page.goto(%s);\n", urlJSON)
+		// Note: localStorage is keyed by origin. If the page at session.URL redirects
+		// to a different origin, window.location.origin after navigation won't match
+		// the stored key and localStorage will silently not be restored. This is an
+		// inherent limitation of post-navigation injection; use addInitScript for
+		// redirect-safe restore if this becomes an issue.
+		if len(session.LocalStorage) > 0 {
+			lsJSON, err := json.Marshal(session.LocalStorage)
+			if err != nil {
+				return "", fmt.Errorf("browser: marshaling localStorage: %w", err)
+			}
+			fmt.Fprintf(&b, "    await page.evaluate((ls) => {\n")
+			b.WriteString("      const origin = window.location.origin;\n")
+			b.WriteString("      for (const [k, v] of Object.entries(ls[origin] || {})) localStorage.setItem(k, v);\n")
+			fmt.Fprintf(&b, "    }, %s);\n", lsJSON)
+		}
+	}
+
+	// Inject action snippet with consistent indentation.
+	for _, line := range strings.Split(strings.TrimRight(actionSnippet, "\n"), "\n") {
+		fmt.Fprintf(&b, "    %s\n", line)
+	}
+
+	// Capture session state after the action.
+	b.WriteString("    const _outCookies = await context.cookies();\n")
+	b.WriteString("    const _outLS = {};\n")
+	b.WriteString("    const _url = page.url();\n")
+	b.WriteString("    try {\n")
+	b.WriteString("      const _origin = new URL(_url).origin;\n")
+	b.WriteString("      _outLS[_origin] = await page.evaluate(() => {\n")
+	b.WriteString("        const d = {};\n")
+	b.WriteString("        for (let i = 0; i < localStorage.length; i++) {\n")
+	b.WriteString("          const k = localStorage.key(i); d[k] = localStorage.getItem(k);\n")
+	b.WriteString("        }\n")
+	b.WriteString("        return d;\n")
+	b.WriteString("      });\n")
+	b.WriteString("    } catch (_) {}\n")
+	b.WriteString("    console.log(JSON.stringify({\n")
+	b.WriteString("      session_state: { cookies: _outCookies, local_storage: _outLS, url: _url },\n")
+	b.WriteString("      data: actionData\n")
+	b.WriteString("    }));\n")
+	b.WriteString("  } finally {\n")
+	b.WriteString("    await browser.close();\n")
+	b.WriteString("  }\n")
+	b.WriteString("})().catch(err => { process.stderr.write(err.message + '\\n'); process.exit(1); });\n")
+
+	return b.String(), nil
+}
+
+// extractTimeoutMs returns the timeout_ms param as an int, defaulting to 30000.
+func extractTimeoutMs(params map[string]any) int {
+	if v, ok := params["timeout_ms"]; ok {
+		switch t := v.(type) {
+		case int:
+			return t
+		case int64:
+			return int(t)
+		case float64:
+			return int(t)
+		}
+	}
+	return 30000
+}
+
+// executeBrowserScript runs a generated Playwright script via DockerRunConnector
+// and returns the parsed JSON envelope { session_state, data }.
+//
+// Passes through pull, memory, and _credential from params.
+func executeBrowserScript(ctx context.Context, script string, params map[string]any) (map[string]any, error) {
+	memory, _ := params["memory"].(string)
+	if memory == "" {
+		memory = "1g"
+	}
+	// playwrightNodeImage and playwrightVersion are defined in browser.go (same package).
+	dockerParams := map[string]any{
+		"image": playwrightNodeImage,
+		"cmd": toAnySlice([]string{
+			"sh", "-c",
+			"npm install --no-save --silent playwright@" + playwrightVersion + " && node",
+		}),
+		"stdin":   script,
+		"network": "bridge",
+		"remove":  true,
+		"memory":  memory,
+	}
+	if pull, ok := params["pull"].(string); ok && pull != "" {
+		dockerParams["pull"] = pull
+	}
+	if cred, ok := params["_credential"]; ok {
+		dockerParams["_credential"] = cred
+	}
+
+	docker := &DockerRunConnector{}
+	result, err := docker.Execute(ctx, dockerParams)
+	if err != nil {
+		return nil, err
+	}
+	if code, _ := result["exit_code"].(int64); code != 0 {
+		stderr, _ := result["stderr"].(string)
+		return nil, fmt.Errorf("script failed (exit %d): %s", code, strings.TrimSpace(stderr))
+	}
+	stdout, _ := result["stdout"].(string)
+	var envelope map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &envelope); err != nil {
+		return nil, fmt.Errorf("invalid output JSON: %w", err)
+	}
+	return envelope, nil
+}
+
+// mustJSONString returns the JSON encoding of s as a string literal (e.g. "\"hello\"").
+// It panics only if json.Marshal fails on a plain string, which cannot happen.
+func mustJSONString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
+// BrowserNavigateConnector implements browser/navigate.
+type BrowserNavigateConnector struct{}
+
+func (c *BrowserNavigateConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
+	url, _ := params["url"].(string)
+	if strings.TrimSpace(url) == "" {
+		return nil, fmt.Errorf("browser/navigate: url is required")
+	}
+	waitUntil, _ := params["wait_until"].(string)
+	if waitUntil == "" {
+		waitUntil = "load"
+	}
+	switch waitUntil {
+	case "load", "networkidle", "domcontentloaded":
+	default:
+		return nil, fmt.Errorf("browser/navigate: wait_until must be load, networkidle, or domcontentloaded, got %q", waitUntil)
+	}
+	session, err := extractSession(params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/navigate: %w", err)
+	}
+	snippet := fmt.Sprintf(
+		"await page.goto(%s, { waitUntil: %s });\nactionData.title = await page.title();",
+		mustJSONString(url), mustJSONString(waitUntil),
+	)
+	script, err := buildDeclarativeScript(snippet, session, extractTimeoutMs(params), true)
+	if err != nil {
+		return nil, fmt.Errorf("browser/navigate: %w", err)
+	}
+	envelope, err := executeBrowserScript(ctx, script, params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/navigate: %w", err)
+	}
+	out := map[string]any{"session_state": envelope["session_state"]}
+	if data, ok := envelope["data"].(map[string]any); ok {
+		if v, ok := data["title"]; ok {
+			out["title"] = v
+		}
+	}
+	return out, nil
+}
+
+// BrowserEvaluateConnector implements browser/evaluate.
+type BrowserEvaluateConnector struct{}
+
+func (c *BrowserEvaluateConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
+	expression, _ := params["expression"].(string)
+	if strings.TrimSpace(expression) == "" {
+		return nil, fmt.Errorf("browser/evaluate: expression is required")
+	}
+	session, err := extractSession(params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/evaluate: %w", err)
+	}
+	// expression is embedded verbatim as a JS expression — callers are responsible for valid JS.
+	snippet := fmt.Sprintf("actionData.result = await page.evaluate(() => { return (%s); });\n", expression)
+	script, err := buildDeclarativeScript(snippet, session, extractTimeoutMs(params), false)
+	if err != nil {
+		return nil, fmt.Errorf("browser/evaluate: %w", err)
+	}
+	envelope, err := executeBrowserScript(ctx, script, params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/evaluate: %w", err)
+	}
+	out := map[string]any{"session_state": envelope["session_state"]}
+	if data, ok := envelope["data"].(map[string]any); ok {
+		if v, ok := data["result"]; ok {
+			out["result"] = v
+		}
+	}
+	return out, nil
+}
+
+// BrowserWaitConnector implements browser/wait.
+// Exactly one of selector, url_pattern, or duration_ms must be provided.
+type BrowserWaitConnector struct{}
+
+func (c *BrowserWaitConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
+	selector, hasSelector := params["selector"].(string)
+	urlPattern, hasURLPattern := params["url_pattern"].(string)
+	durationRaw, hasDuration := params["duration_ms"]
+
+	count := 0
+	if hasSelector && selector != "" {
+		count++
+	}
+	if hasURLPattern && urlPattern != "" {
+		count++
+	}
+	if hasDuration {
+		count++
+	}
+	if count != 1 {
+		return nil, fmt.Errorf("browser/wait: exactly one of selector, url_pattern, or duration_ms must be provided")
+	}
+
+	session, err := extractSession(params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/wait: %w", err)
+	}
+
+	var snippet string
+	switch {
+	case hasSelector && selector != "":
+		snippet = fmt.Sprintf("await page.waitForSelector(%s);\n", mustJSONString(selector))
+	case hasURLPattern && urlPattern != "":
+		snippet = fmt.Sprintf("await page.waitForURL(%s);\n", mustJSONString(urlPattern))
+	default:
+		var ms int
+		switch v := durationRaw.(type) {
+		case int:
+			ms = v
+		case int64:
+			ms = int(v)
+		case float64:
+			ms = int(v)
+		}
+		snippet = fmt.Sprintf("await page.waitForTimeout(%d);\n", ms)
+	}
+
+	script, err := buildDeclarativeScript(snippet, session, extractTimeoutMs(params), false)
+	if err != nil {
+		return nil, fmt.Errorf("browser/wait: %w", err)
+	}
+	envelope, err := executeBrowserScript(ctx, script, params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/wait: %w", err)
+	}
+	return map[string]any{"session_state": envelope["session_state"]}, nil
+}
+
+// BrowserScreenshotConnector implements browser/screenshot.
+type BrowserScreenshotConnector struct{}
+
+func (c *BrowserScreenshotConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
+	fullPage, _ := params["full_page"].(bool)
+	path, _ := params["path"].(string)
+	if path == "" {
+		path = "screenshot.png"
+	}
+	session, err := extractSession(params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/screenshot: %w", err)
+	}
+	snippet := fmt.Sprintf(
+		"const buf = await page.screenshot({ fullPage: %v, path: undefined });\nactionData.base64 = buf.toString('base64');\nactionData.path = %s;",
+		fullPage, mustJSONString(path),
+	)
+	script, err := buildDeclarativeScript(snippet, session, extractTimeoutMs(params), false)
+	if err != nil {
+		return nil, fmt.Errorf("browser/screenshot: %w", err)
+	}
+	envelope, err := executeBrowserScript(ctx, script, params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/screenshot: %w", err)
+	}
+	out := map[string]any{"session_state": envelope["session_state"]}
+	if data, ok := envelope["data"].(map[string]any); ok {
+		if v, ok := data["base64"]; ok {
+			out["base64"] = v
+		}
+		if v, ok := data["path"]; ok {
+			out["path"] = v
+		}
+	}
+	return out, nil
+}
+
+// BrowserExtractConnector implements browser/extract.
+type BrowserExtractConnector struct{}
+
+func (c *BrowserExtractConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
+	selectorsRaw, ok := params["selectors"]
+	if !ok || selectorsRaw == nil {
+		return nil, fmt.Errorf("browser/extract: selectors is required")
+	}
+	selectorsMap, ok := selectorsRaw.(map[string]any)
+	if !ok || len(selectorsMap) == 0 {
+		return nil, fmt.Errorf("browser/extract: selectors must be a non-empty map of name to selector")
+	}
+	attribute, _ := params["attribute"].(string)
+	session, err := extractSession(params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/extract: %w", err)
+	}
+	var snippet strings.Builder
+	snippet.WriteString("actionData.data = {};\n")
+	for name, sel := range selectorsMap {
+		selector, _ := sel.(string)
+		if attribute != "" {
+			fmt.Fprintf(&snippet, "actionData.data[%s] = await page.getAttribute(%s, %s);\n",
+				mustJSONString(name), mustJSONString(selector), mustJSONString(attribute))
+		} else {
+			fmt.Fprintf(&snippet, "actionData.data[%s] = await page.textContent(%s);\n",
+				mustJSONString(name), mustJSONString(selector))
+		}
+	}
+	script, err := buildDeclarativeScript(snippet.String(), session, extractTimeoutMs(params), false)
+	if err != nil {
+		return nil, fmt.Errorf("browser/extract: %w", err)
+	}
+	envelope, err := executeBrowserScript(ctx, script, params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/extract: %w", err)
+	}
+	out := map[string]any{"session_state": envelope["session_state"]}
+	if data, ok := envelope["data"].(map[string]any); ok {
+		if d, ok := data["data"]; ok {
+			out["data"] = d
+		}
+	}
+	return out, nil
+}
+
+// BrowserFillConnector implements browser/fill.
+type BrowserFillConnector struct{}
+
+func (c *BrowserFillConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
+	fieldsRaw, ok := params["fields"]
+	if !ok || fieldsRaw == nil {
+		return nil, fmt.Errorf("browser/fill: fields is required")
+	}
+	fieldsMap, ok := fieldsRaw.(map[string]any)
+	if !ok || len(fieldsMap) == 0 {
+		return nil, fmt.Errorf("browser/fill: fields must be a non-empty map of selector to value")
+	}
+	session, err := extractSession(params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/fill: %w", err)
+	}
+	var snippet strings.Builder
+	for selector, value := range fieldsMap {
+		v, _ := value.(string)
+		fmt.Fprintf(&snippet, "await page.fill(%s, %s);\n", mustJSONString(selector), mustJSONString(v))
+	}
+	script, err := buildDeclarativeScript(snippet.String(), session, extractTimeoutMs(params), false)
+	if err != nil {
+		return nil, fmt.Errorf("browser/fill: %w", err)
+	}
+	envelope, err := executeBrowserScript(ctx, script, params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/fill: %w", err)
+	}
+	return map[string]any{"session_state": envelope["session_state"]}, nil
+}
+
+// BrowserClickConnector implements browser/click.
+type BrowserClickConnector struct{}
+
+func (c *BrowserClickConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
+	selector, _ := params["selector"].(string)
+	if strings.TrimSpace(selector) == "" {
+		return nil, fmt.Errorf("browser/click: selector is required")
+	}
+	waitFor, _ := params["wait_for"].(string)
+	session, err := extractSession(params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/click: %w", err)
+	}
+	var snippet strings.Builder
+	fmt.Fprintf(&snippet, "await page.click(%s);\n", mustJSONString(selector))
+	if waitFor != "" {
+		fmt.Fprintf(&snippet, "await page.waitForSelector(%s);\n", mustJSONString(waitFor))
+	}
+	script, err := buildDeclarativeScript(snippet.String(), session, extractTimeoutMs(params), false)
+	if err != nil {
+		return nil, fmt.Errorf("browser/click: %w", err)
+	}
+	envelope, err := executeBrowserScript(ctx, script, params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/click: %w", err)
+	}
+	return map[string]any{"session_state": envelope["session_state"]}, nil
+}
