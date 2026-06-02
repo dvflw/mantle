@@ -221,6 +221,43 @@ func (c *BrowserNavigateConnector) Execute(ctx context.Context, params map[strin
 	return out, nil
 }
 
+// BrowserScreenshotConnector implements browser/screenshot.
+type BrowserScreenshotConnector struct{}
+
+func (c *BrowserScreenshotConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
+	fullPage, _ := params["full_page"].(bool)
+	path, _ := params["path"].(string)
+	if path == "" {
+		path = "screenshot.png"
+	}
+	session, err := extractSession(params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/screenshot: %w", err)
+	}
+	snippet := fmt.Sprintf(
+		"const buf = await page.screenshot({ fullPage: %v, path: undefined });\nactionData.base64 = buf.toString('base64');\nactionData.path = %s;",
+		fullPage, mustJSONString(path),
+	)
+	script, err := buildDeclarativeScript(snippet, session, extractTimeoutMs(params), false)
+	if err != nil {
+		return nil, fmt.Errorf("browser/screenshot: %w", err)
+	}
+	envelope, err := executeBrowserScript(ctx, script, params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/screenshot: %w", err)
+	}
+	out := map[string]any{"session_state": envelope["session_state"]}
+	if data, ok := envelope["data"].(map[string]any); ok {
+		if v, ok := data["base64"]; ok {
+			out["base64"] = v
+		}
+		if v, ok := data["path"]; ok {
+			out["path"] = v
+		}
+	}
+	return out, nil
+}
+
 // BrowserExtractConnector implements browser/extract.
 type BrowserExtractConnector struct{}
 

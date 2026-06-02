@@ -324,3 +324,41 @@ func TestBrowserExtract_ScriptUsesGetAttribute(t *testing.T) {
 		t.Error("script should use getAttribute when attribute is set")
 	}
 }
+
+func TestBrowserScreenshot_DefaultPath(t *testing.T) {
+	snippet := fmt.Sprintf(
+		"const buf = await page.screenshot({ fullPage: %v, path: undefined });\nactionData.base64 = buf.toString('base64');\nactionData.path = %s;\n",
+		false, mustJSONString("screenshot.png"),
+	)
+	script, err := buildDeclarativeScript(snippet, nil, 30000, false)
+	if err != nil {
+		t.Fatalf("buildDeclarativeScript: %v", err)
+	}
+	if !strings.Contains(script, `"screenshot.png"`) {
+		t.Error("default path should be screenshot.png")
+	}
+}
+
+func TestBrowserScreenshot_InvalidSession(t *testing.T) {
+	c := &BrowserScreenshotConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{
+		"session_state": []int{1, 2, 3},
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid session_state")
+	}
+}
+
+func TestBrowserScreenshot_FullPage(t *testing.T) {
+	snippet := fmt.Sprintf(
+		"const buf = await page.screenshot({ fullPage: %v, path: undefined });\nactionData.base64 = buf.toString('base64');\nactionData.path = %s;\n",
+		true, mustJSONString("screenshot.png"),
+	)
+	script, err := buildDeclarativeScript(snippet, nil, 30000, false)
+	if err != nil {
+		t.Fatalf("buildDeclarativeScript: %v", err)
+	}
+	if !strings.Contains(script, "fullPage: true") {
+		t.Error("fullPage:true should appear in script")
+	}
+}
