@@ -1,0 +1,4 @@
+ARG PLAYWRIGHT_VERSION
+FROM mcr.microsoft.com/playwright/python:v${PLAYWRIGHT_VERSION}-noble
+ARG PLAYWRIGHT_VERSION
+RUN pip install --quiet playwright==${PLAYWRIGHT_VERSION}

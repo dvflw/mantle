@@ -745,8 +745,30 @@ Runs browser automation scripts (JavaScript, TypeScript, or Python) using Playwr
 
 **Container Images:**
 
-- **JavaScript/TypeScript:** `mcr.microsoft.com/playwright:v1.52.0-noble`
-- **Python:** `mcr.microsoft.com/playwright/python:v1.52.0-noble`
+By default, `browser/run` uses the official Microsoft Playwright images, which install Playwright inside the container on every invocation (adds ~30 s cold-start). To skip this step, use the pre-built Mantle images:
+
+| Language | Default Image | Pre-built Image |
+|---|---|---|
+| JavaScript / TypeScript | `mcr.microsoft.com/playwright:v1.52.0-noble` | `ghcr.io/dvflw/mantle-playwright-node:1.52.0` |
+| Python | `mcr.microsoft.com/playwright/python:v1.52.0-noble` | `ghcr.io/dvflw/mantle-playwright-python:1.52.0` |
+
+Pass a pre-built image via the `image` param:
+
+```yaml
+steps:
+  - name: run_browser
+    action: browser/run
+    timeout: "2m"
+    params:
+      image: ghcr.io/dvflw/mantle-playwright-node:1.52.0
+      language: javascript
+      script: |
+        const page = await browser.newPage();
+        await page.goto('https://example.com');
+        console.log(await page.title());
+```
+
+The `latest` tag tracks the most recent stable release. Images are rebuilt automatically when the Playwright version is updated.
 
 **Artifacts:** Scripts can write files to `/mantle/artifacts/` directory for screenshots, PDFs, HAR files, and other outputs. Declare artifacts in the step to register them with the execution.
 

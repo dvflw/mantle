@@ -1,0 +1,5 @@
+ARG PLAYWRIGHT_VERSION
+FROM mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION}-noble
+ARG PLAYWRIGHT_VERSION
+RUN npm install --global --no-save playwright@${PLAYWRIGHT_VERSION}
+ENV NODE_PATH=/usr/lib/node_modules
