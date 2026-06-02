@@ -362,3 +362,72 @@ func TestBrowserScreenshot_FullPage(t *testing.T) {
 		t.Error("fullPage:true should appear in script")
 	}
 }
+
+func TestBrowserWait_NoParams(t *testing.T) {
+	c := &BrowserWaitConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{})
+	if err == nil {
+		t.Fatal("expected error when no wait condition provided")
+	}
+	if !strings.Contains(err.Error(), "exactly one") {
+		t.Errorf("error = %q, want 'exactly one'", err)
+	}
+}
+
+func TestBrowserWait_TwoParams(t *testing.T) {
+	c := &BrowserWaitConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{
+		"selector":    ".foo",
+		"url_pattern": "https://*",
+	})
+	if err == nil {
+		t.Fatal("expected error when two conditions provided")
+	}
+	if !strings.Contains(err.Error(), "exactly one") {
+		t.Errorf("error = %q, want 'exactly one'", err)
+	}
+}
+
+func TestBrowserWait_SelectorScript(t *testing.T) {
+	snippet := fmt.Sprintf("await page.waitForSelector(%s);\n", mustJSONString(".ready"))
+	script, err := buildDeclarativeScript(snippet, nil, 30000, false)
+	if err != nil {
+		t.Fatalf("buildDeclarativeScript: %v", err)
+	}
+	if !strings.Contains(script, `waitForSelector(".ready")`) {
+		t.Error("script should contain waitForSelector")
+	}
+}
+
+func TestBrowserWait_URLPatternScript(t *testing.T) {
+	snippet := fmt.Sprintf("await page.waitForURL(%s);\n", mustJSONString("https://example.com/**"))
+	script, err := buildDeclarativeScript(snippet, nil, 30000, false)
+	if err != nil {
+		t.Fatalf("buildDeclarativeScript: %v", err)
+	}
+	if !strings.Contains(script, `waitForURL("https://example.com/**")`) {
+		t.Error("script should contain waitForURL")
+	}
+}
+
+func TestBrowserWait_DurationScript(t *testing.T) {
+	snippet := fmt.Sprintf("await page.waitForTimeout(%d);\n", 2000)
+	script, err := buildDeclarativeScript(snippet, nil, 30000, false)
+	if err != nil {
+		t.Fatalf("buildDeclarativeScript: %v", err)
+	}
+	if !strings.Contains(script, "waitForTimeout(2000)") {
+		t.Error("script should contain waitForTimeout")
+	}
+}
+
+func TestBrowserWait_InvalidSession(t *testing.T) {
+	c := &BrowserWaitConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{
+		"selector":      ".foo",
+		"session_state": 99,
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid session_state")
+	}
+}

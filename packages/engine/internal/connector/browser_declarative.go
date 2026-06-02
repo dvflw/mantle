@@ -221,6 +221,64 @@ func (c *BrowserNavigateConnector) Execute(ctx context.Context, params map[strin
 	return out, nil
 }
 
+// BrowserWaitConnector implements browser/wait.
+// Exactly one of selector, url_pattern, or duration_ms must be provided.
+type BrowserWaitConnector struct{}
+
+func (c *BrowserWaitConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
+	selector, hasSelector := params["selector"].(string)
+	urlPattern, hasURLPattern := params["url_pattern"].(string)
+	durationRaw, hasDuration := params["duration_ms"]
+
+	count := 0
+	if hasSelector && selector != "" {
+		count++
+	}
+	if hasURLPattern && urlPattern != "" {
+		count++
+	}
+	if hasDuration {
+		count++
+	}
+	if count != 1 {
+		return nil, fmt.Errorf("browser/wait: exactly one of selector, url_pattern, or duration_ms must be provided")
+	}
+
+	session, err := extractSession(params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/wait: %w", err)
+	}
+
+	var snippet string
+	switch {
+	case hasSelector && selector != "":
+		snippet = fmt.Sprintf("await page.waitForSelector(%s);\n", mustJSONString(selector))
+	case hasURLPattern && urlPattern != "":
+		snippet = fmt.Sprintf("await page.waitForURL(%s);\n", mustJSONString(urlPattern))
+	default:
+		var ms int
+		switch v := durationRaw.(type) {
+		case int:
+			ms = v
+		case int64:
+			ms = int(v)
+		case float64:
+			ms = int(v)
+		}
+		snippet = fmt.Sprintf("await page.waitForTimeout(%d);\n", ms)
+	}
+
+	script, err := buildDeclarativeScript(snippet, session, extractTimeoutMs(params), false)
+	if err != nil {
+		return nil, fmt.Errorf("browser/wait: %w", err)
+	}
+	envelope, err := executeBrowserScript(ctx, script, params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/wait: %w", err)
+	}
+	return map[string]any{"session_state": envelope["session_state"]}, nil
+}
+
 // BrowserScreenshotConnector implements browser/screenshot.
 type BrowserScreenshotConnector struct{}
 
