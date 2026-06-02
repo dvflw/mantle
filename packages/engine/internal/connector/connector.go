@@ -46,6 +46,7 @@ func NewRegistry() *Registry {
 	r.Register("browser/extract", &BrowserExtractConnector{})
 	r.Register("browser/screenshot", &BrowserScreenshotConnector{})
 	r.Register("browser/wait", &BrowserWaitConnector{})
+	r.Register("browser/evaluate", &BrowserEvaluateConnector{})
 	r.Register("github/create_issue", &GitHubCreateIssueConnector{})
 	r.Register("github/dispatch", &GitHubDispatchConnector{})
 	r.Register("github/dispatch_workflow", &GitHubDispatchWorkflowConnector{})

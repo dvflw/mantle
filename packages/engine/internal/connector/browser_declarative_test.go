@@ -431,3 +431,49 @@ func TestBrowserWait_InvalidSession(t *testing.T) {
 		t.Fatal("expected error for invalid session_state")
 	}
 }
+
+func TestBrowserEvaluate_MissingExpression(t *testing.T) {
+	c := &BrowserEvaluateConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{})
+	if err == nil {
+		t.Fatal("expected error for missing expression")
+	}
+	if !strings.Contains(err.Error(), "expression is required") {
+		t.Errorf("error = %q, want 'expression is required'", err)
+	}
+}
+
+func TestBrowserEvaluate_EmptyExpression(t *testing.T) {
+	c := &BrowserEvaluateConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{
+		"expression": "   ",
+	})
+	if err == nil {
+		t.Fatal("expected error for blank expression")
+	}
+}
+
+func TestBrowserEvaluate_InvalidSession(t *testing.T) {
+	c := &BrowserEvaluateConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{
+		"expression":    "document.title",
+		"session_state": false,
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid session_state")
+	}
+}
+
+func TestBrowserEvaluate_ScriptContainsExpression(t *testing.T) {
+	snippet := "actionData.result = await page.evaluate(() => { return (document.title); });\n"
+	script, err := buildDeclarativeScript(snippet, nil, 30000, false)
+	if err != nil {
+		t.Fatalf("buildDeclarativeScript: %v", err)
+	}
+	if !strings.Contains(script, "document.title") {
+		t.Error("script should contain the expression")
+	}
+	if !strings.Contains(script, "page.evaluate") {
+		t.Error("script should use page.evaluate")
+	}
+}

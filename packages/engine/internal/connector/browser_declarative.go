@@ -221,6 +221,37 @@ func (c *BrowserNavigateConnector) Execute(ctx context.Context, params map[strin
 	return out, nil
 }
 
+// BrowserEvaluateConnector implements browser/evaluate.
+type BrowserEvaluateConnector struct{}
+
+func (c *BrowserEvaluateConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
+	expression, _ := params["expression"].(string)
+	if strings.TrimSpace(expression) == "" {
+		return nil, fmt.Errorf("browser/evaluate: expression is required")
+	}
+	session, err := extractSession(params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/evaluate: %w", err)
+	}
+	// expression is embedded verbatim as a JS expression — callers are responsible for valid JS.
+	snippet := fmt.Sprintf("actionData.result = await page.evaluate(() => { return (%s); });\n", expression)
+	script, err := buildDeclarativeScript(snippet, session, extractTimeoutMs(params), false)
+	if err != nil {
+		return nil, fmt.Errorf("browser/evaluate: %w", err)
+	}
+	envelope, err := executeBrowserScript(ctx, script, params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/evaluate: %w", err)
+	}
+	out := map[string]any{"session_state": envelope["session_state"]}
+	if data, ok := envelope["data"].(map[string]any); ok {
+		if v, ok := data["result"]; ok {
+			out["result"] = v
+		}
+	}
+	return out, nil
+}
+
 // BrowserWaitConnector implements browser/wait.
 // Exactly one of selector, url_pattern, or duration_ms must be provided.
 type BrowserWaitConnector struct{}
