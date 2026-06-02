@@ -41,6 +41,7 @@ func NewRegistry() *Registry {
 	r.Register("docker/run", &DockerRunConnector{})
 	r.Register("browser/run", &BrowserRunConnector{})
 	r.Register("browser/navigate", &BrowserNavigateConnector{})
+	r.Register("browser/click", &BrowserClickConnector{})
 	r.Register("github/create_issue", &GitHubCreateIssueConnector{})
 	r.Register("github/dispatch", &GitHubDispatchConnector{})
 	r.Register("github/dispatch_workflow", &GitHubDispatchWorkflowConnector{})

@@ -220,3 +220,32 @@ func (c *BrowserNavigateConnector) Execute(ctx context.Context, params map[strin
 	}
 	return out, nil
 }
+
+// BrowserClickConnector implements browser/click.
+type BrowserClickConnector struct{}
+
+func (c *BrowserClickConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
+	selector, _ := params["selector"].(string)
+	if strings.TrimSpace(selector) == "" {
+		return nil, fmt.Errorf("browser/click: selector is required")
+	}
+	waitFor, _ := params["wait_for"].(string)
+	session, err := extractSession(params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/click: %w", err)
+	}
+	var snippet strings.Builder
+	fmt.Fprintf(&snippet, "await page.click(%s);\n", mustJSONString(selector))
+	if waitFor != "" {
+		fmt.Fprintf(&snippet, "await page.waitForSelector(%s);\n", mustJSONString(waitFor))
+	}
+	script, err := buildDeclarativeScript(snippet.String(), session, extractTimeoutMs(params), false)
+	if err != nil {
+		return nil, fmt.Errorf("browser/click: %w", err)
+	}
+	envelope, err := executeBrowserScript(ctx, script, params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/click: %w", err)
+	}
+	return map[string]any{"session_state": envelope["session_state"]}, nil
+}

@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -170,5 +171,50 @@ func TestBrowserNavigate_InvalidSession(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for invalid session_state")
+	}
+}
+
+func TestBrowserClick_MissingSelector(t *testing.T) {
+	c := &BrowserClickConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{})
+	if err == nil {
+		t.Fatal("expected error for missing selector")
+	}
+	if !strings.Contains(err.Error(), "selector is required") {
+		t.Errorf("error = %q, want 'selector is required'", err)
+	}
+}
+
+func TestBrowserClick_InvalidSession(t *testing.T) {
+	c := &BrowserClickConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{
+		"selector":      "#btn",
+		"session_state": "bad",
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid session_state")
+	}
+}
+
+func TestBrowserClick_ScriptContainsSelector(t *testing.T) {
+	snippet := fmt.Sprintf("await page.click(%s);\n", mustJSONString("#submit-btn"))
+	script, err := buildDeclarativeScript(snippet, nil, 30000, false)
+	if err != nil {
+		t.Fatalf("buildDeclarativeScript: %v", err)
+	}
+	if !strings.Contains(script, `page.click("#submit-btn")`) {
+		t.Error("script should contain page.click with the selector")
+	}
+}
+
+func TestBrowserClick_ScriptContainsWaitFor(t *testing.T) {
+	snippet := fmt.Sprintf("await page.click(%s);\nawait page.waitForSelector(%s);\n",
+		mustJSONString("#btn"), mustJSONString(".result"))
+	script, err := buildDeclarativeScript(snippet, nil, 30000, false)
+	if err != nil {
+		t.Fatalf("buildDeclarativeScript: %v", err)
+	}
+	if !strings.Contains(script, `waitForSelector(".result")`) {
+		t.Error("script should contain waitForSelector")
 	}
 }
