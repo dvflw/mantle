@@ -477,3 +477,158 @@ func TestBrowserEvaluate_ScriptContainsExpression(t *testing.T) {
 		t.Error("script should use page.evaluate")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Integration tests — require Docker and network access
+// ---------------------------------------------------------------------------
+
+func TestBrowserNavigate_Integration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	dockerAvailableForBrowser(t)
+
+	c := &BrowserNavigateConnector{}
+	out, err := c.Execute(context.Background(), map[string]any{
+		"url":  "https://example.com",
+		"pull": "missing",
+	})
+	if err != nil {
+		t.Skipf("Execute failed (may need network/npm): %v", err)
+	}
+	title, _ := out["title"].(string)
+	if !strings.Contains(title, "Example Domain") {
+		t.Errorf("title = %q, want 'Example Domain'", title)
+	}
+	if out["session_state"] == nil {
+		t.Error("session_state should be present in output")
+	}
+}
+
+func TestBrowserNavigateExtract_SessionChain(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	dockerAvailableForBrowser(t)
+
+	// Step 1: navigate
+	nav := &BrowserNavigateConnector{}
+	navOut, err := nav.Execute(context.Background(), map[string]any{
+		"url":  "https://example.com",
+		"pull": "missing",
+	})
+	if err != nil {
+		t.Skipf("navigate failed (may need network/npm): %v", err)
+	}
+
+	// Step 2: extract using session from step 1
+	ext := &BrowserExtractConnector{}
+	extOut, err := ext.Execute(context.Background(), map[string]any{
+		"selectors":     map[string]any{"heading": "h1"},
+		"session_state": navOut["session_state"],
+		"pull":          "missing",
+	})
+	if err != nil {
+		t.Skipf("extract failed: %v", err)
+	}
+	data, ok := extOut["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("data output is not a map: %T", extOut["data"])
+	}
+	heading, _ := data["heading"].(string)
+	if !strings.Contains(heading, "Example Domain") {
+		t.Errorf("heading = %q, want 'Example Domain'", heading)
+	}
+}
+
+func TestBrowserScreenshot_Integration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	dockerAvailableForBrowser(t)
+
+	nav := &BrowserNavigateConnector{}
+	navOut, err := nav.Execute(context.Background(), map[string]any{
+		"url":  "https://example.com",
+		"pull": "missing",
+	})
+	if err != nil {
+		t.Skipf("navigate failed (may need network/npm): %v", err)
+	}
+
+	ss := &BrowserScreenshotConnector{}
+	ssOut, err := ss.Execute(context.Background(), map[string]any{
+		"session_state": navOut["session_state"],
+		"pull":          "missing",
+	})
+	if err != nil {
+		t.Skipf("screenshot failed: %v", err)
+	}
+	b64, _ := ssOut["base64"].(string)
+	if len(b64) == 0 {
+		t.Error("expected non-empty base64 screenshot")
+	}
+	if ssOut["path"] != "screenshot.png" {
+		t.Errorf("path = %v, want screenshot.png", ssOut["path"])
+	}
+}
+
+func TestBrowserEvaluate_Integration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	dockerAvailableForBrowser(t)
+
+	nav := &BrowserNavigateConnector{}
+	navOut, err := nav.Execute(context.Background(), map[string]any{
+		"url":  "https://example.com",
+		"pull": "missing",
+	})
+	if err != nil {
+		t.Skipf("navigate failed (may need network/npm): %v", err)
+	}
+
+	ev := &BrowserEvaluateConnector{}
+	evOut, err := ev.Execute(context.Background(), map[string]any{
+		"expression":    "document.location.hostname",
+		"session_state": navOut["session_state"],
+		"pull":          "missing",
+	})
+	if err != nil {
+		t.Skipf("evaluate failed: %v", err)
+	}
+	result, _ := evOut["result"].(string)
+	if result != "example.com" {
+		t.Errorf("result = %q, want %q", result, "example.com")
+	}
+}
+
+func TestBrowserWait_TimeoutError_Integration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	dockerAvailableForBrowser(t)
+
+	nav := &BrowserNavigateConnector{}
+	navOut, err := nav.Execute(context.Background(), map[string]any{
+		"url":  "https://example.com",
+		"pull": "missing",
+	})
+	if err != nil {
+		t.Skipf("navigate failed (may need network/npm): %v", err)
+	}
+
+	w := &BrowserWaitConnector{}
+	_, err = w.Execute(context.Background(), map[string]any{
+		"selector":      ".this-selector-does-not-exist",
+		"session_state": navOut["session_state"],
+		"timeout_ms":    float64(2000),
+		"pull":          "missing",
+	})
+	if err == nil {
+		t.Fatal("expected error when selector not found within timeout")
+	}
+	if !strings.Contains(err.Error(), "browser/wait") {
+		t.Errorf("error = %q, want 'browser/wait' prefix", err)
+	}
+}
