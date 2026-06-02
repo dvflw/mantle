@@ -218,3 +218,50 @@ func TestBrowserClick_ScriptContainsWaitFor(t *testing.T) {
 		t.Error("script should contain waitForSelector")
 	}
 }
+
+func TestBrowserFill_MissingFields(t *testing.T) {
+	c := &BrowserFillConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{})
+	if err == nil {
+		t.Fatal("expected error for missing fields")
+	}
+	if !strings.Contains(err.Error(), "fields is required") {
+		t.Errorf("error = %q, want 'fields is required'", err)
+	}
+}
+
+func TestBrowserFill_EmptyFields(t *testing.T) {
+	c := &BrowserFillConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{
+		"fields": map[string]any{},
+	})
+	if err == nil {
+		t.Fatal("expected error for empty fields map")
+	}
+	if !strings.Contains(err.Error(), "non-empty") {
+		t.Errorf("error = %q, want 'non-empty'", err)
+	}
+}
+
+func TestBrowserFill_InvalidSession(t *testing.T) {
+	c := &BrowserFillConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{
+		"fields":        map[string]any{"#email": "test@example.com"},
+		"session_state": 42,
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid session_state")
+	}
+}
+
+func TestBrowserFill_ScriptContainsFillCalls(t *testing.T) {
+	snippet := fmt.Sprintf("await page.fill(%s, %s);\n",
+		mustJSONString("#email"), mustJSONString("user@example.com"))
+	script, err := buildDeclarativeScript(snippet, nil, 30000, false)
+	if err != nil {
+		t.Fatalf("buildDeclarativeScript: %v", err)
+	}
+	if !strings.Contains(script, `page.fill("#email", "user@example.com")`) {
+		t.Error("script should contain page.fill call")
+	}
+}

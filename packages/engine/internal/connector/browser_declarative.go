@@ -221,6 +221,38 @@ func (c *BrowserNavigateConnector) Execute(ctx context.Context, params map[strin
 	return out, nil
 }
 
+// BrowserFillConnector implements browser/fill.
+type BrowserFillConnector struct{}
+
+func (c *BrowserFillConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
+	fieldsRaw, ok := params["fields"]
+	if !ok || fieldsRaw == nil {
+		return nil, fmt.Errorf("browser/fill: fields is required")
+	}
+	fieldsMap, ok := fieldsRaw.(map[string]any)
+	if !ok || len(fieldsMap) == 0 {
+		return nil, fmt.Errorf("browser/fill: fields must be a non-empty map of selector to value")
+	}
+	session, err := extractSession(params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/fill: %w", err)
+	}
+	var snippet strings.Builder
+	for selector, value := range fieldsMap {
+		v, _ := value.(string)
+		fmt.Fprintf(&snippet, "await page.fill(%s, %s);\n", mustJSONString(selector), mustJSONString(v))
+	}
+	script, err := buildDeclarativeScript(snippet.String(), session, extractTimeoutMs(params), false)
+	if err != nil {
+		return nil, fmt.Errorf("browser/fill: %w", err)
+	}
+	envelope, err := executeBrowserScript(ctx, script, params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/fill: %w", err)
+	}
+	return map[string]any{"session_state": envelope["session_state"]}, nil
+}
+
 // BrowserClickConnector implements browser/click.
 type BrowserClickConnector struct{}
 
