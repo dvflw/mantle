@@ -68,7 +68,10 @@ func TestExtractTimeoutMs_Provided(t *testing.T) {
 }
 
 func TestBuildDeclarativeScript_FreshSession(t *testing.T) {
-	script := buildDeclarativeScript("actionData.x = 1;", nil, 30000, false)
+	script, err := buildDeclarativeScript("actionData.x = 1;", nil, 30000, false)
+	if err != nil {
+		t.Fatalf("buildDeclarativeScript: %v", err)
+	}
 	for _, want := range []string{
 		"chromium.launch({ headless: true })",
 		"actionData.x = 1;",
@@ -96,7 +99,10 @@ func TestBuildDeclarativeScript_WithSession_RestoresURL(t *testing.T) {
 		LocalStorage: map[string]map[string]string{},
 		URL:          "https://example.com/dashboard",
 	}
-	script := buildDeclarativeScript("", session, 5000, false)
+	script, err := buildDeclarativeScript("", session, 5000, false)
+	if err != nil {
+		t.Fatalf("buildDeclarativeScript: %v", err)
+	}
 	if !strings.Contains(script, "addCookies") {
 		t.Error("should restore cookies")
 	}
@@ -115,7 +121,10 @@ func TestBuildDeclarativeScript_SkipURLRestore(t *testing.T) {
 		},
 		URL: "https://old.example.com/page",
 	}
-	script := buildDeclarativeScript("await page.goto('https://new.example.com');", session, 30000, true)
+	script, err := buildDeclarativeScript("await page.goto('https://new.example.com');", session, 30000, true)
+	if err != nil {
+		t.Fatalf("buildDeclarativeScript: %v", err)
+	}
 	if strings.Contains(script, "old.example.com") {
 		t.Error("skipURLRestore=true must not navigate to previous URL")
 	}

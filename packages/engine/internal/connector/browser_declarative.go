@@ -36,7 +36,7 @@ func extractSession(params map[string]any) (*BrowserSession, error) {
 // actionSnippet is injected into the page context after optional session
 // restore. skipURLRestore=true restores cookies but skips navigating to the
 // previous URL — used by browser/navigate, which sets its own destination.
-func buildDeclarativeScript(actionSnippet string, session *BrowserSession, timeoutMs int, skipURLRestore bool) string {
+func buildDeclarativeScript(actionSnippet string, session *BrowserSession, timeoutMs int, skipURLRestore bool) (string, error) {
 	var b strings.Builder
 
 	b.WriteString("const { chromium } = require('playwright');\n")
@@ -47,7 +47,10 @@ func buildDeclarativeScript(actionSnippet string, session *BrowserSession, timeo
 	b.WriteString("    const context = await browser.newContext();\n")
 
 	if session != nil && len(session.Cookies) > 0 {
-		cookiesJSON, _ := json.Marshal(session.Cookies)
+		cookiesJSON, err := json.Marshal(session.Cookies)
+		if err != nil {
+			return "", fmt.Errorf("browser: marshaling cookies: %w", err)
+		}
 		fmt.Fprintf(&b, "    await context.addCookies(%s);\n", cookiesJSON)
 	}
 
@@ -55,9 +58,21 @@ func buildDeclarativeScript(actionSnippet string, session *BrowserSession, timeo
 	fmt.Fprintf(&b, "    page.setDefaultTimeout(%d);\n", timeoutMs)
 
 	if session != nil && session.URL != "" && !skipURLRestore {
-		fmt.Fprintf(&b, "    await page.goto(%q);\n", session.URL)
+		urlJSON, err := json.Marshal(session.URL)
+		if err != nil {
+			return "", fmt.Errorf("browser: marshaling URL: %w", err)
+		}
+		fmt.Fprintf(&b, "    await page.goto(%s);\n", urlJSON)
+		// Note: localStorage is keyed by origin. If the page at session.URL redirects
+		// to a different origin, window.location.origin after navigation won't match
+		// the stored key and localStorage will silently not be restored. This is an
+		// inherent limitation of post-navigation injection; use addInitScript for
+		// redirect-safe restore if this becomes an issue.
 		if len(session.LocalStorage) > 0 {
-			lsJSON, _ := json.Marshal(session.LocalStorage)
+			lsJSON, err := json.Marshal(session.LocalStorage)
+			if err != nil {
+				return "", fmt.Errorf("browser: marshaling localStorage: %w", err)
+			}
 			fmt.Fprintf(&b, "    await page.evaluate((ls) => {\n")
 			b.WriteString("      const origin = window.location.origin;\n")
 			b.WriteString("      for (const [k, v] of Object.entries(ls[origin] || {})) localStorage.setItem(k, v);\n")
@@ -93,7 +108,7 @@ func buildDeclarativeScript(actionSnippet string, session *BrowserSession, timeo
 	b.WriteString("  }\n")
 	b.WriteString("})().catch(err => { process.stderr.write(err.message + '\\n'); process.exit(1); });\n")
 
-	return b.String()
+	return b.String(), nil
 }
 
 // extractTimeoutMs returns the timeout_ms param as an int, defaulting to 30000.
