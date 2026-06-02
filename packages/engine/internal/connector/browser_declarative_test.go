@@ -265,3 +265,62 @@ func TestBrowserFill_ScriptContainsFillCalls(t *testing.T) {
 		t.Error("script should contain page.fill call")
 	}
 }
+
+func TestBrowserExtract_MissingSelectors(t *testing.T) {
+	c := &BrowserExtractConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{})
+	if err == nil {
+		t.Fatal("expected error for missing selectors")
+	}
+	if !strings.Contains(err.Error(), "selectors is required") {
+		t.Errorf("error = %q, want 'selectors is required'", err)
+	}
+}
+
+func TestBrowserExtract_EmptySelectors(t *testing.T) {
+	c := &BrowserExtractConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{
+		"selectors": map[string]any{},
+	})
+	if err == nil {
+		t.Fatal("expected error for empty selectors map")
+	}
+	if !strings.Contains(err.Error(), "non-empty") {
+		t.Errorf("error = %q, want 'non-empty'", err)
+	}
+}
+
+func TestBrowserExtract_InvalidSession(t *testing.T) {
+	c := &BrowserExtractConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{
+		"selectors":     map[string]any{"title": "h1"},
+		"session_state": true,
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid session_state")
+	}
+}
+
+func TestBrowserExtract_ScriptUsesTextContent(t *testing.T) {
+	snippet := fmt.Sprintf("actionData.data = {};\nactionData.data[%s] = await page.textContent(%s);\n",
+		mustJSONString("heading"), mustJSONString("h1"))
+	script, err := buildDeclarativeScript(snippet, nil, 30000, false)
+	if err != nil {
+		t.Fatalf("buildDeclarativeScript: %v", err)
+	}
+	if !strings.Contains(script, `page.textContent("h1")`) {
+		t.Error("script should use textContent for text extraction")
+	}
+}
+
+func TestBrowserExtract_ScriptUsesGetAttribute(t *testing.T) {
+	snippet := fmt.Sprintf("actionData.data = {};\nactionData.data[%s] = await page.getAttribute(%s, %s);\n",
+		mustJSONString("link"), mustJSONString("a.btn"), mustJSONString("href"))
+	script, err := buildDeclarativeScript(snippet, nil, 30000, false)
+	if err != nil {
+		t.Fatalf("buildDeclarativeScript: %v", err)
+	}
+	if !strings.Contains(script, `page.getAttribute("a.btn", "href")`) {
+		t.Error("script should use getAttribute when attribute is set")
+	}
+}

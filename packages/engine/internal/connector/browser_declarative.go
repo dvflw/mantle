@@ -221,6 +221,52 @@ func (c *BrowserNavigateConnector) Execute(ctx context.Context, params map[strin
 	return out, nil
 }
 
+// BrowserExtractConnector implements browser/extract.
+type BrowserExtractConnector struct{}
+
+func (c *BrowserExtractConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
+	selectorsRaw, ok := params["selectors"]
+	if !ok || selectorsRaw == nil {
+		return nil, fmt.Errorf("browser/extract: selectors is required")
+	}
+	selectorsMap, ok := selectorsRaw.(map[string]any)
+	if !ok || len(selectorsMap) == 0 {
+		return nil, fmt.Errorf("browser/extract: selectors must be a non-empty map of name to selector")
+	}
+	attribute, _ := params["attribute"].(string)
+	session, err := extractSession(params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/extract: %w", err)
+	}
+	var snippet strings.Builder
+	snippet.WriteString("actionData.data = {};\n")
+	for name, sel := range selectorsMap {
+		selector, _ := sel.(string)
+		if attribute != "" {
+			fmt.Fprintf(&snippet, "actionData.data[%s] = await page.getAttribute(%s, %s);\n",
+				mustJSONString(name), mustJSONString(selector), mustJSONString(attribute))
+		} else {
+			fmt.Fprintf(&snippet, "actionData.data[%s] = await page.textContent(%s);\n",
+				mustJSONString(name), mustJSONString(selector))
+		}
+	}
+	script, err := buildDeclarativeScript(snippet.String(), session, extractTimeoutMs(params), false)
+	if err != nil {
+		return nil, fmt.Errorf("browser/extract: %w", err)
+	}
+	envelope, err := executeBrowserScript(ctx, script, params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/extract: %w", err)
+	}
+	out := map[string]any{"session_state": envelope["session_state"]}
+	if data, ok := envelope["data"].(map[string]any); ok {
+		if d, ok := data["data"]; ok {
+			out["data"] = d
+		}
+	}
+	return out, nil
+}
+
 // BrowserFillConnector implements browser/fill.
 type BrowserFillConnector struct{}
 
