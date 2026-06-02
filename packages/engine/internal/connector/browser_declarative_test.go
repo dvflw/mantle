@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -133,5 +134,41 @@ func TestBuildDeclarativeScript_SkipURLRestore(t *testing.T) {
 	}
 	if !strings.Contains(script, "addCookies") {
 		t.Error("skipURLRestore=true should still restore cookies")
+	}
+}
+
+func TestBrowserNavigate_MissingURL(t *testing.T) {
+	c := &BrowserNavigateConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{})
+	if err == nil {
+		t.Fatal("expected error for missing url")
+	}
+	if !strings.Contains(err.Error(), "url is required") {
+		t.Errorf("error = %q, want 'url is required'", err)
+	}
+}
+
+func TestBrowserNavigate_InvalidWaitUntil(t *testing.T) {
+	c := &BrowserNavigateConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{
+		"url":        "https://example.com",
+		"wait_until": "forever",
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid wait_until")
+	}
+	if !strings.Contains(err.Error(), "wait_until") {
+		t.Errorf("error = %q, want 'wait_until' mention", err)
+	}
+}
+
+func TestBrowserNavigate_InvalidSession(t *testing.T) {
+	c := &BrowserNavigateConnector{}
+	_, err := c.Execute(context.Background(), map[string]any{
+		"url":           "https://example.com",
+		"session_state": "not-a-map",
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid session_state")
 	}
 }

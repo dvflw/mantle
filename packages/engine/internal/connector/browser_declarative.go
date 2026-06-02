@@ -171,3 +171,52 @@ func executeBrowserScript(ctx context.Context, script string, params map[string]
 	}
 	return envelope, nil
 }
+
+// mustJSONString returns the JSON encoding of s as a string literal (e.g. "\"hello\"").
+// It panics only if json.Marshal fails on a plain string, which cannot happen.
+func mustJSONString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
+// BrowserNavigateConnector implements browser/navigate.
+type BrowserNavigateConnector struct{}
+
+func (c *BrowserNavigateConnector) Execute(ctx context.Context, params map[string]any) (map[string]any, error) {
+	url, _ := params["url"].(string)
+	if strings.TrimSpace(url) == "" {
+		return nil, fmt.Errorf("browser/navigate: url is required")
+	}
+	waitUntil, _ := params["wait_until"].(string)
+	if waitUntil == "" {
+		waitUntil = "load"
+	}
+	switch waitUntil {
+	case "load", "networkidle", "domcontentloaded":
+	default:
+		return nil, fmt.Errorf("browser/navigate: wait_until must be load, networkidle, or domcontentloaded, got %q", waitUntil)
+	}
+	session, err := extractSession(params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/navigate: %w", err)
+	}
+	snippet := fmt.Sprintf(
+		"await page.goto(%s, { waitUntil: %s });\nactionData.title = await page.title();",
+		mustJSONString(url), mustJSONString(waitUntil),
+	)
+	script, err := buildDeclarativeScript(snippet, session, extractTimeoutMs(params), true)
+	if err != nil {
+		return nil, fmt.Errorf("browser/navigate: %w", err)
+	}
+	envelope, err := executeBrowserScript(ctx, script, params)
+	if err != nil {
+		return nil, fmt.Errorf("browser/navigate: %w", err)
+	}
+	out := map[string]any{"session_state": envelope["session_state"]}
+	if data, ok := envelope["data"].(map[string]any); ok {
+		if v, ok := data["title"]; ok {
+			out["title"] = v
+		}
+	}
+	return out, nil
+}

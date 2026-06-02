@@ -40,6 +40,7 @@ func NewRegistry() *Registry {
 	r.Register("s3/list", &S3ListConnector{})
 	r.Register("docker/run", &DockerRunConnector{})
 	r.Register("browser/run", &BrowserRunConnector{})
+	r.Register("browser/navigate", &BrowserNavigateConnector{})
 	r.Register("github/create_issue", &GitHubCreateIssueConnector{})
 	r.Register("github/dispatch", &GitHubDispatchConnector{})
 	r.Register("github/dispatch_workflow", &GitHubDispatchWorkflowConnector{})
