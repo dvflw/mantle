@@ -86,6 +86,9 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"workflow", trigger.WorkflowName,
 		"version", trigger.WorkflowVersion)
 
+	// The /hooks/ endpoint is authenticated, so r.Context() already carries the
+	// caller's team — the same team the trigger was looked up under. Running with
+	// it keeps workflow/credential resolution scoped to that tenant.
 	execID, err := h.server.executeWorkflow(r.Context(), trigger.WorkflowName, trigger.WorkflowVersion, inputs)
 	if err != nil {
 		h.server.Logger.Error("webhook: execution failed",
