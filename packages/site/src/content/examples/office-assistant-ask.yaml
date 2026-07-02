@@ -1,0 +1,52 @@
+name: office-assistant-ask
+description: >
+  Answer a question from the meeting-notes knowledge base. Full-text search the
+  Postgres KB for the most relevant notes, then have an LLM synthesize a grounded
+  answer that cites the meetings it used. Pair with
+  office-assistant-ingest-meeting.yaml. Run it and read the answer from the CLI
+  output (mantle run office-assistant-ask --values q.yaml --output json).
+
+inputs:
+  question:
+    type: string
+    description: The question to answer from company meeting notes
+
+steps:
+  # 1. Retrieve the top matching notes via weighted full-text ranking.
+  #    websearch_to_tsquery parses natural-language queries (quotes, OR, -term).
+  - name: search
+    action: postgres/query
+    credential: kb-db
+    timeout: "15s"
+    params:
+      query: >
+        SELECT title,
+               to_char(meeting_date, 'YYYY-MM-DD') AS meeting_date,
+               attendees,
+               summary,
+               action_items
+        FROM meeting_notes
+        WHERE search @@ websearch_to_tsquery('english', $1)
+        ORDER BY ts_rank(search, websearch_to_tsquery('english', $1)) DESC
+        LIMIT 5
+      args:
+        - "{{ inputs.question }}"
+
+  # 2. Synthesize an answer grounded strictly in the retrieved notes.
+  - name: answer
+    action: ai/completion
+    credential: openai
+    depends_on:
+      - search
+    timeout: "60s"
+    params:
+      model: gpt-4o
+      system_prompt: >
+        You answer questions using ONLY the provided meeting notes. Cite the
+        meeting titles you draw from. If the notes do not contain the answer,
+        say so plainly rather than guessing.
+      prompt: >
+        Question: {{ inputs.question }}
+
+        Meeting notes (JSON array, most relevant first):
+        {{ jsonEncode(steps['search'].output.rows) }}
