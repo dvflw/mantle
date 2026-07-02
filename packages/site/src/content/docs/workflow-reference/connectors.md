@@ -149,11 +149,12 @@ Turns text into vector embeddings via an OpenAI-compatible embeddings API. Use i
 
 | Param | Type | Required | Description |
 |---|---|---|---|
-| `provider` | string | No | Embeddings provider: `openai` (default). Bedrock is not yet supported. |
-| `model` | string | Yes | Embedding model (e.g., `text-embedding-3-small`, `text-embedding-3-large`). |
+| `provider` | string | No | Embeddings provider: `openai` (default) or `bedrock`. |
+| `model` | string | Yes | Embedding model. OpenAI: `text-embedding-3-small`, `text-embedding-3-large`. Bedrock: `amazon.titan-embed-text-v2:0`, `amazon.titan-embed-text-v1`. |
 | `input` | string \| list | Yes | A single string or an array of strings to embed. |
-| `dimensions` | integer | No | Requested embedding dimension, when the model supports truncation. |
-| `base_url` | string | No | Override the API base URL. Defaults to `https://api.openai.com/v1`. Use for Azure OpenAI or OpenAI-compatible servers. |
+| `dimensions` | integer | No | Requested embedding dimension, when the model supports it (OpenAI `text-embedding-3-*`, Bedrock `titan-embed-text-v2`). |
+| `region` | string | No | AWS region for the Bedrock provider. Only used when `provider` is `bedrock`. |
+| `base_url` | string | No | Override the API base URL (OpenAI provider). Defaults to `https://api.openai.com/v1`. Use for Azure OpenAI or OpenAI-compatible servers. |
 
 **Output:**
 

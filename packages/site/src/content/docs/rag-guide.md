@@ -88,9 +88,12 @@ outputs with `--output json` or `-v`).
 - **Embedding dimension must match the model.** The schema uses `vector(1536)`
   for `text-embedding-3-small`; use `vector(3072)` for `text-embedding-3-large`.
   Embed queries and documents with the same model.
-- **Provider support:** `ai/embed` currently supports `openai` and
-  OpenAI-compatible endpoints (Azure OpenAI, local servers) via `base_url`.
-  Bedrock embeddings are a planned follow-up.
+- **Provider support:** `ai/embed` supports `openai` (and OpenAI-compatible
+  endpoints like Azure OpenAI or local servers via `base_url`) and `bedrock`
+  with the Amazon Titan text-embedding models (`amazon.titan-embed-text-v2:0`,
+  `amazon.titan-embed-text-v1`). To use Bedrock, set `provider: bedrock`, a
+  `region`, and an `aws` credential; adjust the schema's `vector(...)` dimension
+  to match (Titan v2 defaults to 1024). Cohere Bedrock models are a follow-up.
 - **No native chunking or `kb/*` convenience steps yet.** You compose RAG from
   `ai/embed` + `postgres/query` + `ai/completion` today; native chunking and
   `kb/upsert` / `kb/query` connectors are tracked by

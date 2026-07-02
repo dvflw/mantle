@@ -144,14 +144,14 @@ func TestEmbeddingConnector_IncompleteResponseFailsFast(t *testing.T) {
 	}
 }
 
-func TestEmbeddingConnector_BedrockUnsupported(t *testing.T) {
+func TestEmbeddingConnector_UnknownProvider(t *testing.T) {
 	c := &EmbeddingConnector{}
 	_, err := c.Execute(context.Background(), map[string]any{
-		"model":    "amazon.titan-embed-text-v2:0",
+		"model":    "some-model",
 		"input":    "x",
-		"provider": "bedrock",
+		"provider": "not-a-provider",
 	})
 	if err == nil {
-		t.Error("expected error for unsupported bedrock provider")
+		t.Error("expected error for unknown provider")
 	}
 }

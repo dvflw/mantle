@@ -223,3 +223,78 @@ func classifyBedrockError(err error) error {
 
 	return fmt.Errorf("bedrock: API request failed")
 }
+
+// BedrockInvokeAPI abstracts the Bedrock InvokeModel call (used for embeddings)
+// for testability.
+type BedrockInvokeAPI interface {
+	InvokeModel(ctx context.Context, input *bedrockruntime.InvokeModelInput, opts ...func(*bedrockruntime.Options)) (*bedrockruntime.InvokeModelOutput, error)
+}
+
+// BedrockEmbeddingProvider implements EmbeddingProvider using the AWS Bedrock
+// InvokeModel API. It currently supports the Amazon Titan text-embedding models
+// (amazon.titan-embed-text-v1 and amazon.titan-embed-text-v2:0). Titan embeds a
+// single input per call, so multi-input requests are issued sequentially and
+// reassembled in order.
+type BedrockEmbeddingProvider struct {
+	Client BedrockInvokeAPI
+}
+
+// titanEmbedRequest is the Amazon Titan text-embeddings InvokeModel body.
+// Dimensions is only honoured by titan-embed-text-v2; omitempty keeps it out of
+// v1 requests.
+type titanEmbedRequest struct {
+	InputText  string `json:"inputText"`
+	Dimensions int    `json:"dimensions,omitempty"`
+}
+
+type titanEmbedResponse struct {
+	Embedding           []float64 `json:"embedding"`
+	InputTextTokenCount int       `json:"inputTextTokenCount"`
+}
+
+// Embeddings implements EmbeddingProvider for Bedrock Titan models.
+func (p *BedrockEmbeddingProvider) Embeddings(ctx context.Context, req *EmbeddingRequest) (*EmbeddingResponse, error) {
+	if !strings.HasPrefix(req.Model, "amazon.titan-embed") {
+		return nil, fmt.Errorf("bedrock: unsupported embedding model %q (supported: amazon.titan-embed-text-v1, amazon.titan-embed-text-v2:0)", req.Model)
+	}
+
+	out := make([][]float64, len(req.Inputs))
+	totalTokens := 0
+
+	for i, text := range req.Inputs {
+		body := titanEmbedRequest{InputText: text}
+		if req.Dimensions > 0 {
+			body.Dimensions = req.Dimensions
+		}
+		bodyJSON, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("bedrock: marshaling embedding request: %w", err)
+		}
+
+		resp, err := p.Client.InvokeModel(ctx, &bedrockruntime.InvokeModelInput{
+			ModelId:     aws.String(req.Model),
+			Body:        bodyJSON,
+			ContentType: aws.String("application/json"),
+			Accept:      aws.String("application/json"),
+		})
+		if err != nil {
+			return nil, classifyBedrockError(err)
+		}
+
+		var er titanEmbedResponse
+		if err := json.Unmarshal(resp.Body, &er); err != nil {
+			return nil, fmt.Errorf("bedrock: parsing embedding response: %w", err)
+		}
+		if len(er.Embedding) == 0 {
+			return nil, fmt.Errorf("bedrock: empty embedding returned for input %d", i)
+		}
+		out[i] = er.Embedding
+		totalTokens += er.InputTextTokenCount
+	}
+
+	return &EmbeddingResponse{
+		Embeddings: out,
+		Model:      req.Model,
+		Usage:      ChatUsage{PromptTokens: totalTokens, TotalTokens: totalTokens},
+	}, nil
+}
