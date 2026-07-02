@@ -261,9 +261,14 @@ func (p *BedrockEmbeddingProvider) Embeddings(ctx context.Context, req *Embeddin
 	out := make([][]float64, len(req.Inputs))
 	totalTokens := 0
 
+	// dimensions is only accepted by Titan v2; Titan v1 (G1) rejects any field
+	// other than inputText, so ignore it there rather than failing a request
+	// that reuses a shared embedding config.
+	supportsDimensions := strings.Contains(req.Model, "titan-embed-text-v2")
+
 	for i, text := range req.Inputs {
 		body := titanEmbedRequest{InputText: text}
-		if req.Dimensions > 0 {
+		if req.Dimensions > 0 && supportsDimensions {
 			body.Dimensions = req.Dimensions
 		}
 		bodyJSON, err := json.Marshal(body)

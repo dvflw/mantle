@@ -69,6 +69,31 @@ func TestBedrockEmbeddingProvider_Titan(t *testing.T) {
 	}
 }
 
+func TestBedrockEmbeddingProvider_V1IgnoresDimensions(t *testing.T) {
+	mock := &mockBedrockInvokeClient{
+		InvokeFunc: func(ctx context.Context, input *bedrockruntime.InvokeModelInput, opts ...func(*bedrockruntime.Options)) (*bedrockruntime.InvokeModelOutput, error) {
+			var body titanEmbedRequest
+			if err := json.Unmarshal(input.Body, &body); err != nil {
+				t.Fatalf("unmarshaling request body: %v", err)
+			}
+			// Titan v1 must not receive dimensions even when requested.
+			if body.Dimensions != 0 {
+				t.Errorf("dimensions = %d, want 0 (omitted) for titan v1", body.Dimensions)
+			}
+			resp, _ := json.Marshal(titanEmbedResponse{Embedding: []float64{1}, InputTextTokenCount: 1})
+			return &bedrockruntime.InvokeModelOutput{Body: resp}, nil
+		},
+	}
+	p := &BedrockEmbeddingProvider{Client: mock}
+	if _, err := p.Embeddings(context.Background(), &EmbeddingRequest{
+		Model:      "amazon.titan-embed-text-v1",
+		Inputs:     []string{"x"},
+		Dimensions: 512,
+	}); err != nil {
+		t.Fatalf("Embeddings() error: %v", err)
+	}
+}
+
 func TestBedrockEmbeddingProvider_UnsupportedModel(t *testing.T) {
 	p := &BedrockEmbeddingProvider{Client: &mockBedrockInvokeClient{}}
 	_, err := p.Embeddings(context.Background(), &EmbeddingRequest{
