@@ -1,0 +1,49 @@
+name: rag-ingest
+description: >
+  Embed a document with ai/embed and store it in a pgvector knowledge base for
+  semantic retrieval. Pair with rag-ask.yaml. Requires the schema in
+  rag-kb-schema.sql. For long documents, split into chunks and run once per
+  chunk (native chunking is a planned follow-up).
+
+inputs:
+  title:
+    type: string
+    description: "Document title (optional)"
+    default: ""
+  source:
+    type: string
+    description: "Where the document came from, e.g. a URL or file path (optional)"
+    default: ""
+  content:
+    type: string
+    description: The document text to embed and store
+
+steps:
+  # 1. Produce an embedding for the document. output.vector is a pgvector text
+  #    literal ("[0.1,0.2,...]") ready to bind into a ::vector column.
+  - name: embed
+    action: ai/embed
+    credential: openai
+    timeout: "30s"
+    params:
+      model: text-embedding-3-small
+      input: "{{ inputs.content }}"
+
+  # 2. Store the document + embedding. ON CONFLICT makes re-ingesting identical
+  #    content a no-op (dedupe_key is md5(content)).
+  - name: store
+    action: postgres/query
+    credential: kb-db
+    depends_on:
+      - embed
+    timeout: "15s"
+    params:
+      query: >
+        INSERT INTO kb_documents (source, title, content, embedding)
+        VALUES ($1, $2, $3, $4::vector)
+        ON CONFLICT (dedupe_key) DO NOTHING
+      args:
+        - "{{ inputs.source }}"
+        - "{{ inputs.title }}"
+        - "{{ inputs.content }}"
+        - "{{ steps['embed'].output.vector }}"

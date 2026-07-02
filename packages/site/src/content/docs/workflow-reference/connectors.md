@@ -141,6 +141,56 @@ When running on AWS infrastructure with an IAM role attached (IRSA, instance pro
 
 **Authentication:** The AI connector reads the credential's `api_key` field (or `token` or `key` as fallbacks) and sends it as a Bearer token. If the credential includes an `org_id` field, it is sent as the `OpenAI-Organization` header. See the [Secrets Guide](/docs/secrets-guide) for how to create an `openai`-type credential.
 
+## ai/embed
+
+Turns text into vector embeddings via an OpenAI-compatible embeddings API. Use it to build a semantic knowledge base (RAG) — see the [RAG guide](/docs/rag-guide). Like `ai/completion`, it participates in token-budget accounting.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `provider` | string | No | Embeddings provider: `openai` (default). Bedrock is not yet supported. |
+| `model` | string | Yes | Embedding model (e.g., `text-embedding-3-small`, `text-embedding-3-large`). |
+| `input` | string \| list | Yes | A single string or an array of strings to embed. |
+| `dimensions` | integer | No | Requested embedding dimension, when the model supports truncation. |
+| `base_url` | string | No | Override the API base URL. Defaults to `https://api.openai.com/v1`. Use for Azure OpenAI or OpenAI-compatible servers. |
+
+**Output:**
+
+| Field | Type | Description |
+|---|---|---|
+| `embedding` | list | The first input's embedding as a float array. Present when there is at least one input. |
+| `vector` | string | The first input's embedding as a pgvector text literal (`"[0.1,0.2,...]"`), ready to bind into a `::vector` column. |
+| `embeddings` | list | All embeddings, one float array per input, in input order. |
+| `vectors` | list | All embeddings as pgvector text literals, in input order. |
+| `count` | number | Number of embeddings returned. |
+| `dimensions` | number | Dimension of the returned vectors. |
+| `usage.prompt_tokens` | number | Tokens counted for the input. |
+| `usage.total_tokens` | number | Total tokens used. |
+
+**Example — embed and store in pgvector:**
+
+```yaml
+- name: embed
+  action: ai/embed
+  credential: my-openai
+  params:
+    model: text-embedding-3-small
+    input: "{{ inputs.content }}"
+
+- name: store
+  action: postgres/query
+  credential: kb-db
+  depends_on: [embed]
+  params:
+    query: "INSERT INTO kb_documents (content, embedding) VALUES ($1, $2::vector)"
+    args:
+      - "{{ inputs.content }}"
+      - "{{ steps['embed'].output.vector }}"
+```
+
+**Authentication:** same as `ai/completion` — the credential's `api_key` (or `token`/`key`) is sent as a Bearer token.
+
 ## slack/send
 
 Sends a message to a Slack channel via the [chat.postMessage](https://api.slack.com/methods/chat.postMessage) API. Requires a credential with a Slack Bot User OAuth Token.

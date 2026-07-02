@@ -71,6 +71,16 @@ func newServeCommand() *cobra.Command {
 				}
 			}
 
+			// Apply the base-URL allowlist to the embeddings connector too, so
+			// ai/embed can't be pointed at arbitrary hosts. The model allowlist
+			// is intentionally not shared: allowed_models lists chat models, and
+			// applying it here would block embedding models.
+			if embConn, err := eng.Registry.Get("ai/embed"); err == nil {
+				if emb, ok := embConn.(*connector.EmbeddingConnector); ok {
+					emb.AllowedBaseURLs = cfg.Engine.AllowedBaseURLs
+				}
+			}
+
 			// Wire up Postgres-backed audit emitter with auth context enrichment.
 			auditor := &audit.PostgresEmitter{
 				DB:                  database,

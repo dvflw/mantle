@@ -10,6 +10,27 @@ type LLMProvider interface {
 	ChatCompletion(ctx context.Context, req *ChatRequest) (*ChatResponse, error)
 }
 
+// EmbeddingProvider implements a specific provider's text-embeddings API.
+type EmbeddingProvider interface {
+	Embeddings(ctx context.Context, req *EmbeddingRequest) (*EmbeddingResponse, error)
+}
+
+// EmbeddingRequest is the provider-agnostic embeddings request format.
+type EmbeddingRequest struct {
+	Model      string
+	Inputs     []string
+	Dimensions int // 0 = provider default
+	Credential map[string]string
+}
+
+// EmbeddingResponse is the provider-agnostic embeddings response format.
+// Embeddings are returned in the same order as EmbeddingRequest.Inputs.
+type EmbeddingResponse struct {
+	Embeddings [][]float64
+	Model      string
+	Usage      ChatUsage // PromptTokens / TotalTokens are meaningful for embeddings
+}
+
 // ChatRequest is the provider-agnostic request format.
 type ChatRequest struct {
 	Model        string
