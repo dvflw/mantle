@@ -97,6 +97,128 @@ func TestSave_RegistersTriggers(t *testing.T) {
 		t.Errorf("email fields = (%q,%q,%q,%q), want (inbox-cred,INBOX,unseen,30s)",
 			mailbox, folder, filter, poll)
 	}
+
+	// The webhook trigger row must carry its path and secret.
+	var path, secret string
+	if err := database.QueryRowContext(ctx,
+		`SELECT COALESCE(path,''), COALESCE(secret,'') FROM workflow_triggers
+		 WHERE workflow_name = 'triggered-wf' AND type = 'webhook'`,
+	).Scan(&path, &secret); err != nil {
+		t.Fatalf("querying webhook trigger: %v", err)
+	}
+	if path != "/incoming" || secret != "shh" {
+		t.Errorf("webhook fields = (%q,%q), want (/incoming,shh)", path, secret)
+	}
+}
+
+// triggerIDs returns the sorted IDs of a workflow's trigger rows.
+func triggerIDs(t *testing.T, database *sql.DB, name string) []string {
+	t.Helper()
+	rows, err := database.QueryContext(context.Background(),
+		`SELECT id::text FROM workflow_triggers WHERE workflow_name = $1 ORDER BY id`, name)
+	if err != nil {
+		t.Fatalf("querying trigger ids: %v", err)
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatalf("scanning id: %v", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// TestSave_BackfillsTriggersOnUnchangedApply is the regression test for the
+// upgrade path: a workflow whose definition already exists but has no
+// workflow_triggers rows (applied before trigger registration existed) must
+// get its triggers backfilled when identical content is re-applied — without
+// churning rows on subsequent no-op applies.
+func TestSave_BackfillsTriggersOnUnchangedApply(t *testing.T) {
+	database := setupTestDB(t)
+	ctx := context.Background()
+
+	result, _ := ParseBytes(triggeredWorkflowYAML)
+	if _, err := Save(ctx, database, result, triggeredWorkflowYAML); err != nil {
+		t.Fatalf("initial Save: %v", err)
+	}
+
+	// Simulate a pre-fix workflow: definition present, trigger rows absent.
+	if _, err := database.ExecContext(ctx,
+		`DELETE FROM workflow_triggers WHERE workflow_name = 'triggered-wf'`); err != nil {
+		t.Fatalf("clearing triggers: %v", err)
+	}
+	if got := countTriggers(t, database, "triggered-wf", false); got != 0 {
+		t.Fatalf("precondition: triggers = %d, want 0", got)
+	}
+
+	// Re-applying identical content must backfill the triggers (version stays 0).
+	version, err := Save(ctx, database, result, triggeredWorkflowYAML)
+	if err != nil {
+		t.Fatalf("backfill Save: %v", err)
+	}
+	if version != 0 {
+		t.Errorf("version = %d, want 0 (unchanged content)", version)
+	}
+	if got := countTriggers(t, database, "triggered-wf", true); got != 3 {
+		t.Fatalf("backfilled enabled triggers = %d, want 3", got)
+	}
+
+	// A further identical apply must be a true no-op: rows already in sync,
+	// so their IDs must not churn (the email poller keys off trigger IDs).
+	ids1 := triggerIDs(t, database, "triggered-wf")
+	if _, err := Save(ctx, database, result, triggeredWorkflowYAML); err != nil {
+		t.Fatalf("no-op Save: %v", err)
+	}
+	ids2 := triggerIDs(t, database, "triggered-wf")
+	if !equalStrings(ids1, ids2) {
+		t.Errorf("triggers churned on no-op apply: %v -> %v", ids1, ids2)
+	}
+}
+
+// TestSave_BackfillPreservesDisabledState verifies that backfilling triggers
+// for a currently-disabled workflow inserts them disabled, so a pruned
+// workflow does not start firing on a re-apply.
+func TestSave_BackfillPreservesDisabledState(t *testing.T) {
+	database := setupTestDB(t)
+	ctx := context.Background()
+
+	result, _ := ParseBytes(triggeredWorkflowYAML)
+	if _, err := Save(ctx, database, result, triggeredWorkflowYAML); err != nil {
+		t.Fatalf("initial Save: %v", err)
+	}
+	if err := Disable(ctx, database, "triggered-wf"); err != nil {
+		t.Fatalf("Disable: %v", err)
+	}
+	// Drop the rows to force a backfill on the next apply.
+	if _, err := database.ExecContext(ctx,
+		`DELETE FROM workflow_triggers WHERE workflow_name = 'triggered-wf'`); err != nil {
+		t.Fatalf("clearing triggers: %v", err)
+	}
+
+	if _, err := Save(ctx, database, result, triggeredWorkflowYAML); err != nil {
+		t.Fatalf("backfill Save: %v", err)
+	}
+	if got := countTriggers(t, database, "triggered-wf", false); got != 3 {
+		t.Errorf("backfilled rows = %d, want 3", got)
+	}
+	if got := countTriggers(t, database, "triggered-wf", true); got != 0 {
+		t.Errorf("enabled backfilled rows = %d, want 0 (workflow is disabled)", got)
+	}
 }
 
 // TestSave_ReplacesTriggersOnNewVersion verifies a new version supersedes the

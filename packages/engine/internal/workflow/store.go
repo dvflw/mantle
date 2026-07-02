@@ -30,6 +30,13 @@ func Save(ctx context.Context, database *sql.DB, result *ParseResult, rawContent
 		return 0, fmt.Errorf("checking latest hash: %w", err)
 	}
 	if latestHash == hash {
+		// Content unchanged, so no new version — but still backfill triggers
+		// if the table drifted from the definition (e.g. a workflow applied
+		// before trigger registration existed). Otherwise upgrading and
+		// re-applying would leave triggers inert until a byte-level change.
+		if err := reconcileTriggersIfDrifted(ctx, database, teamID, name, result.Workflow.Triggers); err != nil {
+			return 0, err
+		}
 		return 0, nil
 	}
 
@@ -60,8 +67,9 @@ func Save(ctx context.Context, database *sql.DB, result *ParseResult, rawContent
 
 	// Register the workflow's declared triggers so the cron/webhook/email
 	// schedulers actually fire it. Done in the same transaction as the
-	// definition insert so version and triggers commit atomically.
-	if err := syncTriggersTx(ctx, tx, teamID, name, newVersion, result.Workflow.Triggers); err != nil {
+	// definition insert so version and triggers commit atomically. A new
+	// version is always active, so its triggers are enabled.
+	if err := syncTriggersTx(ctx, tx, teamID, name, newVersion, result.Workflow.Triggers, true); err != nil {
 		return 0, err
 	}
 
