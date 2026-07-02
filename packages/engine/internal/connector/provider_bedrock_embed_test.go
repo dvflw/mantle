@@ -94,6 +94,24 @@ func TestBedrockEmbeddingProvider_V1IgnoresDimensions(t *testing.T) {
 	}
 }
 
+func TestBedrockEmbeddingProvider_V2InvalidDimensions(t *testing.T) {
+	mock := &mockBedrockInvokeClient{
+		InvokeFunc: func(ctx context.Context, input *bedrockruntime.InvokeModelInput, opts ...func(*bedrockruntime.Options)) (*bedrockruntime.InvokeModelOutput, error) {
+			t.Fatal("InvokeModel should not be called for invalid dimensions")
+			return nil, nil
+		},
+	}
+	p := &BedrockEmbeddingProvider{Client: mock}
+	_, err := p.Embeddings(context.Background(), &EmbeddingRequest{
+		Model:      "amazon.titan-embed-text-v2:0",
+		Inputs:     []string{"x"},
+		Dimensions: 999, // only 256/512/1024 are valid
+	})
+	if err == nil {
+		t.Error("expected error for unsupported Titan v2 dimensions")
+	}
+}
+
 func TestBedrockEmbeddingProvider_UnsupportedModel(t *testing.T) {
 	p := &BedrockEmbeddingProvider{Client: &mockBedrockInvokeClient{}}
 	_, err := p.Embeddings(context.Background(), &EmbeddingRequest{

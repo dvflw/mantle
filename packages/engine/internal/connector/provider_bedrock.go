@@ -265,6 +265,13 @@ func (p *BedrockEmbeddingProvider) Embeddings(ctx context.Context, req *Embeddin
 	// other than inputText, so ignore it there rather than failing a request
 	// that reuses a shared embedding config.
 	supportsDimensions := strings.Contains(req.Model, "titan-embed-text-v2")
+	if req.Dimensions > 0 && supportsDimensions {
+		switch req.Dimensions {
+		case 256, 512, 1024:
+		default:
+			return nil, fmt.Errorf("bedrock: %s supports dimensions 256, 512, or 1024, got %d", req.Model, req.Dimensions)
+		}
+	}
 
 	for i, text := range req.Inputs {
 		body := titanEmbedRequest{InputText: text}

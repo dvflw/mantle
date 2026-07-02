@@ -48,7 +48,7 @@ func (c *EmbeddingConnector) Execute(ctx context.Context, params map[string]any)
 		return nil, fmt.Errorf("ai/embed: %w", err)
 	}
 
-	provider, err := c.getProvider(providerName, params)
+	provider, err := c.getProvider(ctx, providerName, params)
 	if err != nil {
 		return nil, fmt.Errorf("ai/embed: %w", err)
 	}
@@ -80,7 +80,7 @@ func (c *EmbeddingConnector) Execute(ctx context.Context, params map[string]any)
 }
 
 // getProvider returns the EmbeddingProvider for the given provider name.
-func (c *EmbeddingConnector) getProvider(name string, params map[string]any) (EmbeddingProvider, error) {
+func (c *EmbeddingConnector) getProvider(ctx context.Context, name string, params map[string]any) (EmbeddingProvider, error) {
 	switch name {
 	case "openai":
 		baseURL := "https://api.openai.com/v1"
@@ -102,7 +102,7 @@ func (c *EmbeddingConnector) getProvider(name string, params map[string]any) (Em
 		if configFunc == nil {
 			configFunc = NewAWSConfig
 		}
-		awsCfg, err := configFunc(context.Background(), cred, defaultRegion)
+		awsCfg, err := configFunc(ctx, cred, defaultRegion)
 		if err != nil {
 			return nil, fmt.Errorf("[bedrock]: %w", err)
 		}

@@ -3,9 +3,13 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
 // embedTestServer returns an httptest server that emits `n` deterministic
@@ -141,6 +145,32 @@ func TestEmbeddingConnector_IncompleteResponseFailsFast(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error when the provider returns fewer embeddings than inputs")
+	}
+}
+
+func TestEmbeddingConnector_BedrockRegionAndErrorWrapping(t *testing.T) {
+	var gotRegion string
+	c := &EmbeddingConnector{
+		DefaultRegion: "us-west-2",
+		AWSConfigFunc: func(ctx context.Context, cred map[string]string, defaultRegion string) (aws.Config, error) {
+			gotRegion = defaultRegion
+			return aws.Config{}, errors.New("boom")
+		},
+	}
+	_, err := c.Execute(context.Background(), map[string]any{
+		"model":    "amazon.titan-embed-text-v2:0",
+		"input":    "x",
+		"provider": "bedrock",
+		"region":   "eu-central-1", // params region overrides DefaultRegion
+	})
+	if err == nil {
+		t.Fatal("expected error from stubbed AWS config")
+	}
+	if !strings.Contains(err.Error(), "[bedrock]") {
+		t.Errorf("error not wrapped with [bedrock]: %v", err)
+	}
+	if gotRegion != "eu-central-1" {
+		t.Errorf("resolved region = %q, want eu-central-1 (params override)", gotRegion)
 	}
 }
 
