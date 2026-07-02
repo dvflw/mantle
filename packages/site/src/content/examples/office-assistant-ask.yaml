@@ -17,6 +17,7 @@ steps:
   - name: search
     action: postgres/query
     credential: kb-db
+    timeout: "15s"
     params:
       query: >
         SELECT title,

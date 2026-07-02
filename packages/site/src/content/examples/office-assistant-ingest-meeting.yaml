@@ -34,8 +34,9 @@ steps:
         You are a meeting-notes assistant. From a raw transcript produce: a
         concise summary; a list of concrete action items, each with a short
         title, a one-line description, and the owner if one was named; a
-        markdown checklist of those same action items; and the key topics
-        discussed. Use only information present in the transcript.
+        plain-text rendering of those same action items, one per line as
+        "Title — description (owner)"; and the key topics discussed. Use only
+        information present in the transcript.
       prompt: >
         Meeting: {{ inputs.title }}
         Attendees: {{ inputs.attendees }}
@@ -71,7 +72,7 @@ steps:
                 - description
                 - owner
               additionalProperties: false
-          action_items_markdown:
+          action_items_text:
             type: string
           topics:
             type: array
@@ -80,7 +81,7 @@ steps:
         required:
           - summary
           - action_items
-          - action_items_markdown
+          - action_items_text
           - topics
         additionalProperties: false
 
@@ -92,11 +93,15 @@ steps:
     credential: kb-db
     depends_on:
       - summarize
+    timeout: "15s"
     params:
+      # ON CONFLICT makes re-ingesting the same transcript a no-op (dedupe_key
+      # is md5(transcript)); rows_affected is then 0 and the steps below skip.
       query: >
         INSERT INTO meeting_notes
           (title, meeting_date, attendees, summary, action_items, topics, transcript)
         VALUES ($1, NULLIF($2, '')::date, $3, $4, $5::jsonb, $6::jsonb, $7)
+        ON CONFLICT (dedupe_key) DO NOTHING
       args:
         - "{{ inputs.title }}"
         - "{{ inputs.meeting_date }}"
@@ -114,19 +119,25 @@ steps:
     credential: jira
     depends_on:
       - summarize
-    if: "size(steps['summarize'].output.json.action_items) > 0"
+      - store-note
+    if: "steps['store-note'].output.rows_affected > 0 && size(steps['summarize'].output.json.action_items) > 0"
     params:
       project_key: OPS
       issue_type: Task
       summary: "Action items — {{ inputs.title }}"
-      description: "{{ steps['summarize'].output.json.action_items_markdown }}"
+      # jira/create_issue wraps description as a plain-text ADF paragraph, so
+      # send the plain-text rendering rather than markdown (which would show
+      # its syntax literally).
+      description: "{{ steps['summarize'].output.json.action_items_text }}"
 
   # 4. Post the summary to a Teams channel (incoming-webhook credential).
+  #    Skipped on a duplicate re-ingest (store-note inserted no row).
   - name: notify-team
     action: teams/send_message
     credential: teams
     depends_on:
       - store-note
+    if: "steps['store-note'].output.rows_affected > 0"
     params:
       title: "Meeting notes — {{ inputs.title }}"
       text: "{{ steps['summarize'].output.json.summary }}"

@@ -36,7 +36,7 @@ Apply the KB schema (pure Postgres full-text search, no extensions) from
 [`office-assistant-kb-schema.sql`](https://github.com/dvflw/mantle/blob/main/packages/site/src/content/examples/office-assistant-kb-schema.sql):
 
 ```bash
-psql "$KB_DATABASE_URL" -f office-assistant-kb-schema.sql
+psql "$KB_DATABASE_URL" -f packages/site/src/content/examples/office-assistant-kb-schema.sql
 ```
 
 Then apply both workflows:

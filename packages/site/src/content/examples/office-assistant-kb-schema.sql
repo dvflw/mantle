@@ -21,6 +21,11 @@ CREATE TABLE IF NOT EXISTS meeting_notes (
     transcript    TEXT NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
 
+    -- Idempotency key: re-ingesting the same transcript is a no-op via the
+    -- ON CONFLICT clause in office-assistant-ingest-meeting.yaml, so retries or
+    -- accidental re-runs don't pollute search results with duplicate notes.
+    dedupe_key    TEXT GENERATED ALWAYS AS (md5(transcript)) STORED,
+
     -- Weighted full-text index: title matches rank highest, then the summary,
     -- then the raw transcript. Regenerated automatically on write.
     search tsvector GENERATED ALWAYS AS (
@@ -32,3 +37,6 @@ CREATE TABLE IF NOT EXISTS meeting_notes (
 
 CREATE INDEX IF NOT EXISTS idx_meeting_notes_search
     ON meeting_notes USING GIN (search);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_meeting_notes_dedupe
+    ON meeting_notes (dedupe_key);
