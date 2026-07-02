@@ -3,8 +3,6 @@ package server
 import (
 	"context"
 	"database/sql"
-
-	"github.com/dvflw/mantle/internal/auth"
 )
 
 // TriggerRecord represents a registered trigger in the database.
@@ -43,14 +41,17 @@ func ListCronTriggers(ctx context.Context, db *sql.DB) ([]TriggerRecord, error) 
 	return scanTriggers(rows)
 }
 
-// LookupWebhookTrigger finds the trigger matching a webhook path, scoped to the team.
+// LookupWebhookTrigger finds the enabled webhook trigger for a path. Webhook
+// paths are a global routing key — an inbound POST /hooks/<path> carries no team
+// identity — so the lookup is not team-scoped and the path index is unique
+// across all teams. The owning team is read from the matched row so the caller
+// can run the workflow under the correct tenant.
 func LookupWebhookTrigger(ctx context.Context, db *sql.DB, path string) (*TriggerRecord, error) {
-	teamID := auth.TeamIDFromContext(ctx)
 	var t TriggerRecord
 	err := db.QueryRowContext(ctx,
-		`SELECT id, workflow_name, workflow_version, type, COALESCE(schedule, ''), COALESCE(path, ''), COALESCE(secret, ''), enabled
-		 FROM workflow_triggers WHERE type = 'webhook' AND path = $1 AND enabled = true AND team_id = $2`, path, teamID,
-	).Scan(&t.ID, &t.WorkflowName, &t.WorkflowVersion, &t.Type, &t.Schedule, &t.Path, &t.Secret, &t.Enabled)
+		`SELECT id, workflow_name, workflow_version, type, COALESCE(schedule, ''), COALESCE(path, ''), COALESCE(secret, ''), enabled, team_id
+		 FROM workflow_triggers WHERE type = 'webhook' AND path = $1 AND enabled = true`, path,
+	).Scan(&t.ID, &t.WorkflowName, &t.WorkflowVersion, &t.Type, &t.Schedule, &t.Path, &t.Secret, &t.Enabled, &t.TeamID)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

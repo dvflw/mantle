@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/dvflw/mantle/internal/auth"
 )
 
 // WebhookHandler handles incoming webhook requests and triggers workflow executions.
@@ -84,9 +86,14 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.server.Logger.Info("webhook: triggering workflow",
 		"path", path,
 		"workflow", trigger.WorkflowName,
-		"version", trigger.WorkflowVersion)
+		"version", trigger.WorkflowVersion,
+		"team_id", trigger.TeamID)
 
-	execID, err := h.server.executeWorkflow(r.Context(), trigger.WorkflowName, trigger.WorkflowVersion, inputs)
+	// Webhook requests are unauthenticated, so the tenant comes from the matched
+	// trigger row rather than the request context. Run under that team so
+	// workflow/credential resolution is correctly scoped.
+	execCtx := auth.WithUser(r.Context(), &auth.User{TeamID: trigger.TeamID})
+	execID, err := h.server.executeWorkflow(execCtx, trigger.WorkflowName, trigger.WorkflowVersion, inputs)
 	if err != nil {
 		h.server.Logger.Error("webhook: execution failed",
 			"workflow", trigger.WorkflowName,

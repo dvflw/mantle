@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+
+	"github.com/dvflw/mantle/internal/auth"
 )
 
 // countTriggers returns the number of workflow_triggers rows for a workflow,
@@ -187,6 +189,63 @@ func TestSave_BackfillsTriggersOnUnchangedApply(t *testing.T) {
 	ids2 := triggerIDs(t, database, "triggered-wf")
 	if !equalStrings(ids1, ids2) {
 		t.Errorf("triggers churned on no-op apply: %v -> %v", ids1, ids2)
+	}
+}
+
+// TestSave_CronTriggersUniquePerTeam verifies that two teams can each register
+// a workflow with the same name and cron schedule. Before the uniqueness index
+// was team-scoped, the second team's apply failed with a unique-constraint
+// violation on (workflow_name, schedule).
+func TestSave_CronTriggersUniquePerTeam(t *testing.T) {
+	database := setupTestDB(t)
+	ctx := context.Background()
+
+	// A second team — both workflow_definitions.team_id and
+	// workflow_triggers.team_id are foreign keys to teams(id).
+	teamB := "00000000-0000-0000-0000-0000000000b2"
+	if _, err := database.ExecContext(ctx,
+		`INSERT INTO teams (id, name) VALUES ($1, 'team-b')`, teamB); err != nil {
+		t.Fatalf("creating team-b: %v", err)
+	}
+
+	yaml := []byte(`name: shared-name
+triggers:
+  - type: cron
+    schedule: "*/5 * * * *"
+steps:
+  - name: s
+    action: http/request
+    params:
+      method: GET
+      url: "https://example.com"
+`)
+	result, err := ParseBytes(yaml)
+	if err != nil {
+		t.Fatalf("ParseBytes: %v", err)
+	}
+
+	// Default team.
+	if _, err := Save(ctx, database, result, yaml); err != nil {
+		t.Fatalf("Save (default team): %v", err)
+	}
+	// team-b — same workflow name and schedule.
+	ctxB := auth.WithUser(ctx, &auth.User{TeamID: teamB})
+	if _, err := Save(ctxB, database, result, yaml); err != nil {
+		t.Fatalf("Save (team-b): %v", err)
+	}
+
+	// Each team owns exactly one cron trigger for the workflow.
+	for _, tid := range []string{auth.DefaultTeamID, teamB} {
+		var n int
+		if err := database.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM workflow_triggers
+			 WHERE workflow_name = 'shared-name' AND type = 'cron' AND team_id = $1`, tid,
+		).Scan(&n); err != nil {
+			t.Fatalf("counting triggers for %s: %v", tid, err)
+		}
+		if n != 1 {
+			t.Errorf("team %s cron triggers = %d, want 1", tid, n)
+		}
 	}
 }
 
