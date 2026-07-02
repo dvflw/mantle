@@ -21,10 +21,16 @@ Create these credentials (`mantle secrets create`) and the KB schema:
 
 | Credential name | Type | Used for |
 | --------------- | ---- | -------- |
-| `openai` | `openai` | `ai/completion` (summarize + answer). Swap the `credential:` and `model:` for `bedrock` to use Claude via Bedrock. |
+| `openai` | `openai` | `ai/completion` (summarize + answer) |
 | `kb-db` | `postgres` | The knowledge-base database |
 | `jira` | `basic` | `jira/create_issue` (email + API token) |
 | `teams` | `generic` | `teams/send_message` (incoming-webhook URL) |
+
+> **Using Claude via Bedrock instead of OpenAI:** in both `ai/completion` steps,
+> add `provider: bedrock` and a `region:` to `params`, point `credential:` at an
+> `aws` credential, and set `model:` to a Bedrock model ID. `provider` defaults
+> to `openai`, so changing only `credential`/`model` still sends an
+> OpenAI-format request.
 
 Apply the KB schema (pure Postgres full-text search, no extensions) from
 [`office-assistant-kb-schema.sql`](https://github.com/dvflw/mantle/blob/main/packages/site/src/content/examples/office-assistant-kb-schema.sql):

@@ -54,12 +54,22 @@ steps:
               properties:
                 title:
                   type: string
+                # description/owner are nullable rather than optional: OpenAI
+                # strict structured output requires every declared property to
+                # appear in `required`, so absent values must be expressible as
+                # null instead of being omitted from the schema.
                 description:
-                  type: string
+                  type:
+                    - string
+                    - "null"
                 owner:
-                  type: string
+                  type:
+                    - string
+                    - "null"
               required:
                 - title
+                - description
+                - owner
               additionalProperties: false
           action_items_markdown:
             type: string
