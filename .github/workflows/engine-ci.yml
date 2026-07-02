@@ -63,8 +63,10 @@ jobs:
         run: |
           # Known unfixable vulnerabilities — excluded from enforcement:
           #
-          # Indirect test-only dependency (docker/docker via testcontainers); no upstream fix:
+          # Indirect test-only dependency (docker/docker via testcontainers); no upstream fix
+          # (docker/docker and moby/moby have no fixed release; only moby/moby/v2 is patched):
           #   GO-2026-4887, GO-2026-4883
+          #   GO-2026-5617, GO-2026-5668, GO-2026-5746 (docker cp / archive host-path issues)
           #
           # Go standard library vulnerabilities fixed in go1.25.9 / go1.26.2 (released 2026-04-07).
           # Reachable in go < 1.25.9 via the listed call chains:
@@ -85,7 +87,7 @@ jobs:
           # Emit each actionable vulnerability ID as a GHA error annotation for visibility.
           ALL_IDS=$(echo "$OUTPUT" | grep -oE 'GO-[0-9]+-[0-9]+' | sort -u || true)
           echo "govulncheck IDs found: ${ALL_IDS:-none}"
-          KNOWN='GO-2026-4887|GO-2026-4883|GO-2026-4865|GO-2026-4869|GO-2026-4870|GO-2026-4946|GO-2026-4947|GO-2026-4918|GO-2026-4945|GO-2026-5013|GO-2026-5015|GO-2026-5017|GO-2026-5018|GO-2026-5019|GO-2026-5020|GO-2026-5021|GO-2026-5026'
+          KNOWN='GO-2026-4887|GO-2026-4883|GO-2026-5617|GO-2026-5668|GO-2026-5746|GO-2026-4865|GO-2026-4869|GO-2026-4870|GO-2026-4946|GO-2026-4947|GO-2026-4918|GO-2026-4945|GO-2026-5013|GO-2026-5015|GO-2026-5017|GO-2026-5018|GO-2026-5019|GO-2026-5020|GO-2026-5021|GO-2026-5026'
           ACTIONABLE_IDS=$(echo "$ALL_IDS" | grep -vE "^($KNOWN)$" || true)
           for ID in $ACTIONABLE_IDS; do
             echo "::error file=go.mod,line=1,title=Unfixed vulnerability::$ID — add to exclusion list or upgrade the affected dependency"
