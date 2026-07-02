@@ -120,6 +120,30 @@ func TestEmbeddingConnector_ModelAllowlist(t *testing.T) {
 	}
 }
 
+func TestEmbeddingConnector_IncompleteResponseFailsFast(t *testing.T) {
+	// Server returns only one embedding for two inputs — must error rather
+	// than silently returning a misaligned/short vectors list.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"model": "text-embedding-3-small",
+			"data":  []map[string]any{{"index": 0, "embedding": []float64{0.1, 0.2}}},
+			"usage": map[string]any{"prompt_tokens": 3, "total_tokens": 3},
+		})
+	}))
+	defer server.Close()
+
+	c := &EmbeddingConnector{Client: server.Client()}
+	_, err := c.Execute(context.Background(), map[string]any{
+		"model":    "text-embedding-3-small",
+		"input":    []any{"a", "b"},
+		"base_url": server.URL,
+	})
+	if err == nil {
+		t.Error("expected error when the provider returns fewer embeddings than inputs")
+	}
+}
+
 func TestEmbeddingConnector_BedrockUnsupported(t *testing.T) {
 	c := &EmbeddingConnector{}
 	_, err := c.Execute(context.Background(), map[string]any{

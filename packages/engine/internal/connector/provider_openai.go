@@ -225,17 +225,25 @@ func (p *OpenAIProvider) Embeddings(ctx context.Context, req *EmbeddingRequest) 
 	if err := json.Unmarshal(body, &apiResp); err != nil {
 		return nil, fmt.Errorf("openai: parsing embeddings response: %w", err)
 	}
-	if len(apiResp.Data) == 0 {
-		return nil, fmt.Errorf("openai: no embeddings returned")
-	}
-
 	// Reassemble in request order — the API tags each item with its index.
-	out := make([][]float64, len(apiResp.Data))
+	// Size by the request so a short or duplicate-indexed response fails fast
+	// rather than silently misaligning embeddings with their inputs.
+	out := make([][]float64, len(req.Inputs))
+	seen := make([]bool, len(req.Inputs))
 	for _, d := range apiResp.Data {
-		if d.Index < 0 || d.Index >= len(out) {
-			return nil, fmt.Errorf("openai: embedding index %d out of range", d.Index)
+		if d.Index < 0 || d.Index >= len(req.Inputs) {
+			return nil, fmt.Errorf("openai: embedding index %d out of range for %d inputs", d.Index, len(req.Inputs))
 		}
+		if seen[d.Index] {
+			return nil, fmt.Errorf("openai: duplicate embedding index %d", d.Index)
+		}
+		seen[d.Index] = true
 		out[d.Index] = d.Embedding
+	}
+	for i, ok := range seen {
+		if !ok {
+			return nil, fmt.Errorf("openai: missing embedding for input %d (got %d of %d)", i, len(apiResp.Data), len(req.Inputs))
+		}
 	}
 
 	return &EmbeddingResponse{
