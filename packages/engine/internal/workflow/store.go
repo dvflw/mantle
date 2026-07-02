@@ -30,6 +30,13 @@ func Save(ctx context.Context, database *sql.DB, result *ParseResult, rawContent
 		return 0, fmt.Errorf("checking latest hash: %w", err)
 	}
 	if latestHash == hash {
+		// Content unchanged, so no new version — but still backfill triggers
+		// if the table drifted from the definition (e.g. a workflow applied
+		// before trigger registration existed). Otherwise upgrading and
+		// re-applying would leave triggers inert until a byte-level change.
+		if err := reconcileTriggersIfDrifted(ctx, database, teamID, name, result.Workflow.Triggers); err != nil {
+			return 0, err
+		}
 		return 0, nil
 	}
 
@@ -44,12 +51,30 @@ func Save(ctx context.Context, database *sql.DB, result *ParseResult, rawContent
 		return 0, fmt.Errorf("marshaling workflow: %w", err)
 	}
 
-	_, err = database.ExecContext(ctx,
+	tx, err := database.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("starting transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	_, err = tx.ExecContext(ctx,
 		`INSERT INTO workflow_definitions (name, version, content, content_hash, team_id) VALUES ($1, $2, $3, $4, $5)`,
 		name, newVersion, content, hash, teamID,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("inserting workflow definition: %w", err)
+	}
+
+	// Register the workflow's declared triggers so the cron/webhook/email
+	// schedulers actually fire it. Done in the same transaction as the
+	// definition insert so version and triggers commit atomically. A new
+	// version is always active, so its triggers are enabled.
+	if err := syncTriggersTx(ctx, tx, teamID, name, newVersion, result.Workflow.Triggers, true); err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("committing workflow save: %w", err)
 	}
 
 	return newVersion, nil
@@ -194,7 +219,13 @@ func GetVersion(ctx context.Context, database *sql.DB, name string, version int)
 // speculatively during a GitOps prune pass).
 func Disable(ctx context.Context, database *sql.DB, name string) error {
 	teamID := auth.TeamIDFromContext(ctx)
-	_, err := database.ExecContext(ctx,
+	tx, err := database.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("disabling workflow %q: %w", name, err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.ExecContext(ctx,
 		`UPDATE workflow_definitions
 		 SET disabled_at = NOW()
 		 WHERE id = (
@@ -203,8 +234,23 @@ func Disable(ctx context.Context, database *sql.DB, name string) error {
 		   ORDER BY version DESC LIMIT 1
 		 )`,
 		name, teamID,
-	)
-	if err != nil {
+	); err != nil {
+		return fmt.Errorf("disabling workflow %q: %w", name, err)
+	}
+
+	// Disable the workflow's triggers too — the schedulers key off
+	// workflow_triggers.enabled, not the definition's disabled_at, so a
+	// pruned workflow would otherwise keep firing. Guarded on enabled = true
+	// so repeated GitOps passes don't churn updated_at.
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE workflow_triggers SET enabled = false, updated_at = NOW()
+		 WHERE workflow_name = $1 AND team_id = $2 AND enabled = true`,
+		name, teamID,
+	); err != nil {
+		return fmt.Errorf("disabling triggers for %q: %w", name, err)
+	}
+
+	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("disabling workflow %q: %w", name, err)
 	}
 	return nil
@@ -214,7 +260,13 @@ func Disable(ctx context.Context, database *sql.DB, name string) error {
 // workflow. Safe to call when already enabled — becomes a no-op.
 func Reenable(ctx context.Context, database *sql.DB, name string) error {
 	teamID := auth.TeamIDFromContext(ctx)
-	_, err := database.ExecContext(ctx,
+	tx, err := database.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("reenabling workflow %q: %w", name, err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.ExecContext(ctx,
 		`UPDATE workflow_definitions
 		 SET disabled_at = NULL
 		 WHERE id = (
@@ -223,8 +275,24 @@ func Reenable(ctx context.Context, database *sql.DB, name string) error {
 		   ORDER BY version DESC LIMIT 1
 		 )`,
 		name, teamID,
-	)
-	if err != nil {
+	); err != nil {
+		return fmt.Errorf("reenabling workflow %q: %w", name, err)
+	}
+
+	// Restore the workflow's triggers. This covers the GitOps case where a
+	// workflow was pruned (triggers disabled) and later reappears with
+	// byte-identical content: Save is a no-op so it won't re-register them,
+	// but Reenable must. Guarded on enabled = false to stay a true no-op on
+	// the common already-enabled path.
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE workflow_triggers SET enabled = true, updated_at = NOW()
+		 WHERE workflow_name = $1 AND team_id = $2 AND enabled = false`,
+		name, teamID,
+	); err != nil {
+		return fmt.Errorf("reenabling triggers for %q: %w", name, err)
+	}
+
+	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("reenabling workflow %q: %w", name, err)
 	}
 	return nil

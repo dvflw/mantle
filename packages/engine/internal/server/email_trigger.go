@@ -22,6 +22,12 @@ const (
 	emailReconnectBaseDelay  = 5 * time.Second
 	emailReconnectMaxDelay   = 5 * time.Minute
 	defaultMaxEmailConns     = 5
+	// emailReloadInterval is how often the poller reconciles its running
+	// pollers against workflow_triggers, so email triggers registered by a
+	// later `mantle apply` (a separate process) or a GitOps sync start
+	// without requiring a server restart. Cron and webhook triggers are read
+	// from the DB on every tick/request, so they need no equivalent.
+	emailReloadInterval = 30 * time.Second
 )
 
 // EmailTriggerPoller starts one goroutine per email trigger and maintains a
@@ -57,6 +63,25 @@ func (e *EmailTriggerPoller) Start(ctx context.Context) error {
 	for _, t := range triggers {
 		e.startPoller(ctx, t)
 	}
+
+	// Periodically reconcile against the DB so triggers added or removed
+	// after startup take effect without a restart.
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		ticker := time.NewTicker(emailReloadInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := e.Reload(ctx); err != nil {
+					e.server.Logger.Error("email poller: periodic reload failed", "error", err)
+				}
+			}
+		}
+	}()
 
 	e.server.Logger.Info("email trigger poller started", "triggers", len(triggers))
 	return nil

@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"database/sql"
-	"fmt"
 
 	"github.com/dvflw/mantle/internal/auth"
 )
@@ -27,53 +26,10 @@ type TriggerRecord struct {
 	PollInterval string
 }
 
-// SyncTriggers replaces all triggers for a workflow with the given set.
-// Called by `mantle apply` when a workflow definition changes.
-func SyncTriggers(ctx context.Context, db *sql.DB, workflowName string, version int, triggers []TriggerInput) error {
-	teamID := auth.TeamIDFromContext(ctx)
-
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("starting transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Remove existing triggers for this workflow, scoped to team.
-	_, err = tx.ExecContext(ctx,
-		`DELETE FROM workflow_triggers WHERE workflow_name = $1 AND team_id = $2`, workflowName, teamID)
-	if err != nil {
-		return fmt.Errorf("deleting old triggers: %w", err)
-	}
-
-	// Insert new triggers.
-	for _, t := range triggers {
-		_, err = tx.ExecContext(ctx,
-			`INSERT INTO workflow_triggers
-			 (workflow_name, workflow_version, type, schedule, path, secret, team_id, mailbox, folder, filter, poll_interval)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-			workflowName, version, t.Type, t.Schedule, t.Path, t.Secret, teamID,
-			nullableString(t.Mailbox), nullableString(t.Folder), nullableString(t.Filter), nullableString(t.PollInterval))
-		if err != nil {
-			return fmt.Errorf("inserting trigger: %w", err)
-		}
-	}
-
-	return tx.Commit()
-}
-
-// TriggerInput is the data needed to register a trigger.
-type TriggerInput struct {
-	Type     string
-	Schedule string
-	Path     string
-	Secret   string
-
-	// Email trigger fields (used only when Type == "email").
-	Mailbox      string
-	Folder       string
-	Filter       string
-	PollInterval string
-}
+// Trigger registration lives in the workflow package (workflow.Save), which
+// reconciles workflow_triggers whenever a definition is applied. The functions
+// below are the read side consumed by the cron scheduler, webhook handler, and
+// email poller.
 
 // ListCronTriggers returns all enabled cron triggers, including team_id for proper scoping.
 func ListCronTriggers(ctx context.Context, db *sql.DB) ([]TriggerRecord, error) {
@@ -147,13 +103,4 @@ func scanEmailTriggers(rows *sql.Rows) ([]TriggerRecord, error) {
 		triggers = append(triggers, t)
 	}
 	return triggers, rows.Err()
-}
-
-// nullableString converts an empty string to nil so that nullable TEXT columns
-// receive NULL rather than an empty string.
-func nullableString(s string) interface{} {
-	if s == "" {
-		return nil
-	}
-	return s
 }
