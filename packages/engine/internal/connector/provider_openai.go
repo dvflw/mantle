@@ -85,19 +85,7 @@ func (p *OpenAIProvider) ChatCompletion(ctx context.Context, req *ChatRequest) (
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	// Apply credential-based auth.
-	if cred := req.Credential; cred != nil {
-		switch {
-		case cred["api_key"] != "":
-			httpReq.Header.Set("Authorization", "Bearer "+cred["api_key"])
-		case cred["token"] != "":
-			httpReq.Header.Set("Authorization", "Bearer "+cred["token"])
-		case cred["key"] != "":
-			httpReq.Header.Set("Authorization", "Bearer "+cred["key"])
-		}
-		if orgID := cred["org_id"]; orgID != "" {
-			httpReq.Header.Set("OpenAI-Organization", orgID)
-		}
-	}
+	applyOpenAICredential(httpReq, req.Credential)
 
 	client := p.Client
 	if client == nil {
@@ -152,4 +140,110 @@ func (p *OpenAIProvider) ChatCompletion(ctx context.Context, req *ChatRequest) (
 	}
 
 	return chatResp, nil
+}
+
+// applyOpenAICredential sets the Authorization (and optional organization)
+// headers from a resolved credential map. Shared by chat and embeddings.
+func applyOpenAICredential(httpReq *http.Request, cred map[string]string) {
+	if cred == nil {
+		return
+	}
+	switch {
+	case cred["api_key"] != "":
+		httpReq.Header.Set("Authorization", "Bearer "+cred["api_key"])
+	case cred["token"] != "":
+		httpReq.Header.Set("Authorization", "Bearer "+cred["token"])
+	case cred["key"] != "":
+		httpReq.Header.Set("Authorization", "Bearer "+cred["key"])
+	}
+	if orgID := cred["org_id"]; orgID != "" {
+		httpReq.Header.Set("OpenAI-Organization", orgID)
+	}
+}
+
+// embeddingsAPIResponse is the OpenAI /embeddings response envelope.
+type embeddingsAPIResponse struct {
+	Model string `json:"model"`
+	Data  []struct {
+		Index     int       `json:"index"`
+		Embedding []float64 `json:"embedding"`
+	} `json:"data"`
+	Usage struct {
+		PromptTokens int `json:"prompt_tokens"`
+		TotalTokens  int `json:"total_tokens"`
+	} `json:"usage"`
+}
+
+// Embeddings calls the OpenAI-compatible /embeddings endpoint. Works with
+// OpenAI, Azure OpenAI, and any OpenAI-compatible server via BaseURL.
+func (p *OpenAIProvider) Embeddings(ctx context.Context, req *EmbeddingRequest) (*EmbeddingResponse, error) {
+	reqBody := map[string]any{
+		"model": req.Model,
+		"input": req.Inputs,
+	}
+	if req.Dimensions > 0 {
+		reqBody["dimensions"] = req.Dimensions
+	}
+
+	reqJSON, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("openai: marshaling embeddings request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.BaseURL+"/embeddings", bytes.NewReader(reqJSON))
+	if err != nil {
+		return nil, fmt.Errorf("openai: creating embeddings request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	applyOpenAICredential(httpReq, req.Credential)
+
+	client := p.Client
+	if client == nil {
+		client = &http.Client{Timeout: 120 * time.Second}
+	}
+
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("openai: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, DefaultMaxResponseBytes))
+	if err != nil {
+		return nil, fmt.Errorf("openai: reading embeddings response: %w", err)
+	}
+
+	if resp.StatusCode != 200 {
+		slog.Warn("OpenAI embeddings API error", "status", resp.StatusCode, "body", truncate(string(body), 500))
+		if resp.StatusCode == 429 {
+			return nil, &RetryableError{Err: fmt.Errorf("openai: rate limited (429)")}
+		}
+		return nil, fmt.Errorf("openai: embeddings API returned status %d", resp.StatusCode)
+	}
+
+	var apiResp embeddingsAPIResponse
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		return nil, fmt.Errorf("openai: parsing embeddings response: %w", err)
+	}
+	if len(apiResp.Data) == 0 {
+		return nil, fmt.Errorf("openai: no embeddings returned")
+	}
+
+	// Reassemble in request order — the API tags each item with its index.
+	out := make([][]float64, len(apiResp.Data))
+	for _, d := range apiResp.Data {
+		if d.Index < 0 || d.Index >= len(out) {
+			return nil, fmt.Errorf("openai: embedding index %d out of range", d.Index)
+		}
+		out[d.Index] = d.Embedding
+	}
+
+	return &EmbeddingResponse{
+		Embeddings: out,
+		Model:      apiResp.Model,
+		Usage: ChatUsage{
+			PromptTokens: apiResp.Usage.PromptTokens,
+			TotalTokens:  apiResp.Usage.TotalTokens,
+		},
+	}, nil
 }

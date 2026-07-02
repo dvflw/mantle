@@ -27,6 +27,7 @@ func NewRegistry() *Registry {
 	}
 	r.Register("http/request", &HTTPConnector{})
 	r.Register("ai/completion", &AIConnector{})
+	r.Register("ai/embed", &EmbeddingConnector{})
 	r.Register("slack/send", &SlackSendConnector{})
 	r.Register("slack/history", &SlackHistoryConnector{})
 	r.Register("postgres/query", &PostgresQueryConnector{})
