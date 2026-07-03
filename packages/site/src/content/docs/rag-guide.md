@@ -37,28 +37,41 @@ mantle apply packages/site/src/content/examples/rag-ask.yaml
 
 ## How it works
 
-`ai/embed` returns each embedding both as a float array (`output.embedding`) and
-as a **pgvector text literal** (`output.vector`, e.g. `"[0.1,0.2,...]"`). The
-literal binds straight into a `::vector` column, so storing and querying vectors
-needs no special encoding:
+`ai/embed` returns each embedding as a **pgvector text literal**
+(`output.vector`, e.g. `"[0.1,0.2,...]"`). The `kb/upsert` and `kb/query`
+connectors take that literal and handle the pgvector SQL for you — the `::vector`
+casts, the cosine-distance operator, `ORDER BY`/`LIMIT`, JSONB metadata, and
+multi-row inserts:
 
 ```yaml
-# ingest
-args:
-  - "{{ inputs.content }}"
-  - "{{ steps['embed'].output.vector }}"   # → $2::vector
+# ingest — store content + embedding + metadata
+- action: kb/upsert
+  credential: kb-db
+  params:
+    table: kb_documents
+    content: "{{ inputs.content }}"
+    vector: "{{ steps['embed'].output.vector }}"
+    metadata: { title: "{{ inputs.title }}", source: "{{ inputs.source }}" }
+    conflict_target: dedupe_key   # idempotent re-ingest
+
+# ask — nearest-neighbour search
+- action: kb/query
+  credential: kb-db
+  params:
+    table: kb_documents
+    vector: "{{ steps['embed-question'].output.vector }}"
+    columns: [content, metadata]
+    top_k: 5
 ```
 
-```sql
--- ask: nearest neighbours by cosine distance (<=> is pgvector's operator)
-SELECT content, 1 - (embedding <=> $1::vector) AS similarity
-FROM kb_documents
-ORDER BY embedding <=> $1::vector
-LIMIT 5
-```
+`kb/query` returns the requested columns plus a `distance` field (lower = closer;
+for cosine, similarity = `1 - distance`). The retrieved rows go to
+`ai/completion` as JSON context, and the model answers using only those passages.
 
-The retrieved rows are passed to `ai/completion` as JSON context, and the model
-answers using only those passages.
+`kb/*` are thin sugar — they run against a pgvector database you provide (the
+step `credential`) and don't manage schema, so you still create the table
+yourself. If you'd rather write the SQL directly, `postgres/query` works too
+(that's what these connectors generate).
 
 ## Ingesting documents
 
@@ -69,8 +82,10 @@ mantle run rag-ingest \
   --input content="Team A connects to Client C via the X integration; Team B uses the direct API."
 ```
 
-For a long document, split it into chunks and run `rag-ingest` once per chunk.
-Re-ingesting identical content is a no-op (the schema dedupes on `md5(content)`).
+For a long document, split it into chunks and pass arrays to `ai/embed`
+(`input`) and `kb/upsert` (`contents` + `vectors`, plus `metadatas`) to store
+them all in one step. Re-ingesting identical content is a no-op (the schema
+dedupes on `md5(content)`).
 
 ## Asking questions
 
@@ -94,7 +109,8 @@ outputs with `--output json` or `-v`).
   `amazon.titan-embed-text-v1`). To use Bedrock, set `provider: bedrock`, a
   `region`, and an `aws` credential; adjust the schema's `vector(...)` dimension
   to match (Titan v2 defaults to 1024). Cohere Bedrock models are a follow-up.
-- **No native chunking or `kb/*` convenience steps yet.** You compose RAG from
-  `ai/embed` + `postgres/query` + `ai/completion` today; native chunking and
-  `kb/upsert` / `kb/query` connectors are tracked by
-  [#153](https://github.com/dvflw/mantle/issues/153).
+- **You provide the vector store.** `kb/*` run against a pgvector database you
+  create and point a credential at; they don't provision the extension or table.
+- **Chunking is manual.** Split long documents yourself and pass arrays to
+  `ai/embed` / `kb/upsert`. A native chunking helper and metadata filtering on
+  `kb/query` are tracked by [#153](https://github.com/dvflw/mantle/issues/153).
