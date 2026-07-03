@@ -385,6 +385,50 @@ Nearest-neighbour search over a pgvector table for a query embedding. A thin hel
     top_k: 5
 ```
 
+## text/chunk
+
+Splits a long document into overlapping chunks for embedding. Feeds the chunk → embed → store pipeline: pass `output.chunks` to `ai/embed`'s `input` and to `kb/upsert`'s `contents`. Pure text processing — no credential needed.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `text` | string | Yes | The document text to split. |
+| `chunk_size` | integer | No | Target chunk size, in `unit`s. Default `1000`. |
+| `chunk_overlap` | integer | No | Overlap between consecutive chunks, in `unit`s. Must be `< chunk_size`. Default `0`. |
+| `unit` | string | No | `chars` (default, Unicode-aware) or `words` (whitespace-separated). |
+
+**Output:** `chunks` (list of strings) and `count` (number).
+
+**Example — chunk → embed → upsert:**
+
+```yaml
+- name: chunk
+  action: text/chunk
+  params:
+    text: "{{ inputs.content }}"
+    chunk_size: 1200
+    chunk_overlap: 150
+
+- name: embed
+  action: ai/embed
+  credential: my-openai
+  depends_on: [chunk]
+  params:
+    model: text-embedding-3-small
+    input: "{{ steps['chunk'].output.chunks }}"
+
+- name: store
+  action: kb/upsert
+  credential: kb-db
+  depends_on: [chunk, embed]
+  params:
+    table: kb_documents
+    contents: "{{ steps['chunk'].output.chunks }}"
+    vectors: "{{ steps['embed'].output.vectors }}"
+    metadata: { source: "{{ inputs.source }}" }   # broadcast to every chunk
+```
+
 ## email/send
 
 Sends an email via SMTP. Supports plaintext and HTML content.

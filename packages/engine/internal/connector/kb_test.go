@@ -98,6 +98,28 @@ func TestPrepareUpsert_BatchWithMetadataAndConflict(t *testing.T) {
 	}
 }
 
+func TestPrepareUpsert_SingleMetadataBroadcast(t *testing.T) {
+	// One `metadata` object applies to every row of a batch (chunked ingest).
+	_, args, err := prepareUpsert(map[string]any{
+		"table":    "kb_documents",
+		"contents": []any{"a", "b", "c"},
+		"vectors":  []any{"[1]", "[2]", "[3]"},
+		"metadata": map[string]any{"source": "doc-1"},
+	})
+	if err != nil {
+		t.Fatalf("prepareUpsert error: %v", err)
+	}
+	metas := args[2].([]string)
+	if len(metas) != 3 {
+		t.Fatalf("metadata args = %d, want 3 (broadcast)", len(metas))
+	}
+	for i, m := range metas {
+		if !strings.Contains(m, `"source":"doc-1"`) {
+			t.Errorf("metas[%d] = %q, want broadcast source", i, m)
+		}
+	}
+}
+
 func TestPrepareUpsert_Errors(t *testing.T) {
 	cases := []struct {
 		name   string
