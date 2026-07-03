@@ -1,9 +1,46 @@
 package connector
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
+
+// A malformed connection string so pgx.Connect fails immediately at parse time
+// (no network), letting us assert the connector didn't mutate its params.
+const kbBadCredURL = "postgres://bad host"
+
+// The engine resolves a step's params once and reuses that map across retry
+// attempts, so a connector must not mutate it — deleting _credential would make
+// attempt 2 fail with a missing credential instead of retrying.
+func TestKBUpsert_DoesNotMutateCredential(t *testing.T) {
+	params := map[string]any{
+		"_credential": map[string]string{"url": kbBadCredURL},
+		"table":       "kb_documents",
+		"content":     "x",
+		"vector":      "[1]",
+	}
+	if _, err := (&KBUpsertConnector{}).Execute(context.Background(), params); err == nil {
+		t.Fatal("expected a connection error")
+	}
+	if _, ok := params["_credential"]; !ok {
+		t.Error("_credential was removed from params (would break retries)")
+	}
+}
+
+func TestKBQuery_DoesNotMutateCredential(t *testing.T) {
+	params := map[string]any{
+		"_credential": map[string]string{"url": kbBadCredURL},
+		"table":       "kb_documents",
+		"vector":      "[1]",
+	}
+	if _, err := (&KBQueryConnector{}).Execute(context.Background(), params); err == nil {
+		t.Fatal("expected a connection error")
+	}
+	if _, ok := params["_credential"]; !ok {
+		t.Error("_credential was removed from params (would break retries)")
+	}
+}
 
 func TestPrepareUpsert_SingleRow(t *testing.T) {
 	sql, args, err := prepareUpsert(map[string]any{

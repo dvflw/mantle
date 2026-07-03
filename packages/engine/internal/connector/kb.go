@@ -287,7 +287,6 @@ func (c *KBUpsertConnector) Execute(ctx context.Context, params map[string]any) 
 	if err != nil {
 		return nil, fmt.Errorf("kb/upsert: %w", err)
 	}
-	delete(params, "_credential")
 
 	query, args, err := prepareUpsert(params)
 	if err != nil {
@@ -316,7 +315,6 @@ func (c *KBQueryConnector) Execute(ctx context.Context, params map[string]any) (
 	if err != nil {
 		return nil, fmt.Errorf("kb/query: %w", err)
 	}
-	delete(params, "_credential")
 
 	query, args, err := prepareQuery(params)
 	if err != nil {
