@@ -108,6 +108,8 @@ func TestPrepareUpsert_Errors(t *testing.T) {
 		{"both content forms", map[string]any{"table": "t", "content": "x", "contents": []any{"y"}, "vector": "[1]"}},
 		{"count mismatch", map[string]any{"table": "t", "contents": []any{"a", "b"}, "vectors": []any{"[1]"}}},
 		{"metadata mismatch", map[string]any{"table": "t", "content": "a", "vector": "[1]", "metadatas": []any{map[string]any{}, map[string]any{}}}},
+		{"both metadata forms", map[string]any{"table": "t", "content": "a", "vector": "[1]", "metadata": map[string]any{}, "metadatas": []any{map[string]any{}}}},
+		{"both vector forms", map[string]any{"table": "t", "content": "a", "vector": "[1]", "vectors": []any{"[1]"}}},
 		{"sql injection in table", map[string]any{"table": "kb; DROP TABLE users;--", "content": "x", "vector": "[1]"}},
 		{"sql injection in column", map[string]any{"table": "t", "content_column": "c)); DROP", "content": "x", "vector": "[1]"}},
 		{"sql injection in conflict", map[string]any{"table": "t", "content": "x", "vector": "[1]", "conflict_target": "a) DO UPDATE"}},
@@ -180,6 +182,7 @@ func TestPrepareQuery_Errors(t *testing.T) {
 		{"missing vector", map[string]any{"table": "t"}},
 		{"bad metric", map[string]any{"table": "t", "vector": "[1]", "metric": "manhattan"}},
 		{"negative top_k", map[string]any{"table": "t", "vector": "[1]", "top_k": -1}},
+		{"zero top_k", map[string]any{"table": "t", "vector": "[1]", "top_k": 0}},
 		{"sql injection in table", map[string]any{"table": "t; DROP TABLE x", "vector": "[1]"}},
 		{"sql injection in column", map[string]any{"table": "t", "vector": "[1]", "columns": []any{"content", "x); DROP"}}},
 	}

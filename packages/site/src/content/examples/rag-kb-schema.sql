@@ -27,7 +27,9 @@ CREATE TABLE IF NOT EXISTS kb_documents (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_kb_documents_dedupe
     ON kb_documents (dedupe_key);
 
--- Approximate-nearest-neighbour index for cosine distance (pgvector >= 0.5).
--- For small corpora you can omit this and rely on an exact scan.
+-- Approximate-nearest-neighbour index for cosine distance (pgvector >= 0.5),
+-- which is kb/query's default metric. For small corpora you can omit this and
+-- rely on an exact scan. If you query with metric: l2 or inner_product, add a
+-- matching index (vector_l2_ops / vector_ip_ops) or those queries seq-scan.
 CREATE INDEX IF NOT EXISTS idx_kb_documents_embedding
     ON kb_documents USING hnsw (embedding vector_cosine_ops);

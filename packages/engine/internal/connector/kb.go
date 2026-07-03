@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -29,6 +30,10 @@ const (
 	kbDefaultMetadataColumn  = "metadata"
 	kbDefaultTopK            = 5
 	kbMaxTopK                = 1000
+	// kbConnectTimeout bounds the Postgres connection handshake so a stalled
+	// server can't hang a step that has no timeout of its own. It only shortens
+	// an existing deadline, never extends one.
+	kbConnectTimeout = 15 * time.Second
 )
 
 // kbIdentParam reads an identifier param, applies a default when absent, and
@@ -162,10 +167,17 @@ func prepareUpsert(params map[string]any) (string, []any, error) {
 
 	var conflict string
 	if ct, ok := params["conflict_target"].(string); ok && ct != "" {
-		if !kbIdentRe.MatchString(ct) {
-			return "", nil, fmt.Errorf("conflict_target %q is not a valid SQL identifier", ct)
+		// Accept a single column or a comma-separated list (composite key),
+		// validating each part as an identifier.
+		parts := strings.Split(ct, ",")
+		for i, p := range parts {
+			p = strings.TrimSpace(p)
+			if !kbIdentRe.MatchString(p) {
+				return "", nil, fmt.Errorf("conflict_target %q is not a valid SQL identifier", ct)
+			}
+			parts[i] = p
 		}
-		conflict = fmt.Sprintf(" ON CONFLICT (%s) DO NOTHING", ct)
+		conflict = fmt.Sprintf(" ON CONFLICT (%s) DO NOTHING", strings.Join(parts, ", "))
 	}
 
 	var sb strings.Builder
@@ -193,7 +205,7 @@ func kbDistanceOperator(metric string) (string, error) {
 	case "inner_product", "ip":
 		return "<#>", nil
 	default:
-		return "", fmt.Errorf("unknown metric %q (use cosine, l2, or inner_product)", metric)
+		return "", fmt.Errorf("unknown metric %q (use cosine, l2/euclidean, or inner_product/ip)", metric)
 	}
 }
 
@@ -293,7 +305,9 @@ func (c *KBUpsertConnector) Execute(ctx context.Context, params map[string]any) 
 		return nil, fmt.Errorf("kb/upsert: %w", err)
 	}
 
-	conn, err := pgx.Connect(ctx, connURL)
+	connectCtx, cancel := context.WithTimeout(ctx, kbConnectTimeout)
+	conn, err := pgx.Connect(connectCtx, connURL)
+	cancel()
 	if err != nil {
 		return nil, fmt.Errorf("kb/upsert: connecting: %w", err)
 	}
@@ -321,7 +335,9 @@ func (c *KBQueryConnector) Execute(ctx context.Context, params map[string]any) (
 		return nil, fmt.Errorf("kb/query: %w", err)
 	}
 
-	conn, err := pgx.Connect(ctx, connURL)
+	connectCtx, cancel := context.WithTimeout(ctx, kbConnectTimeout)
+	conn, err := pgx.Connect(connectCtx, connURL)
+	cancel()
 	if err != nil {
 		return nil, fmt.Errorf("kb/query: connecting: %w", err)
 	}
