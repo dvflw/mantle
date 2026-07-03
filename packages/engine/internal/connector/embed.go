@@ -8,16 +8,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/dvflw/mantle/internal/metrics"
 )
 
 // EmbeddingConnector implements the ai/embed action: it turns text into vector
 // embeddings via a provider's embeddings API. It mirrors AIConnector's provider
-// selection, base-URL/model allowlists, and metrics. Because the action lives
-// under the "ai/" prefix, the engine's token-budget accounting applies to it
-// automatically (via the usage.total_tokens it returns).
+// selection, base-URL/model allowlists, AWS config, and metrics. Because the
+// action lives under the "ai/" prefix, the engine's token-budget accounting
+// applies to it automatically (via the usage.total_tokens it returns).
 type EmbeddingConnector struct {
 	Client          *http.Client
+	AWSConfigFunc   func(ctx context.Context, cred map[string]string, defaultRegion string) (aws.Config, error)
+	DefaultRegion   string
 	AllowedBaseURLs []string
 	AllowedModels   []string // empty = all models allowed
 }
@@ -44,7 +48,7 @@ func (c *EmbeddingConnector) Execute(ctx context.Context, params map[string]any)
 		return nil, fmt.Errorf("ai/embed: %w", err)
 	}
 
-	provider, err := c.getProvider(providerName, params)
+	provider, err := c.getProvider(ctx, providerName, params)
 	if err != nil {
 		return nil, fmt.Errorf("ai/embed: %w", err)
 	}
@@ -76,7 +80,7 @@ func (c *EmbeddingConnector) Execute(ctx context.Context, params map[string]any)
 }
 
 // getProvider returns the EmbeddingProvider for the given provider name.
-func (c *EmbeddingConnector) getProvider(name string, params map[string]any) (EmbeddingProvider, error) {
+func (c *EmbeddingConnector) getProvider(ctx context.Context, name string, params map[string]any) (EmbeddingProvider, error) {
 	switch name {
 	case "openai":
 		baseURL := "https://api.openai.com/v1"
@@ -88,13 +92,23 @@ func (c *EmbeddingConnector) getProvider(name string, params map[string]any) (Em
 		}
 		return &OpenAIProvider{Client: c.Client, BaseURL: baseURL}, nil
 	case "bedrock":
-		// Bedrock embeddings use InvokeModel with per-model request shapes
-		// (Titan, Cohere), distinct from the Converse API used for chat.
-		// Tracked as a follow-up; OpenAI-compatible endpoints (including Azure
-		// OpenAI and local servers) are reachable today via base_url.
-		return nil, fmt.Errorf("bedrock embeddings are not yet supported; use provider: openai (optionally with base_url)")
+		cred, _ := params["_credential"].(map[string]string)
+		region, _ := params["region"].(string)
+		defaultRegion := c.DefaultRegion
+		if region != "" {
+			defaultRegion = region
+		}
+		configFunc := c.AWSConfigFunc
+		if configFunc == nil {
+			configFunc = NewAWSConfig
+		}
+		awsCfg, err := configFunc(ctx, cred, defaultRegion)
+		if err != nil {
+			return nil, fmt.Errorf("[bedrock]: %w", err)
+		}
+		return &BedrockEmbeddingProvider{Client: bedrockruntime.NewFromConfig(awsCfg)}, nil
 	default:
-		return nil, fmt.Errorf("unknown provider %q (available: openai)", name)
+		return nil, fmt.Errorf("unknown provider %q (available: openai, bedrock)", name)
 	}
 }
 
