@@ -60,6 +60,9 @@ func (c *EmbeddingConnector) Execute(ctx context.Context, params map[string]any)
 	if d, ok := extractInt(params["dimensions"]); ok && d > 0 {
 		req.Dimensions = d
 	}
+	if it, ok := params["input_type"].(string); ok {
+		req.InputType = it
+	}
 
 	workflow, _ := params["_workflow"].(string)
 	step, _ := params["_step"].(string)

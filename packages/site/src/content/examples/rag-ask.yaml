@@ -35,6 +35,10 @@ steps:
         - content
         - metadata
       top_k: 5
+      # Optional: scope retrieval to rows whose metadata contains these fields
+      # (JSONB containment), e.g. a single source or team.
+      # filter:
+      #   source: confluence/12345
 
   # 3. Answer grounded strictly in the retrieved passages.
   - name: answer

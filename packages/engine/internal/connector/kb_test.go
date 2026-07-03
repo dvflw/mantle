@@ -185,6 +185,65 @@ func TestPrepareQuery_MetricsAndColumns(t *testing.T) {
 	}
 }
 
+func TestPrepareQuery_MetadataFilter(t *testing.T) {
+	sql, args, err := prepareQuery(map[string]any{
+		"table":   "kb_documents",
+		"vector":  "[0.1,0.2]",
+		"columns": []any{"content", "metadata"},
+		"filter":  map[string]any{"source": "confluence", "team": "a"},
+		"top_k":   3,
+	})
+	if err != nil {
+		t.Fatalf("prepareQuery error: %v", err)
+	}
+	// The filter binds as $2 and the WHERE sits between FROM and ORDER BY.
+	if !strings.Contains(sql, "FROM kb_documents WHERE metadata @> $2::jsonb ORDER BY") {
+		t.Errorf("unexpected where clause: %s", sql)
+	}
+	if len(args) != 2 {
+		t.Fatalf("args len = %d, want 2 (vector + filter)", len(args))
+	}
+	filterJSON := args[1].(string)
+	if !strings.Contains(filterJSON, `"source":"confluence"`) || !strings.Contains(filterJSON, `"team":"a"`) {
+		t.Errorf("filter arg = %q", filterJSON)
+	}
+}
+
+func TestPrepareQuery_FilterCustomColumnAndPlaceholder(t *testing.T) {
+	// A custom metadata_column is interpolated; the filter placeholder follows
+	// the vector ($1), i.e. $2.
+	sql, _, err := prepareQuery(map[string]any{
+		"table":           "kb_documents",
+		"vector":          "[1]",
+		"metadata_column": "meta",
+		"filter":          map[string]any{"k": "v"},
+	})
+	if err != nil {
+		t.Fatalf("prepareQuery error: %v", err)
+	}
+	if !strings.Contains(sql, "WHERE meta @> $2::jsonb") {
+		t.Errorf("unexpected filter clause: %s", sql)
+	}
+}
+
+func TestPrepareQuery_EmptyFilterOmitted(t *testing.T) {
+	// An empty object matches everything; treat it as no filter (no WHERE, no arg).
+	sql, args, err := prepareQuery(map[string]any{
+		"table":  "t",
+		"vector": "[1]",
+		"filter": map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("prepareQuery error: %v", err)
+	}
+	if strings.Contains(sql, "WHERE") {
+		t.Errorf("empty filter should not emit WHERE: %s", sql)
+	}
+	if len(args) != 1 {
+		t.Errorf("args len = %d, want 1 (vector only)", len(args))
+	}
+}
+
 func TestPrepareQuery_TopKCap(t *testing.T) {
 	sql, _, err := prepareQuery(map[string]any{"table": "t", "vector": "[1]", "top_k": 999999})
 	if err != nil {
@@ -207,6 +266,8 @@ func TestPrepareQuery_Errors(t *testing.T) {
 		{"zero top_k", map[string]any{"table": "t", "vector": "[1]", "top_k": 0}},
 		{"sql injection in table", map[string]any{"table": "t; DROP TABLE x", "vector": "[1]"}},
 		{"sql injection in column", map[string]any{"table": "t", "vector": "[1]", "columns": []any{"content", "x); DROP"}}},
+		{"filter not an object", map[string]any{"table": "t", "vector": "[1]", "filter": "source=x"}},
+		{"sql injection in metadata_column", map[string]any{"table": "t", "vector": "[1]", "metadata_column": "m @> '{}'; DROP", "filter": map[string]any{"k": "v"}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

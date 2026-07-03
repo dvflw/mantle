@@ -19,7 +19,8 @@ type EmbeddingProvider interface {
 type EmbeddingRequest struct {
 	Model      string
 	Inputs     []string
-	Dimensions int // 0 = provider default
+	Dimensions int    // 0 = provider default
+	InputType  string // provider-specific hint (Cohere: search_document/search_query/...); "" = provider default
 	Credential map[string]string
 }
 

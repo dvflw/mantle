@@ -271,11 +271,60 @@ func prepareQuery(params map[string]any) (string, []any, error) {
 		cols = []string{contentCol}
 	}
 
+	// Optional metadata filter: a JSON object matched with the JSONB containment
+	// operator (@>). The whole object is bound as one parameter, so there is no
+	// injection surface — only the metadata column identifier is interpolated.
+	args := []any{vector}
+	where, err := kbFilterClause(params, len(args))
+	if err != nil {
+		return "", nil, err
+	}
+	if where.clause != "" {
+		args = append(args, where.arg)
+	}
+
 	selectList := strings.Join(cols, ", ")
 	sql := fmt.Sprintf(
-		"SELECT %s, (%s %s $1::vector) AS distance FROM %s ORDER BY %s %s $1::vector LIMIT %s",
-		selectList, embCol, op, table, embCol, op, strconv.Itoa(topK))
-	return sql, []any{vector}, nil
+		"SELECT %s, (%s %s $1::vector) AS distance FROM %s%s ORDER BY %s %s $1::vector LIMIT %s",
+		selectList, embCol, op, table, where.clause, embCol, op, strconv.Itoa(topK))
+	return sql, args, nil
+}
+
+// kbFilter is the built WHERE fragment plus its bound JSONB argument.
+type kbFilter struct {
+	clause string // e.g. " WHERE metadata @> $2::jsonb", or "" when absent
+	arg    string // the JSON-encoded filter object (only set when clause != "")
+}
+
+// kbFilterClause builds an optional JSONB-containment WHERE clause from the
+// `filter` param. The filter must be a JSON object; it is matched against the
+// metadata column with @> (does the row's metadata contain these key/values).
+// An absent or empty filter yields no clause. nextParam is the 1-based index of
+// the next free placeholder ($1 is always the query vector).
+func kbFilterClause(params map[string]any, nextParam int) (kbFilter, error) {
+	raw, ok := params["filter"]
+	if !ok || raw == nil {
+		return kbFilter{}, nil
+	}
+	obj, ok := raw.(map[string]any)
+	if !ok {
+		return kbFilter{}, fmt.Errorf("filter must be a JSON object, got %T", raw)
+	}
+	if len(obj) == 0 {
+		return kbFilter{}, nil // empty object matches everything — treat as no filter
+	}
+	metaCol, err := kbIdentParam(params, "metadata_column", kbDefaultMetadataColumn)
+	if err != nil {
+		return kbFilter{}, err
+	}
+	b, err := json.Marshal(obj)
+	if err != nil {
+		return kbFilter{}, fmt.Errorf("marshaling filter: %w", err)
+	}
+	return kbFilter{
+		clause: fmt.Sprintf(" WHERE %s @> $%d::jsonb", metaCol, nextParam+1),
+		arg:    string(b),
+	}, nil
 }
 
 func kbStringList(raw any) ([]string, error) {

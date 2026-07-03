@@ -63,6 +63,71 @@ func TestChunkText_Unicode(t *testing.T) {
 	}
 }
 
+func TestChunkText_RecursiveSentences(t *testing.T) {
+	// With ". " available and a size that holds one sentence but not two, the
+	// recursive splitter breaks on sentence boundaries.
+	got, err := chunkText("Alpha beta. Gamma delta. Epsilon zeta.", 15, 0, "recursive")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	want := []string{"Alpha beta.", "Gamma delta.", "Epsilon zeta."}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("chunks = %v, want %v", got, want)
+	}
+}
+
+func TestChunkText_RecursiveFallbackHardSplit(t *testing.T) {
+	// No usable separator (one long token): falls through to a character window.
+	got, err := chunkText("abcdefgh", 3, 0, "recursive")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	want := []string{"abc", "def", "gh"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("chunks = %v, want %v", got, want)
+	}
+}
+
+func TestChunkText_RecursiveOverlap(t *testing.T) {
+	// Overlap carries a trailing word into the next chunk, so adjacent chunks
+	// share the boundary token.
+	got, err := chunkText("one two three four five six", 9, 4, "recursive")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if len(got) < 2 || got[0] != "one two" || got[1] != "two three" {
+		t.Errorf("chunks = %v, want first two [one two, two three]", got)
+	}
+}
+
+func TestChunkText_RecursiveShorterThanSize(t *testing.T) {
+	got, err := chunkText("short text", 100, 10, "recursive")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if len(got) != 1 || got[0] != "short text" {
+		t.Errorf("chunks = %v, want [short text]", got)
+	}
+}
+
+func TestChunkText_RecursiveChunkSizeBound(t *testing.T) {
+	// Every chunk stays within size + overlap runes (the documented bound).
+	text := strings.Repeat("lorem ipsum dolor sit amet. ", 50)
+	size, overlap := 60, 15
+	got, err := chunkText(text, size, overlap, "recursive")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if len(got) < 2 {
+		t.Fatalf("expected multiple chunks, got %d", len(got))
+	}
+	for i, c := range got {
+		if n := len([]rune(c)); n > size+overlap {
+			t.Errorf("chunk %d has %d runes, exceeds size+overlap (%d)", i, n, size+overlap)
+		}
+	}
+}
+
 func TestChunkText_Errors(t *testing.T) {
 	cases := []struct {
 		name          string

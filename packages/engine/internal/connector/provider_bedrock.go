@@ -231,12 +231,29 @@ type BedrockInvokeAPI interface {
 }
 
 // BedrockEmbeddingProvider implements EmbeddingProvider using the AWS Bedrock
-// InvokeModel API. It currently supports the Amazon Titan text-embedding models
-// (amazon.titan-embed-text-v1 and amazon.titan-embed-text-v2:0). Titan embeds a
-// single input per call, so multi-input requests are issued sequentially and
-// reassembled in order.
+// InvokeModel API. It supports two model families:
+//   - Amazon Titan (amazon.titan-embed-text-v1 / -v2:0): one input per call, so
+//     multi-input requests are issued sequentially and reassembled in order.
+//   - Cohere Embed v3 (cohere.embed-english-v3 / cohere.embed-multilingual-v3):
+//     natively batched (up to 96 texts per call) with a required input_type.
 type BedrockEmbeddingProvider struct {
 	Client BedrockInvokeAPI
+}
+
+// cohereEmbedMaxBatch is Cohere's per-call limit on the number of input texts.
+const cohereEmbedMaxBatch = 96
+
+// Embeddings dispatches to the right model family. The provider-agnostic
+// EmbeddingRequest is mapped onto each family's InvokeModel body.
+func (p *BedrockEmbeddingProvider) Embeddings(ctx context.Context, req *EmbeddingRequest) (*EmbeddingResponse, error) {
+	switch {
+	case strings.HasPrefix(req.Model, "amazon.titan-embed"):
+		return p.titanEmbeddings(ctx, req)
+	case strings.HasPrefix(req.Model, "cohere.embed"):
+		return p.cohereEmbeddings(ctx, req)
+	default:
+		return nil, fmt.Errorf("bedrock: unsupported embedding model %q (supported: amazon.titan-embed-text-v1, amazon.titan-embed-text-v2:0, cohere.embed-english-v3, cohere.embed-multilingual-v3)", req.Model)
+	}
 }
 
 // titanEmbedRequest is the Amazon Titan text-embeddings InvokeModel body.
@@ -252,12 +269,8 @@ type titanEmbedResponse struct {
 	InputTextTokenCount int       `json:"inputTextTokenCount"`
 }
 
-// Embeddings implements EmbeddingProvider for Bedrock Titan models.
-func (p *BedrockEmbeddingProvider) Embeddings(ctx context.Context, req *EmbeddingRequest) (*EmbeddingResponse, error) {
-	if !strings.HasPrefix(req.Model, "amazon.titan-embed") {
-		return nil, fmt.Errorf("bedrock: unsupported embedding model %q (supported: amazon.titan-embed-text-v1, amazon.titan-embed-text-v2:0)", req.Model)
-	}
-
+// titanEmbeddings embeds via Amazon Titan (one InvokeModel call per input).
+func (p *BedrockEmbeddingProvider) titanEmbeddings(ctx context.Context, req *EmbeddingRequest) (*EmbeddingResponse, error) {
 	out := make([][]float64, len(req.Inputs))
 	totalTokens := 0
 
@@ -308,5 +321,76 @@ func (p *BedrockEmbeddingProvider) Embeddings(ctx context.Context, req *Embeddin
 		Embeddings: out,
 		Model:      req.Model,
 		Usage:      ChatUsage{PromptTokens: totalTokens, TotalTokens: totalTokens},
+	}, nil
+}
+
+// cohereEmbedRequest is the Cohere Embed v3 InvokeModel body. input_type is
+// required by the v3 models; truncate keeps over-length inputs from erroring.
+type cohereEmbedRequest struct {
+	Texts     []string `json:"texts"`
+	InputType string   `json:"input_type"`
+	Truncate  string   `json:"truncate,omitempty"`
+}
+
+// cohereEmbedResponse is the default ("embeddings_floats") Cohere response.
+type cohereEmbedResponse struct {
+	Embeddings [][]float64 `json:"embeddings"`
+}
+
+// cohereEmbeddings embeds via Cohere Embed v3. Cohere batches natively (up to
+// cohereEmbedMaxBatch texts per call), so inputs are sent in batches and
+// concatenated in order. input_type distinguishes documents from queries; it
+// defaults to search_document (the ingest case). Cohere's Bedrock response
+// carries no token counts, so usage is left at zero.
+func (p *BedrockEmbeddingProvider) cohereEmbeddings(ctx context.Context, req *EmbeddingRequest) (*EmbeddingResponse, error) {
+	inputType := req.InputType
+	switch inputType {
+	case "":
+		inputType = "search_document"
+	case "search_document", "search_query", "classification", "clustering":
+	default:
+		return nil, fmt.Errorf("bedrock: cohere input_type %q is invalid (use search_document, search_query, classification, or clustering)", inputType)
+	}
+
+	out := make([][]float64, 0, len(req.Inputs))
+	for start := 0; start < len(req.Inputs); start += cohereEmbedMaxBatch {
+		end := start + cohereEmbedMaxBatch
+		if end > len(req.Inputs) {
+			end = len(req.Inputs)
+		}
+		batch := req.Inputs[start:end]
+
+		bodyJSON, err := json.Marshal(cohereEmbedRequest{
+			Texts:     batch,
+			InputType: inputType,
+			Truncate:  "END",
+		})
+		if err != nil {
+			return nil, fmt.Errorf("bedrock: marshaling cohere embedding request: %w", err)
+		}
+
+		resp, err := p.Client.InvokeModel(ctx, &bedrockruntime.InvokeModelInput{
+			ModelId:     aws.String(req.Model),
+			Body:        bodyJSON,
+			ContentType: aws.String("application/json"),
+			Accept:      aws.String("application/json"),
+		})
+		if err != nil {
+			return nil, classifyBedrockError(err)
+		}
+
+		var er cohereEmbedResponse
+		if err := json.Unmarshal(resp.Body, &er); err != nil {
+			return nil, fmt.Errorf("bedrock: parsing cohere embedding response: %w", err)
+		}
+		if len(er.Embeddings) != len(batch) {
+			return nil, fmt.Errorf("bedrock: cohere returned %d embeddings for %d inputs", len(er.Embeddings), len(batch))
+		}
+		out = append(out, er.Embeddings...)
+	}
+
+	return &EmbeddingResponse{
+		Embeddings: out,
+		Model:      req.Model,
 	}, nil
 }

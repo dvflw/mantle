@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 // TextChunkConnector implements text/chunk: split a long document into
@@ -16,10 +17,20 @@ const (
 	chunkDefaultOverlap = 0
 )
 
-// chunkText splits text into fixed-size, optionally overlapping chunks. `unit`
-// is "chars" (default, Unicode-aware) or "words" (whitespace-separated). size
-// and overlap are counted in that unit. Pure — no I/O — so it is fully
-// unit-testable.
+// recursiveSeparators is the default hierarchy the "recursive" unit walks, from
+// coarsest (paragraph) to finest. The empty string is the terminal fallback: a
+// stretch with no separator left is hard-split by character window.
+var recursiveSeparators = []string{"\n\n", "\n", ". ", " ", ""}
+
+// chunkText splits text into overlapping chunks. `unit` selects the strategy:
+//   - "chars" (default, Unicode-aware) / "words": fixed-size sliding window,
+//     size and overlap counted in that unit.
+//   - "recursive": separator-aware split (paragraph → line → sentence → word →
+//     character) that keeps chunks under `size` characters while preferring to
+//     break on natural boundaries, then merges adjacent pieces up to `size` with
+//     `overlap` characters carried between chunks.
+//
+// Pure — no I/O — so it is fully unit-testable.
 func chunkText(text string, size, overlap int, unit string) ([]string, error) {
 	if strings.TrimSpace(text) == "" {
 		return nil, fmt.Errorf("text must not be empty")
@@ -46,9 +57,100 @@ func chunkText(text string, size, overlap int, unit string) ([]string, error) {
 		return sliceChunks(len(words), size, step, func(a, b int) string {
 			return strings.Join(words[a:b], " ")
 		}), nil
+	case "recursive":
+		return recursiveChunks(text, size, overlap, recursiveSeparators), nil
 	default:
-		return nil, fmt.Errorf("unknown unit %q (use chars or words)", unit)
+		return nil, fmt.Errorf("unknown unit %q (use chars, words, or recursive)", unit)
 	}
+}
+
+// recursiveChunks splits text on a hierarchy of separators so chunks break on
+// natural boundaries, then greedily merges the pieces (with overlap) into
+// windows of at most `size` characters. size/overlap are counted in runes.
+func recursiveChunks(text string, size, overlap int, seps []string) []string {
+	pieces := splitRecursive(text, size, seps)
+	return mergeSplits(pieces, size, overlap)
+}
+
+// splitRecursive breaks text into atomic pieces, each at most `size` runes where
+// possible, preferring the coarsest separator that appears. A piece still larger
+// than `size` after exhausting separators is hard-split by character window.
+// Separators are re-attached to the pieces so the text reconstructs faithfully.
+func splitRecursive(text string, size int, seps []string) []string {
+	if utf8.RuneCountInString(text) <= size {
+		if text == "" {
+			return nil
+		}
+		return []string{text}
+	}
+	if len(seps) == 0 {
+		return hardSplit(text, size)
+	}
+	sep, rest := seps[0], seps[1:]
+	if sep == "" {
+		return hardSplit(text, size)
+	}
+	parts := strings.Split(text, sep)
+	var out []string
+	for i, p := range parts {
+		piece := p
+		if i < len(parts)-1 { // keep the separator that we split on
+			piece += sep
+		}
+		if piece == "" {
+			continue
+		}
+		if utf8.RuneCountInString(piece) <= size {
+			out = append(out, piece)
+		} else {
+			out = append(out, splitRecursive(piece, size, rest)...)
+		}
+	}
+	return out
+}
+
+// hardSplit chops text into consecutive windows of `size` runes (no overlap),
+// used as the terminal fallback for a stretch with no usable separator.
+func hardSplit(text string, size int) []string {
+	runes := []rune(text)
+	return sliceChunks(len(runes), size, size, func(a, b int) string {
+		return string(runes[a:b])
+	})
+}
+
+// mergeSplits greedily concatenates pieces into chunks of at most `size` runes.
+// When a chunk fills, it starts the next one with a tail of the previous pieces
+// totalling up to `overlap` runes, so consecutive chunks share context.
+func mergeSplits(pieces []string, size, overlap int) []string {
+	var chunks []string
+	var cur []string
+	curLen := 0
+
+	flush := func() {
+		if len(cur) == 0 {
+			return
+		}
+		if c := strings.TrimSpace(strings.Join(cur, "")); c != "" {
+			chunks = append(chunks, c)
+		}
+	}
+
+	for _, p := range pieces {
+		pl := utf8.RuneCountInString(p)
+		if curLen+pl > size && len(cur) > 0 {
+			flush()
+			// Retain a trailing window of pieces up to `overlap` runes as the
+			// start of the next chunk.
+			for curLen > overlap && len(cur) > 0 {
+				curLen -= utf8.RuneCountInString(cur[0])
+				cur = cur[1:]
+			}
+		}
+		cur = append(cur, p)
+		curLen += pl
+	}
+	flush()
+	return chunks
 }
 
 // sliceChunks walks [0,n) in windows of `size` advancing by `step`, emitting
