@@ -320,6 +320,71 @@ Executes a parameterized SQL query against an external Postgres database. The co
 mantle secrets create --name my-database --type generic --field url=postgres://user:pass@host:5432/dbname?sslmode=require
 ```
 
+## kb/upsert
+
+Stores document text and a vector embedding (plus optional JSONB metadata) into a [pgvector](https://github.com/pgvector/pgvector) table. A thin helper over `postgres/query` for [RAG](/docs/rag-guide): it takes the pgvector literal from `ai/embed`'s `output.vector` and handles the `::vector` cast and multi-row inserts. Uses a `postgres` credential; you create the table (it does not manage schema). Table and column names are validated as SQL identifiers.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `table` | string | Yes | Target table name (optionally `schema.table`). |
+| `content` / `contents` | string / list | Yes | Document text — a single string, or an array for a batch (e.g. chunks). |
+| `vector` / `vectors` | string / list | Yes | Matching pgvector literal(s) from `ai/embed`. Count must match `content`/`contents`. |
+| `metadata` / `metadatas` | object / list | No | Optional JSONB metadata per row. If provided, the count must match. |
+| `content_column` | string | No | Content column name. Default `content`. |
+| `embedding_column` | string | No | Vector column name. Default `embedding`. |
+| `metadata_column` | string | No | Metadata column name. Default `metadata`. |
+| `conflict_target` | string | No | Column/constraint for `ON CONFLICT (...) DO NOTHING` (idempotent upsert). |
+
+**Output:** `rows_affected` (number).
+
+**Example:**
+
+```yaml
+- name: store
+  action: kb/upsert
+  credential: kb-db
+  depends_on: [embed]
+  params:
+    table: kb_documents
+    content: "{{ inputs.content }}"
+    vector: "{{ steps['embed'].output.vector }}"
+    metadata: { title: "{{ inputs.title }}", source: "{{ inputs.source }}" }
+    conflict_target: dedupe_key
+```
+
+## kb/query
+
+Nearest-neighbour search over a pgvector table for a query embedding. A thin helper over `postgres/query`: it builds the distance-ordered `SELECT` so you don't write the pgvector SQL. Uses a `postgres` credential; identifiers are validated.
+
+**Params:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `table` | string | Yes | Table to search (optionally `schema.table`). |
+| `vector` | string | Yes | The query embedding as a pgvector literal (from `ai/embed`). |
+| `top_k` | integer | No | Number of rows to return. Default `5`, capped at `1000`. |
+| `columns` | list | No | Columns to return. Default `[content]`. |
+| `metric` | string | No | Distance metric: `cosine` (default), `l2`, or `inner_product`. |
+| `embedding_column` | string | No | Vector column name. Default `embedding`. |
+
+**Output:** `rows` (list of maps — the requested columns plus a `distance` field, nearest first) and `row_count`. For `cosine`, similarity is `1 - distance`.
+
+**Example:**
+
+```yaml
+- name: search
+  action: kb/query
+  credential: kb-db
+  depends_on: [embed-question]
+  params:
+    table: kb_documents
+    vector: "{{ steps['embed-question'].output.vector }}"
+    columns: [content, metadata]
+    top_k: 5
+```
+
 ## email/send
 
 Sends an email via SMTP. Supports plaintext and HTML content.

@@ -1,9 +1,9 @@
 name: rag-ask
 description: >
   Retrieval-augmented generation over the pgvector knowledge base: embed the
-  question, find the nearest documents by cosine distance, and have an LLM answer
-  grounded in them. Pair with rag-ingest.yaml. Read the answer from the CLI
-  output (mantle run rag-ask --input question="..." --output json).
+  question, find the nearest documents with kb/query (cosine distance), and have
+  an LLM answer grounded in them. Pair with rag-ingest.yaml. Read the answer from
+  the CLI output (mantle run rag-ask --input question="..." --output json).
 
 inputs:
   question:
@@ -20,25 +20,21 @@ steps:
       model: text-embedding-3-small
       input: "{{ inputs.question }}"
 
-  # 2. Nearest-neighbour search by cosine distance (<=> is pgvector's distance
-  #    operator; similarity = 1 - distance).
+  # 2. Nearest-neighbour search. Returns the requested columns plus a `distance`
+  #    field (lower = closer; for cosine, similarity = 1 - distance).
   - name: search
-    action: postgres/query
+    action: kb/query
     credential: kb-db
     depends_on:
       - embed-question
     timeout: "15s"
     params:
-      query: >
-        SELECT title,
-               source,
-               content,
-               1 - (embedding <=> $1::vector) AS similarity
-        FROM kb_documents
-        ORDER BY embedding <=> $1::vector
-        LIMIT 5
-      args:
-        - "{{ steps['embed-question'].output.vector }}"
+      table: kb_documents
+      vector: "{{ steps['embed-question'].output.vector }}"
+      columns:
+        - content
+        - metadata
+      top_k: 5
 
   # 3. Answer grounded strictly in the retrieved passages.
   - name: answer
@@ -50,11 +46,11 @@ steps:
     params:
       model: gpt-4o
       system_prompt: >
-        Answer using ONLY the provided context passages. Cite the titles you
-        draw from. If the context does not contain the answer, say so plainly
-        rather than guessing.
+        Answer using ONLY the provided context passages. Cite the source or
+        title from each passage's metadata when you use it. If the context does
+        not contain the answer, say so plainly rather than guessing.
       prompt: >
         Question: {{ inputs.question }}
 
-        Context passages (JSON, most similar first):
+        Context passages (JSON, nearest first):
         {{ jsonEncode(steps['search'].output.rows) }}

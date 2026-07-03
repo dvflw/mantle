@@ -31,6 +31,8 @@ func NewRegistry() *Registry {
 	r.Register("slack/send", &SlackSendConnector{})
 	r.Register("slack/history", &SlackHistoryConnector{})
 	r.Register("postgres/query", &PostgresQueryConnector{})
+	r.Register("kb/upsert", &KBUpsertConnector{})
+	r.Register("kb/query", &KBQueryConnector{})
 	r.Register("email/send", &EmailSendConnector{})
 	r.Register("email/receive", &EmailReceiveConnector{})
 	r.Register("email/move", &EmailMoveConnector{})
