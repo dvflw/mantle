@@ -92,7 +92,9 @@ func kbStrings(params map[string]any, singleKey, manyKey string) ([]string, erro
 }
 
 // kbMetadata normalizes the optional metadata param into JSON strings aligned
-// with the rows. Returns present=false when no metadata param is set.
+// with the rows. A single `metadata` object is broadcast to every row (handy
+// for chunked ingest that shares a title/source); `metadatas` must match the
+// row count one-to-one. Returns present=false when no metadata param is set.
 func kbMetadata(params map[string]any, rows int) (jsons []string, present bool, err error) {
 	single, hasSingle := params["metadata"]
 	many, hasMany := params["metadatas"]
@@ -103,25 +105,30 @@ func kbMetadata(params map[string]any, rows int) (jsons []string, present bool, 
 		return nil, false, fmt.Errorf("set only one of metadata or metadatas")
 	}
 
-	var objs []any
 	if hasSingle {
-		objs = []any{single}
-	} else {
-		arr, ok := many.([]any)
-		if !ok {
-			return nil, false, fmt.Errorf("metadatas must be an array of objects, got %T", many)
+		b, mErr := json.Marshal(single)
+		if mErr != nil {
+			return nil, false, fmt.Errorf("marshaling metadata: %w", mErr)
 		}
-		objs = arr
-	}
-	if len(objs) != rows {
-		return nil, false, fmt.Errorf("metadata count %d does not match content count %d", len(objs), rows)
+		out := make([]string, rows)
+		for i := range out {
+			out[i] = string(b)
+		}
+		return out, true, nil
 	}
 
-	out := make([]string, len(objs))
-	for i, o := range objs {
+	arr, ok := many.([]any)
+	if !ok {
+		return nil, false, fmt.Errorf("metadatas must be an array of objects, got %T", many)
+	}
+	if len(arr) != rows {
+		return nil, false, fmt.Errorf("metadatas count %d does not match content count %d", len(arr), rows)
+	}
+	out := make([]string, len(arr))
+	for i, o := range arr {
 		b, mErr := json.Marshal(o)
 		if mErr != nil {
-			return nil, false, fmt.Errorf("marshaling metadata[%d]: %w", i, mErr)
+			return nil, false, fmt.Errorf("marshaling metadatas[%d]: %w", i, mErr)
 		}
 		out[i] = string(b)
 	}

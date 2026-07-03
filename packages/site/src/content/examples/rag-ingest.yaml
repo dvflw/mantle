@@ -1,9 +1,9 @@
 name: rag-ingest
 description: >
-  Embed a document with ai/embed and store it in a pgvector knowledge base with
-  kb/upsert for semantic retrieval. Pair with rag-ask.yaml. Requires the schema
-  in rag-kb-schema.sql. For long documents, split into chunks and pass arrays to
-  ai/embed (input) and kb/upsert (contents/vectors).
+  Ingest a document into a pgvector knowledge base: split it into overlapping
+  chunks with text/chunk, embed them in one batch with ai/embed, and store them
+  with kb/upsert. Pair with rag-ask.yaml. Requires the schema in
+  rag-kb-schema.sql.
 
 inputs:
   title:
@@ -16,31 +16,43 @@ inputs:
     default: ""
   content:
     type: string
-    description: The document text to embed and store
+    description: The document text to chunk, embed, and store
 
 steps:
-  # 1. Produce an embedding. output.vector is a pgvector text literal that
-  #    kb/upsert stores directly.
+  # 1. Split the document into overlapping chunks (defaults are chars; use
+  #    unit: words for word counts).
+  - name: chunk
+    action: text/chunk
+    params:
+      text: "{{ inputs.content }}"
+      chunk_size: 1200
+      chunk_overlap: 150
+
+  # 2. Embed all chunks in one call. output.vectors is an array of pgvector
+  #    literals aligned with the chunks.
   - name: embed
     action: ai/embed
     credential: openai
-    timeout: "30s"
+    depends_on:
+      - chunk
+    timeout: "60s"
     params:
       model: text-embedding-3-small
-      input: "{{ inputs.content }}"
+      input: "{{ steps['chunk'].output.chunks }}"
 
-  # 2. Store the document, embedding, and metadata. conflict_target makes
-  #    re-ingesting identical content a no-op (dedupe_key is md5(content)).
+  # 3. Store every chunk + embedding in one batch. The single `metadata` object
+  #    is applied to every chunk. conflict_target dedupes on md5(content).
   - name: store
     action: kb/upsert
     credential: kb-db
     depends_on:
+      - chunk
       - embed
-    timeout: "15s"
+    timeout: "30s"
     params:
       table: kb_documents
-      content: "{{ inputs.content }}"
-      vector: "{{ steps['embed'].output.vector }}"
+      contents: "{{ steps['chunk'].output.chunks }}"
+      vectors: "{{ steps['embed'].output.vectors }}"
       metadata:
         title: "{{ inputs.title }}"
         source: "{{ inputs.source }}"

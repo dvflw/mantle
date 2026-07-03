@@ -82,10 +82,10 @@ mantle run rag-ingest \
   --input content="Team A connects to Client C via the X integration; Team B uses the direct API."
 ```
 
-For a long document, split it into chunks and pass arrays to `ai/embed`
-(`input`) and `kb/upsert` (`contents` + `vectors`, plus `metadatas`) to store
-them all in one step. Re-ingesting identical content is a no-op (the schema
-dedupes on `md5(content)`).
+`rag-ingest` splits the document into overlapping chunks with `text/chunk`,
+embeds them all in one `ai/embed` call, and stores them in one `kb/upsert`. A
+single `metadata` object is broadcast to every chunk. Re-ingesting identical
+content is a no-op (the schema dedupes on `md5(content)`).
 
 ## Asking questions
 
@@ -111,6 +111,7 @@ outputs with `--output json` or `-v`).
   to match (Titan v2 defaults to 1024). Cohere Bedrock models are a follow-up.
 - **You provide the vector store.** `kb/*` run against a pgvector database you
   create and point a credential at; they don't provision the extension or table.
-- **Chunking is manual.** Split long documents yourself and pass arrays to
-  `ai/embed` / `kb/upsert`. A native chunking helper and metadata filtering on
-  `kb/query` are tracked by [#153](https://github.com/dvflw/mantle/issues/153).
+- **Chunking is fixed-size.** `text/chunk` splits by a sliding window over
+  characters or words with overlap. Semantic/recursive (separator-aware or
+  token-accurate) chunking and metadata filtering on `kb/query` are tracked by
+  [#153](https://github.com/dvflw/mantle/issues/153).
