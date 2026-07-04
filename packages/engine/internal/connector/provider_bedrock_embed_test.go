@@ -123,6 +123,24 @@ func TestBedrockEmbeddingProvider_UnsupportedModel(t *testing.T) {
 	}
 }
 
+func TestBedrockEmbeddingProvider_UnsupportedCohereModel(t *testing.T) {
+	// A valid-but-unsupported Cohere ID (e.g. v4) must not be routed into the v3
+	// request path; it should return the unsupported-model error instead.
+	mock := &mockBedrockInvokeClient{
+		InvokeFunc: func(ctx context.Context, input *bedrockruntime.InvokeModelInput, opts ...func(*bedrockruntime.Options)) (*bedrockruntime.InvokeModelOutput, error) {
+			t.Fatal("InvokeModel should not be called for an unsupported Cohere model")
+			return nil, nil
+		},
+	}
+	p := &BedrockEmbeddingProvider{Client: mock}
+	if _, err := p.Embeddings(context.Background(), &EmbeddingRequest{
+		Model:  "cohere.embed-v4:0",
+		Inputs: []string{"x"},
+	}); err == nil {
+		t.Error("expected error for unsupported Cohere embedding model (v4)")
+	}
+}
+
 func TestBedrockEmbeddingProvider_Cohere(t *testing.T) {
 	var calls int
 	mock := &mockBedrockInvokeClient{

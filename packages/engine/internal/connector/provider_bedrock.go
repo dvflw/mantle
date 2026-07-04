@@ -243,13 +243,24 @@ type BedrockEmbeddingProvider struct {
 // cohereEmbedMaxBatch is Cohere's per-call limit on the number of input texts.
 const cohereEmbedMaxBatch = 96
 
+// isCohereV3Embed reports whether the model is one of the Cohere Embed v3
+// families this connector implements. The match is deliberately narrow: newer
+// Cohere models (e.g. cohere.embed-v4:0) use a different request/response shape
+// — a v4 request takes truncate LEFT|RIGHT|NONE and returns different output —
+// so they must fall through to the unsupported-model error rather than be sent
+// a v3 body.
+func isCohereV3Embed(model string) bool {
+	return strings.HasPrefix(model, "cohere.embed-english-v3") ||
+		strings.HasPrefix(model, "cohere.embed-multilingual-v3")
+}
+
 // Embeddings dispatches to the right model family. The provider-agnostic
 // EmbeddingRequest is mapped onto each family's InvokeModel body.
 func (p *BedrockEmbeddingProvider) Embeddings(ctx context.Context, req *EmbeddingRequest) (*EmbeddingResponse, error) {
 	switch {
 	case strings.HasPrefix(req.Model, "amazon.titan-embed"):
 		return p.titanEmbeddings(ctx, req)
-	case strings.HasPrefix(req.Model, "cohere.embed"):
+	case isCohereV3Embed(req.Model):
 		return p.cohereEmbeddings(ctx, req)
 	default:
 		return nil, fmt.Errorf("bedrock: unsupported embedding model %q (supported: amazon.titan-embed-text-v1, amazon.titan-embed-text-v2:0, cohere.embed-english-v3, cohere.embed-multilingual-v3)", req.Model)
