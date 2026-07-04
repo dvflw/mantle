@@ -409,7 +409,7 @@ Splits a long document into overlapping chunks for embedding. Feeds the chunk �
 **Chunking strategies:**
 
 - `chars` / `words` — a fixed-size sliding window: `chunk_size`-wide, advancing by `chunk_size - chunk_overlap`.
-- `recursive` — separator-aware splitting that prefers to break on natural boundaries. It walks a hierarchy of separators (paragraph `\n\n` → line `\n` → sentence `. ` → word ` ` → character) so a chunk breaks at the coarsest boundary that keeps it under `chunk_size`, then merges adjacent pieces up to the size with `chunk_overlap` characters carried between chunks. `chunk_size`/`chunk_overlap` are counted in characters. Chunks target `chunk_size` but may carry up to `chunk_overlap` extra characters of leading context. Use this for prose where you'd rather not cut mid-sentence.
+- `recursive` — separator-aware splitting that prefers to break on natural boundaries. It walks a hierarchy of separators (paragraph `"\n\n"` → line `"\n"` → sentence `". "` → word `" "` → character) so a chunk breaks at the coarsest boundary that keeps it under `chunk_size`, then merges adjacent pieces up to the size with `chunk_overlap` characters carried between chunks. `chunk_size`/`chunk_overlap` are counted in characters. Chunks target `chunk_size` but may carry up to `chunk_overlap` extra characters of leading context. Use this for prose where you'd rather not cut mid-sentence.
 
 **Output:** `chunks` (list of strings) and `count` (number).
 

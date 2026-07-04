@@ -26,9 +26,9 @@ var recursiveSeparators = []string{"\n\n", "\n", ". ", " ", ""}
 //   - "chars" (default, Unicode-aware) / "words": fixed-size sliding window,
 //     size and overlap counted in that unit.
 //   - "recursive": separator-aware split (paragraph → line → sentence → word →
-//     character) that keeps chunks under `size` characters while preferring to
-//     break on natural boundaries, then merges adjacent pieces up to `size` with
-//     `overlap` characters carried between chunks.
+//     character) that prefers to break on natural boundaries, then merges
+//     adjacent pieces toward `size` with `overlap` characters carried between
+//     chunks. A chunk targets `size` but may reach up to `size + overlap`.
 //
 // Pure — no I/O — so it is fully unit-testable.
 func chunkText(text string, size, overlap int, unit string) ([]string, error) {
@@ -118,9 +118,12 @@ func hardSplit(text string, size int) []string {
 	})
 }
 
-// mergeSplits greedily concatenates pieces into chunks of at most `size` runes.
+// mergeSplits greedily concatenates pieces into chunks that target `size` runes.
 // When a chunk fills, it starts the next one with a tail of the previous pieces
-// totalling up to `overlap` runes, so consecutive chunks share context.
+// totalling up to `overlap` runes, so consecutive chunks share context. Because
+// that carried tail is prepended before the next piece, a chunk may reach up to
+// `size + overlap` runes (this mirrors how splitters like LangChain's treat
+// chunk_size as a target rather than a hard cap).
 func mergeSplits(pieces []string, size, overlap int) []string {
 	var chunks []string
 	var cur []string

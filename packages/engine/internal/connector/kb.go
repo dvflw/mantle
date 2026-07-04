@@ -299,9 +299,10 @@ type kbFilter struct {
 // kbFilterClause builds an optional JSONB-containment WHERE clause from the
 // `filter` param. The filter must be a JSON object; it is matched against the
 // metadata column with @> (does the row's metadata contain these key/values).
-// An absent or empty filter yields no clause. nextParam is the 1-based index of
-// the next free placeholder ($1 is always the query vector).
-func kbFilterClause(params map[string]any, nextParam int) (kbFilter, error) {
+// An absent or empty filter yields no clause. boundParamCount is the number of
+// SQL parameters already bound (currently always 1, for the query vector $1), so
+// the filter binds at the next placeholder, $(boundParamCount+1).
+func kbFilterClause(params map[string]any, boundParamCount int) (kbFilter, error) {
 	raw, ok := params["filter"]
 	if !ok || raw == nil {
 		return kbFilter{}, nil
@@ -322,7 +323,7 @@ func kbFilterClause(params map[string]any, nextParam int) (kbFilter, error) {
 		return kbFilter{}, fmt.Errorf("marshaling filter: %w", err)
 	}
 	return kbFilter{
-		clause: fmt.Sprintf(" WHERE %s @> $%d::jsonb", metaCol, nextParam+1),
+		clause: fmt.Sprintf(" WHERE %s @> $%d::jsonb", metaCol, boundParamCount+1),
 		arg:    string(b),
 	}, nil
 }
