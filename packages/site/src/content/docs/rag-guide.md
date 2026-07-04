@@ -105,13 +105,21 @@ outputs with `--output json` or `-v`).
   Embed queries and documents with the same model.
 - **Provider support:** `ai/embed` supports `openai` (and OpenAI-compatible
   endpoints like Azure OpenAI or local servers via `base_url`) and `bedrock`
-  with the Amazon Titan text-embedding models (`amazon.titan-embed-text-v2:0`,
-  `amazon.titan-embed-text-v1`). To use Bedrock, set `provider: bedrock`, a
-  `region`, and an `aws` credential; adjust the schema's `vector(...)` dimension
-  to match (Titan v2 defaults to 1024). Cohere Bedrock models are a follow-up.
+  with the Amazon Titan (`amazon.titan-embed-text-v2:0`,
+  `amazon.titan-embed-text-v1`) and Cohere Embed v3 (`cohere.embed-english-v3`,
+  `cohere.embed-multilingual-v3`) text-embedding models. To use Bedrock, set
+  `provider: bedrock`, a `region`, and an `aws` credential; adjust the schema's
+  `vector(...)` dimension to match (Titan v2 defaults to 1024; Cohere v3 is
+  1024). For Cohere, embed documents at ingest with `input_type:
+  search_document` and questions with `input_type: search_query`; embed both
+  sides with the same model. (Cohere's Bedrock response carries no token counts,
+  so those embeddings report zero usage.)
 - **You provide the vector store.** `kb/*` run against a pgvector database you
   create and point a credential at; they don't provision the extension or table.
-- **Chunking is fixed-size.** `text/chunk` splits by a sliding window over
-  characters or words with overlap. Semantic/recursive (separator-aware or
-  token-accurate) chunking and metadata filtering on `kb/query` are tracked by
+- **Metadata filtering.** `kb/query` takes an optional `filter` object and
+  restricts the search to rows whose metadata contains it (JSONB `@>`), so you
+  can scope retrieval to a source, team, or tag alongside the vector search.
+- **Chunking.** `text/chunk` offers fixed-size (`chars`/`words`) windows and a
+  separator-aware `recursive` mode that prefers to break on paragraph, line,
+  sentence, and word boundaries. Token-accurate chunking remains a follow-up on
   [#153](https://github.com/dvflw/mantle/issues/153).

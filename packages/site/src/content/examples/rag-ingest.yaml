@@ -19,12 +19,14 @@ inputs:
     description: The document text to chunk, embed, and store
 
 steps:
-  # 1. Split the document into overlapping chunks (defaults are chars; use
-  #    unit: words for word counts).
+  # 1. Split the document into overlapping chunks. `recursive` prefers to break
+  #    on paragraph/line/sentence/word boundaries so chunks don't cut mid-thought
+  #    (use unit: chars or words for fixed-size windows instead).
   - name: chunk
     action: text/chunk
     params:
       text: "{{ inputs.content }}"
+      unit: recursive
       chunk_size: 1200
       chunk_overlap: 150
 
